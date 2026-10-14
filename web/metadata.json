@@ -1,0 +1,6 @@
+{
+  "name": "YouShop - Luxury Fashion & Operations Platform",
+  "description": "Minimalist administrative operations and archive management platform for YouShop Essential Wear, featuring global inventory, catalog archive, dispatch tracking, and team access built with Angular and TypeScript.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

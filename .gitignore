@@ -1,0 +1,44 @@
+# --- Python / backend ---
+**/.venv/
+**/__pycache__/
+*.pyc
+backend/.env
+backend/*.env
+!backend/.env.example
+
+# --- Node / web ---
+**/node_modules/
+web/dist/
+web/.angular/
+web/.env
+web/*.env
+!web/.env.example
+
+# --- Flutter / mobile ---
+**/build/
+**/.dart_tool/
+mobile/app/.flutter-plugins
+mobile/app/.flutter-plugins-dependencies
+mobile/app/ios/Pods/
+mobile/app/android/.gradle/
+
+# --- Editors / OS ---
+.vscode/
+.idea/
+.DS_Store
+
+CLAUDE.md
+image.png
+documentacion.md
+image copy.png
+clases.md
+diagramas_estado.md
+diagramas_navegacion.md
+openspec
+.atl
+.codegraph
+planing.md
+odd/
+diagramSprint2.md
+plantilla_de_caso_de_uso.md
+modeloC4.md

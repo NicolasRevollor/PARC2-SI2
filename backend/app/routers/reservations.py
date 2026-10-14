@@ -1,0 +1,331 @@
+from datetime import date, datetime, time
+
+from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.database import get_db
+from app.models import (
+    Bitacora,
+    Cliente,
+    DetalleVenta,
+    Historial,
+    Inventario,
+    Movimiento,
+    Producto,
+    Reserva,
+    Sucursal,
+    Venta,
+)
+from app.schemas.fase2 import (
+    ReservaConfirmarIn,
+    ReservaIn,
+    ReservaOut,
+    VentaOut,
+)
+from app.security import get_current_payload, require_permiso
+from app.services.metodo_pago_guard import exigir_metodo_pago_consumible
+
+router = APIRouter(prefix="/api/reservations", tags=["reservations"])
+
+
+def _parse_hora(valor) -> time:
+    if isinstance(valor, time):
+        return valor
+    if isinstance(valor, str):
+        return time.fromisoformat(valor)
+    raise HTTPException(status_code=400, detail="horario invalido")
+
+
+async def _serialize_reserva(r: Reserva, session: AsyncSession) -> ReservaOut:
+    p = await session.get(Producto, r.idProducto)
+    s = await session.get(Sucursal, r.codigoSucursal)
+    return ReservaOut(
+        codigoReserva=r.codigoReserva,
+        fecha=r.fecha,
+        horario=r.horario.isoformat(),
+        estado=r.estado,
+        idCliente=r.idCliente,
+        codigoSucursal=r.codigoSucursal,
+        idProducto=r.idProducto,
+        producto_nombre=p.nombre if p else None,
+        sucursal_nombre=s.nombre if s else None,
+        idMetPago=r.idMetPago,
+        montoDeposito=float(r.montoDeposito) if r.montoDeposito is not None else None,
+    )
+
+
+async def _registrar_bitacora(session: AsyncSession, accion: str, idUser: int, ip: str):
+    now = datetime.now()
+    b = Bitacora(accion=accion, hora=now.time(), fecha=now.date(), ip=ip, idUser=idUser)
+    session.add(b)
+
+
+async def _cliente_del_caller(session: AsyncSession, auth: dict) -> Cliente | None:
+    """Resuelve el `Cliente` propio del usuario autenticado (mismo patron que list_reservations)."""
+    return (
+        await session.execute(select(Cliente).where(Cliente.idUser == int(auth["sub"])))
+    ).scalar_one_or_none()
+
+
+@router.get("", response_model=list[ReservaOut])
+async def list_reservations(
+    idCliente: int | None = None,
+    estado: str | None = None,
+    session: AsyncSession = Depends(get_db),
+    payload: dict = Depends(get_current_payload),
+):
+    permisos = payload.get("permisos", [])
+    stmt = select(Reserva).order_by(Reserva.fecha.desc())
+    if estado is not None:
+        stmt = stmt.where(Reserva.estado == estado)
+    if "reserva.gestionar" in permisos:
+        if idCliente is not None:
+            stmt = stmt.where(Reserva.idCliente == idCliente)
+    else:
+        user_id = int(payload["sub"])
+        cliente = (
+            await session.execute(select(Cliente).where(Cliente.idUser == user_id))
+        ).scalar_one_or_none()
+        if cliente is None:
+            return []
+        stmt = stmt.where(Reserva.idCliente == cliente.idCliente)
+    reservas = (await session.execute(stmt)).scalars().all()
+    return [await _serialize_reserva(r, session) for r in reservas]
+
+
+@router.post("", response_model=ReservaOut, status_code=201)
+async def create_reservation(
+    payload: ReservaIn,
+    session: AsyncSession = Depends(get_db),
+    auth: dict = Depends(require_permiso("reserva.crear")),
+):
+    if "reserva.gestionar" not in auth.get("permisos", []):
+        cliente = await _cliente_del_caller(session, auth)
+        if cliente is None:
+            raise HTTPException(status_code=403, detail="La cuenta no tiene un cliente asociado")
+        if payload.idCliente is not None and payload.idCliente != cliente.idCliente:
+            raise HTTPException(status_code=403, detail="No puede reservar en nombre de otro cliente")
+        id_cliente = cliente.idCliente
+    else:
+        id_cliente = payload.idCliente
+
+    if id_cliente is None or not await session.get(Cliente, id_cliente):
+        raise HTTPException(status_code=400, detail="Cliente inexistente")
+    if not await session.get(Sucursal, payload.codigoSucursal):
+        raise HTTPException(status_code=400, detail="Sucursal inexistente")
+    if not await session.get(Producto, payload.idProducto):
+        raise HTTPException(status_code=400, detail="Producto inexistente")
+
+    # Anticipo obligatorio (Mandatory Server-Computed Deposit / Card-Only
+    # Deposit With Ownership Guard): un caller sin reserva.gestionar SOLO
+    # puede pagar con un MetodoPago propio y de origen tarjeta_stripe; un
+    # caller staff puede usar cualquier MetodoPago (paridad POS). Se corre
+    # ANTES de mutar Inventario para no reservar stock si el deposito falla.
+    exigir_tarjeta = "reserva.gestionar" not in auth.get("permisos", [])
+    metodo = await exigir_metodo_pago_consumible(
+        session,
+        payload.idMetPago,
+        int(auth["sub"]),
+        exigir_tarjeta,
+        id_producto=payload.idProducto,
+        codigo_sucursal=payload.codigoSucursal,
+    )
+
+
+    inv = (
+        await session.execute(
+            select(Inventario)
+            .where(
+                Inventario.codigoSucursal == payload.codigoSucursal,
+                Inventario.idProducto == payload.idProducto,
+            )
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
+    if inv is None or inv.cantidad_actual - inv.cantidad_reservada <= 0:
+        raise HTTPException(status_code=400, detail="No hay stock disponible para reservar")
+
+    inv.cantidad_reservada += 1
+
+    reserva = Reserva(
+        fecha=payload.fecha,
+        horario=_parse_hora(payload.horario),
+        estado="Pendiente",
+        idCliente=id_cliente,
+        codigoSucursal=payload.codigoSucursal,
+        idProducto=payload.idProducto,
+        idMetPago=metodo.idMetPago,
+        montoDeposito=metodo.monto,
+    )
+    session.add(reserva)
+    await session.commit()
+    await session.refresh(reserva)
+    return await _serialize_reserva(reserva, session)
+
+
+@router.put("/{codigoReserva}/prepare", response_model=ReservaOut)
+async def prepare_reservation(
+    codigoReserva: int,
+    request: Request,
+    session: AsyncSession = Depends(get_db),
+    auth: dict = Depends(require_permiso("reserva.gestionar")),
+):
+    reserva = await session.get(Reserva, codigoReserva)
+    if not reserva:
+        raise HTTPException(status_code=404, detail="Reserva no encontrada")
+    if reserva.estado != "Pendiente":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Reserva en estado {reserva.estado}, solo se puede preparar una reserva Pendiente",
+        )
+
+    reserva.estado = "Preparada en Sucursal"
+    await _registrar_bitacora(
+        session,
+        f"Reserva {codigoReserva} preparada en sucursal",
+        int(auth["sub"]),
+        request.client.host if request.client else "0.0.0.0",
+    )
+    await session.commit()
+    await session.refresh(reserva)
+    return await _serialize_reserva(reserva, session)
+
+
+@router.put("/{codigoReserva}/confirm", response_model=VentaOut)
+async def confirm_reservation(
+    codigoReserva: int,
+    payload: ReservaConfirmarIn,
+    request: Request,
+    session: AsyncSession = Depends(get_db),
+    auth: dict = Depends(require_permiso("reserva.gestionar")),
+):
+    reserva = await session.get(Reserva, codigoReserva)
+    if not reserva:
+        raise HTTPException(status_code=404, detail="Reserva no encontrada")
+    if reserva.estado != "Preparada en Sucursal":
+        if reserva.estado == "Pendiente":
+            raise HTTPException(
+                status_code=400,
+                detail="La reserva aún no fue preparada en sucursal; primero debe prepararse",
+            )
+        raise HTTPException(status_code=400, detail=f"Reserva en estado {reserva.estado}, no se puede confirmar")
+    # Guard centralizado (Cross-Table Single-Use / Confirm Requires Preparada
+    # en Sucursal): antes solo se validaba que el MetodoPago existiera; ahora
+    # tambien se exige ownership (tolerante a NULL para filas Efectivo/QR) y
+    # que no este ya consumido por otra Venta/Reserva. exigir_tarjeta=False:
+    # el saldo puede pagarse con cualquier origen, paridad POS.
+    await exigir_metodo_pago_consumible(session, payload.idMetPago, int(auth["sub"]), False)
+
+    inv = (
+        await session.execute(
+            select(Inventario)
+            .where(
+                Inventario.codigoSucursal == reserva.codigoSucursal,
+                Inventario.idProducto == reserva.idProducto,
+            )
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
+    if not inv:
+        raise HTTPException(status_code=400, detail="Inventario no encontrado para la reserva")
+    if inv.cantidad_reservada <= 0:
+        raise HTTPException(status_code=400, detail="La reserva no tiene stock reservado")
+
+    producto = await session.get(Producto, reserva.idProducto)
+
+    inv.cantidad_reservada -= 1
+    inv.cantidad_actual -= 1
+
+    # Confirm Requires Preparada en Sucursal (delta staff-reservation-management):
+    # el cliente nunca paga mas del 100% entre el anticipo y el saldo. Una
+    # reserva pre-migracion 009 (montoDeposito NULL) mantiene el total previo
+    # sin deduccion. Clampeado en 0 para nunca generar un total negativo.
+    if reserva.montoDeposito is not None:
+        total_confirmacion = max(float(producto.venta) - float(reserva.montoDeposito), 0.0)
+    else:
+        total_confirmacion = float(producto.venta)
+
+    venta = Venta(total=total_confirmacion, idCliente=reserva.idCliente, idMetPago=payload.idMetPago)
+    session.add(venta)
+    await session.flush()
+
+    detalle = DetalleVenta(
+        cantidad=1,
+        precio_unitario=float(producto.venta),
+        idProducto=reserva.idProducto,
+        idVenta=venta.idVenta,
+        codigoReserva=codigoReserva,
+    )
+    session.add(detalle)
+
+    session.add(
+        Movimiento(
+            tipo="venta_reserva",
+            cantidad=-1,
+            motivo=f"Confirmacion reserva {codigoReserva}",
+            idInv=inv.idInv,
+        )
+    )
+    session.add(
+        Historial(
+            idProducto=reserva.idProducto,
+            idCliente=reserva.idCliente,
+            idVenta=venta.idVenta,
+        )
+    )
+
+    reserva.estado = "Confirmada"
+    await _registrar_bitacora(session, f"Reserva {codigoReserva} confirmada", int(auth["sub"]), request.client.host if request.client else "0.0.0.0")
+    await session.commit()
+    await session.refresh(venta)
+    return VentaOut(
+        idVenta=venta.idVenta,
+        fecha=venta.fecha,
+        total=float(venta.total),
+        idCliente=venta.idCliente,
+        idMetPago=venta.idMetPago,
+        detalles=[],
+    )
+
+
+@router.put("/{codigoReserva}/cancel", response_model=ReservaOut)
+async def cancel_reservation(
+    codigoReserva: int,
+    session: AsyncSession = Depends(get_db),
+    auth: dict = Depends(get_current_payload),
+):
+    reserva = await session.get(Reserva, codigoReserva)
+    if not reserva:
+        raise HTTPException(status_code=404, detail="Reserva no encontrada")
+    es_staff = "reserva.gestionar" in auth.get("permisos", [])
+    if not es_staff:
+        cliente = await _cliente_del_caller(session, auth)
+        if cliente is None or reserva.idCliente != cliente.idCliente:
+            raise HTTPException(status_code=403, detail="No tiene permiso para cancelar esta reserva")
+    estados_ok = ("Pendiente", "Preparada en Sucursal") if es_staff else ("Pendiente",)
+    if reserva.estado not in estados_ok:
+        if es_staff:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Reserva en estado {reserva.estado}, solo se pueden cancelar reservas Pendiente o Preparada en Sucursal",
+            )
+        raise HTTPException(status_code=400, detail="Solo se pueden cancelar reservas pendientes")
+
+    inv = (
+        await session.execute(
+            select(Inventario)
+            .where(
+                Inventario.codigoSucursal == reserva.codigoSucursal,
+                Inventario.idProducto == reserva.idProducto,
+            )
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
+    if inv and inv.cantidad_reservada > 0:
+        inv.cantidad_reservada -= 1
+
+    reserva.estado = "Cancelada"
+    await session.commit()
+    await session.refresh(reserva)
+    return await _serialize_reserva(reserva, session)

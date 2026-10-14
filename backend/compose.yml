@@ -1,0 +1,17 @@
+services:
+  postgres-dev:
+    image: postgres:17-alpine
+    container_name: ropaDocker
+    restart: always
+    environment:
+      POSTGRES_DB: ropaDB
+      POSTGRES_USER: yimysito
+      POSTGRES_PASSWORD: tarqui231
+    ports:
+      - "5434:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/base.sql:/docker-entrypoint-initdb.d/init.sql
+
+volumes:
+  postgres_data:
