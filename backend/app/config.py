@@ -15,6 +15,14 @@ class Settings(BaseSettings):
         "http://127.0.0.1:3000",
         "https://parc-2-si-2.vercel.app",
     ]
+    # Vercel genera una URL distinta por cada despliegue de prueba
+    # ("parc-2-si-2-<hash>-<equipo>.vercel.app"), imposible de listar arriba.
+    # La regex acepta cualquier preview o rama, pero SOLO del equipo propio:
+    # el sufijo del equipo impide que pase otro proyecto de Vercel con un
+    # nombre parecido.
+    CORS_ORIGIN_REGEX: str | None = (
+        r"^https://parc-2-si-2-[a-z0-9-]+-nicolasrevolloroman-6484s-projects\.vercel\.app$"
+    )
 
     FRONTEND_URL: str = "https://parc-2-si-2.vercel.app"
 

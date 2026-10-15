@@ -7,7 +7,10 @@
     <meta name="description" content="Management Excellence for Essential Wear. Global boutique inventory, archive catalog, and logistics platform." />
 
     <!-- PWA (CU30): instalable y operable sin conexión con base local. -->
-    <link rel="manifest" href="/manifest.webmanifest" />
+    <!-- use-credentials: los previews de Vercel tienen Deployment Protection;
+         sin la cookie de Vercel el manifest redirige al SSO y el navegador
+         lo bloquea por CORS. -->
+    <link rel="manifest" href="/manifest.webmanifest" crossorigin="use-credentials" />
     <meta name="theme-color" content="#7a1c30" />
     <link rel="icon" type="image/svg+xml" href="/icon.svg" />
     <link rel="apple-touch-icon" href="/icon.svg" />
