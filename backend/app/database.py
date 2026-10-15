@@ -5,8 +5,30 @@ from app.config import get_settings
 
 settings = get_settings()
 
+
+def _url_asyncpg(url: str) -> str:
+    """Fuerza el driver asyncpg en la URL de conexion.
+
+    Supabase y Render entregan el string como "postgresql://..." (y algunos
+    paneles todavia como "postgres://..."). Con ese esquema pelado SQLAlchemy
+    elige su dialecto por defecto, psycopg2, que NO esta instalado (este
+    proyecto es 100% async: solo `asyncpg` esta en requirements.txt), y el
+    proceso muere al arrancar con "ModuleNotFoundError: No module named
+    'psycopg2'" antes de servir una sola request.
+
+    Normalizar aca evita que un copy-paste de la consola del proveedor tumbe
+    el deploy. Si la URL ya trae un driver explicito, se respeta tal cual.
+    """
+    if url.startswith("postgresql+") or url.startswith("postgres+"):
+        return url
+    for esquema in ("postgresql://", "postgres://"):
+        if url.startswith(esquema):
+            return "postgresql+asyncpg://" + url[len(esquema):]
+    return url
+
+
 engine = create_async_engine(
-    settings.DATABASE_URL,
+    _url_asyncpg(settings.DATABASE_URL),
     echo=False,
     future=True,
     # El pooler de Supabase (Supavisor) en modo "transaction" no soporta

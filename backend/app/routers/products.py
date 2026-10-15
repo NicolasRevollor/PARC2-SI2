@@ -5,7 +5,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.models import Colecciones, Producto, Proveedor, Temporada
+from app.models import Colecciones, Producto, Proveedor, Temporada, TENANT_POR_DEFECTO
 from app.schemas.products import (
     ImagenUploadOut,
     PaginatedProductos,
@@ -14,6 +14,7 @@ from app.schemas.products import (
     ProductoUpdate,
 )
 from app.security import require_permiso
+from app.services.tenancy import ContextoTenant, contexto_actual, exigir_cupo, tenant_actual
 from app.services.storage_supabase import (
     SupabaseNoConfigurado,
     SupabaseStorageError,
@@ -58,9 +59,18 @@ async def list_products(
     idColeccion: int | None = None,
     idProveedor: int | None = None,
     query: str | None = Query(None, alias="q"),
+    idTenant: int | None = Query(
+        None,
+        description=(
+            "Organizacion cuyo catalogo se consulta. El endpoint es publico (la "
+            "vitrina del cliente no manda token), asi que el tenant no se puede "
+            "derivar del JWT: sin este parametro se devuelve el catalogo del "
+            "tenant por defecto."
+        ),
+    ),
     session: AsyncSession = Depends(get_db),
 ):
-    filters = []
+    filters = [Producto.idTenant == (idTenant or TENANT_POR_DEFECTO)]
     if tipo:
         filters.append(Producto.tipo.ilike(f"%{tipo}%"))
     if talla:
@@ -141,13 +151,15 @@ async def create_product(
     payload: ProductoIn,
     session: AsyncSession = Depends(get_db),
     _=Depends(require_permiso("producto.crear")),
+    ctx: ContextoTenant = Depends(contexto_actual),
 ):
+    await exigir_cupo(session, ctx, "productos")
     if not await session.get(Proveedor, payload.idProveedor):
         raise HTTPException(status_code=400, detail="Proveedor inexistente")
     if not await session.get(Colecciones, payload.idColeccion):
         raise HTTPException(status_code=400, detail="Coleccion inexistente")
 
-    producto = Producto(**payload.model_dump())
+    producto = Producto(**payload.model_dump(), idTenant=ctx.tenant.idTenant)
     session.add(producto)
     await session.commit()
     await session.refresh(producto)
@@ -160,9 +172,10 @@ async def update_product(
     payload: ProductoUpdate,
     session: AsyncSession = Depends(get_db),
     _=Depends(require_permiso("producto.editar")),
+    id_tenant: int = Depends(tenant_actual),
 ):
     producto = await session.get(Producto, idProducto)
-    if not producto:
+    if not producto or producto.idTenant != id_tenant:
         raise HTTPException(status_code=404, detail="Producto no encontrado")
 
     data = payload.model_dump(exclude_unset=True)
@@ -184,9 +197,10 @@ async def delete_product(
     idProducto: int,
     session: AsyncSession = Depends(get_db),
     _=Depends(require_permiso("producto.eliminar")),
+    id_tenant: int = Depends(tenant_actual),
 ):
     producto = await session.get(Producto, idProducto)
-    if not producto:
+    if not producto or producto.idTenant != id_tenant:
         raise HTTPException(status_code=404, detail="Producto no encontrado")
     await session.delete(producto)
     await session.commit()

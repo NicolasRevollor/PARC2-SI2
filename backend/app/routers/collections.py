@@ -3,9 +3,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.models import Colecciones, Temporada
+from app.models import Colecciones, Temporada, TENANT_POR_DEFECTO
 from app.schemas.fase2 import ColeccionIn, ColeccionOut, ColeccionUpdate
 from app.security import require_permiso
+from app.services.tenancy import ContextoTenant, contexto_actual, tenant_actual
 
 router = APIRouter(prefix="/api/collections", tags=["collections"])
 
@@ -21,8 +22,16 @@ async def _serialize(c: Colecciones, session: AsyncSession) -> ColeccionOut:
 
 
 @router.get("", response_model=list[ColeccionOut])
-async def list_collections(session: AsyncSession = Depends(get_db)):
-    rows = (await session.execute(select(Colecciones).order_by(Colecciones.nombre_coleccion))).scalars().all()
+async def list_collections(idTenant: int | None = None, session: AsyncSession = Depends(get_db)):
+    # Endpoint publico (la vitrina lo consume sin token): el tenant llega
+    # por query o se asume el por defecto.
+    rows = (
+        await session.execute(
+            select(Colecciones)
+            .where(Colecciones.idTenant == (idTenant or TENANT_POR_DEFECTO))
+            .order_by(Colecciones.nombre_coleccion)
+        )
+    ).scalars().all()
     return [await _serialize(c, session) for c in rows]
 
 
@@ -39,10 +48,15 @@ async def create_collection(
     payload: ColeccionIn,
     session: AsyncSession = Depends(get_db),
     _=Depends(require_permiso("producto.crear")),
+    ctx: ContextoTenant = Depends(contexto_actual),
 ):
     if not await session.get(Temporada, payload.idTemporada):
         raise HTTPException(status_code=400, detail="Temporada inexistente")
-    c = Colecciones(nombre_coleccion=payload.nombre_coleccion, idTemporada=payload.idTemporada)
+    c = Colecciones(
+        nombre_coleccion=payload.nombre_coleccion,
+        idTemporada=payload.idTemporada,
+        idTenant=ctx.tenant.idTenant,
+    )
     session.add(c)
     await session.commit()
     await session.refresh(c)
@@ -55,9 +69,10 @@ async def update_collection(
     payload: ColeccionUpdate,
     session: AsyncSession = Depends(get_db),
     _=Depends(require_permiso("producto.editar")),
+    id_tenant: int = Depends(tenant_actual),
 ):
     c = await session.get(Colecciones, idColeccion)
-    if not c:
+    if not c or c.idTenant != id_tenant:
         raise HTTPException(status_code=404, detail="Coleccion no encontrada")
     data = payload.model_dump(exclude_unset=True)
     if "idTemporada" in data and not await session.get(Temporada, data["idTemporada"]):
@@ -74,9 +89,10 @@ async def delete_collection(
     idColeccion: int,
     session: AsyncSession = Depends(get_db),
     _=Depends(require_permiso("producto.eliminar")),
+    id_tenant: int = Depends(tenant_actual),
 ):
     c = await session.get(Colecciones, idColeccion)
-    if not c:
+    if not c or c.idTenant != id_tenant:
         raise HTTPException(status_code=404, detail="Coleccion no encontrada")
     await session.delete(c)
     await session.commit()

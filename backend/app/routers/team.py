@@ -7,6 +7,7 @@ from app.models import Bitacora, Rol, Usuario
 from app.schemas.team import ActivateAccountResponse, AuditLogOut, ChangeRoleIn, StaffUserIn, TeamMemberOut
 from app.security import hash_password, require_permiso
 from app.services.bitacora import registrar_bitacora
+from app.services.tenancy import ContextoTenant, contexto_actual, exigir_cupo, tenant_actual
 from app.services.usuarios import build_user_claims
 
 router = APIRouter(prefix="/api/team", tags=["team"])
@@ -16,7 +17,8 @@ ROLES_STAFF = ("Administrador", "Encargado de Sucursal", "Cajero")
 
 @router.get("", response_model=list[TeamMemberOut])
 async def list_team(session: AsyncSession = Depends(get_db),
-                    _=Depends(require_permiso("equipo.ver"))):
+                    _=Depends(require_permiso("equipo.ver")),
+                    id_tenant: int = Depends(tenant_actual)):
     roles_staff = (
         await session.execute(
             select(Rol).where(Rol.nombreRol.in_(ROLES_STAFF))
@@ -28,7 +30,10 @@ async def list_team(session: AsyncSession = Depends(get_db),
 
     usuarios = (
         await session.execute(
-            select(Usuario).where(Usuario.codigoRol.in_(codigos_staff))
+            select(Usuario).where(
+                Usuario.codigoRol.in_(codigos_staff),
+                Usuario.idTenant == id_tenant,
+            )
         )
     ).scalars().all()
 
@@ -114,7 +119,9 @@ async def create_staff_user(
     request: Request,
     session: AsyncSession = Depends(get_db),
     _=Depends(require_permiso("usuario.admin")),
+    ctx: ContextoTenant = Depends(contexto_actual),
 ):
+    await exigir_cupo(session, ctx, "usuarios")
     existing = (
         await session.execute(select(Usuario).where(Usuario.correo == payload.email))
     ).scalar_one_or_none()
@@ -134,6 +141,7 @@ async def create_staff_user(
         correo=payload.email,
         contraseña=hash_password(payload.password),
         codigoRol=rol.codigoRol,
+        idTenant=ctx.tenant.idTenant,
     )
     session.add(nuevo)
     await session.flush()
@@ -160,9 +168,10 @@ async def change_staff_role(
     request: Request,
     session: AsyncSession = Depends(get_db),
     current: dict = Depends(require_permiso("usuario.admin")),
+    id_tenant: int = Depends(tenant_actual),
 ):
     usuario = await session.get(Usuario, idUser)
-    if not usuario:
+    if not usuario or usuario.idTenant != id_tenant:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
 
     if int(current["sub"]) == idUser:

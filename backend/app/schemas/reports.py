@@ -47,3 +47,52 @@ class InventarioReporteFila(BaseModel):
 class InventarioReporteOut(BaseModel):
     filas: list[InventarioReporteFila]
     filtros: ReportFiltrosOut
+
+
+# --- CU29: consolidado multi-sucursal + analisis con IA ------------------
+
+class SucursalMetricaOut(BaseModel):
+    codigoSucursal: int
+    sucursal: str
+    unidades_vendidas: int
+    monto_vendido: Decimal
+    stock_total: int
+    stock_reservado: int
+    skus: int
+    skus_criticos: int
+
+
+class ConsolidadoSucursalesOut(BaseModel):
+    sucursales: list[SucursalMetricaOut]
+    total_unidades: int
+    total_monto: Decimal
+    filtros: ReportFiltrosOut
+
+
+class HallazgoSucursalOut(BaseModel):
+    codigoSucursal: int
+    sucursal: str
+    diagnostico: str
+    severidad: str
+
+
+class TransferenciaSugeridaOut(BaseModel):
+    idProducto: int
+    producto: str
+    desdeSucursal: str
+    haciaSucursal: str
+    unidades: int
+    motivo: str
+
+
+class AnalisisSucursalesOut(BaseModel):
+    """Analisis redactado por IA SOBRE las metricas de `sucursales`, que se
+    devuelven junto al texto para que el usuario pueda contrastarlo."""
+
+    resumen: str
+    hallazgos: list[HallazgoSucursalOut]
+    transferencias: list[TransferenciaSugeridaOut]
+    alertas: list[str]
+    sucursales: list[SucursalMetricaOut]
+    generado_por: str
+    filtros: ReportFiltrosOut

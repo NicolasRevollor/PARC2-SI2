@@ -22,6 +22,46 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 
 
+# Migracion 014 — multitenencia por columna discriminante. Las entidades raiz
+# llevan "idTenant" con DEFAULT 1 (el tenant de la operacion ya existente), de
+# modo que todo INSERT previo que no lo setee sigue siendo valido.
+TENANT_POR_DEFECTO = 1
+
+
+class Plan(Base):
+    """Catalogo de planes de suscripcion (Free Lite / Basico / Intermedio /
+    Avanzado). Un limite en -1 significa ILIMITADO (ver services/tenancy.py)."""
+
+    __tablename__ = "plan"
+
+    idPlan: Mapped[int] = mapped_column(Integer, primary_key=True)
+    codigo: Mapped[str] = mapped_column(String(30), unique=True, nullable=False)
+    nombre: Mapped[str] = mapped_column(String(60), nullable=False)
+    descripcion: Mapped[str | None] = mapped_column(String(255))
+    precioMensual: Mapped[float] = mapped_column(Numeric(10, 2), default=0.00, nullable=False)
+    maxSucursales: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    maxUsuarios: Mapped[int] = mapped_column(Integer, default=2, nullable=False)
+    maxProductos: Mapped[int] = mapped_column(Integer, default=50, nullable=False)
+    permiteIA: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    permiteOffline: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    permiteMultiSucursal: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    soloLocal: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    orden: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+
+class Tenant(Base):
+    __tablename__ = "tenant"
+
+    idTenant: Mapped[int] = mapped_column(Integer, primary_key=True)
+    nombre: Mapped[str] = mapped_column(String(120), nullable=False)
+    slug: Mapped[str] = mapped_column(String(60), unique=True, nullable=False)
+    estado: Mapped[str] = mapped_column(String(20), default="Activo", nullable=False)
+    fechaAlta: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=datetime.utcnow, nullable=False)
+    idPlan: Mapped[int] = mapped_column(ForeignKey("plan.idPlan", onupdate="CASCADE"), nullable=False)
+
+    plan: Mapped["Plan"] = relationship()
+
+
 class Ciudad(Base):
     __tablename__ = "Ciudad"
 
@@ -73,6 +113,9 @@ class Usuario(Base):
     bloqueadoHasta: Mapped[datetime | None] = mapped_column(TIMESTAMP)
     vecesBloqueado: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     requiereActivacion: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    idTenant: Mapped[int] = mapped_column(
+        ForeignKey("tenant.idTenant", onupdate="CASCADE"), default=TENANT_POR_DEFECTO, nullable=False
+    )
 
     rol: Mapped["Rol"] = relationship()
 
@@ -85,6 +128,9 @@ class Sucursal(Base):
     nombre: Mapped[str] = mapped_column(String(100), nullable=False)
     direccion: Mapped[str] = mapped_column(String(255), nullable=False)
     idCiudad: Mapped[int] = mapped_column(ForeignKey("Ciudad.idCiudad", onupdate="CASCADE"), nullable=False)
+    idTenant: Mapped[int] = mapped_column(
+        ForeignKey("tenant.idTenant", onupdate="CASCADE"), default=TENANT_POR_DEFECTO, nullable=False
+    )
 
     ciudad: Mapped["Ciudad"] = relationship(back_populates="sucursales")
     inventarios: Mapped[list["Inventario"]] = relationship(back_populates="sucursal")
@@ -101,6 +147,9 @@ class Temporada(Base):
     nombreTemporada: Mapped[str] = mapped_column(String(100), nullable=False)
     fecha_ini: Mapped[date] = mapped_column(Date, nullable=False)
     fecha_fin: Mapped[date] = mapped_column(Date, nullable=False)
+    idTenant: Mapped[int] = mapped_column(
+        ForeignKey("tenant.idTenant", onupdate="CASCADE"), default=TENANT_POR_DEFECTO, nullable=False
+    )
 
 
 class Colecciones(Base):
@@ -110,6 +159,9 @@ class Colecciones(Base):
     idColeccion: Mapped[int] = mapped_column(Integer, primary_key=True)
     nombre_coleccion: Mapped[str] = mapped_column(String(100), nullable=False)
     idTemporada: Mapped[int] = mapped_column(ForeignKey("Temporada.idTemporada", ondelete="RESTRICT", onupdate="CASCADE"), nullable=False)
+    idTenant: Mapped[int] = mapped_column(
+        ForeignKey("tenant.idTenant", onupdate="CASCADE"), default=TENANT_POR_DEFECTO, nullable=False
+    )
 
     temporada: Mapped["Temporada"] = relationship()
 
@@ -122,6 +174,9 @@ class Proveedor(Base):
     nombre: Mapped[str] = mapped_column(String(100), nullable=False)
     telefono: Mapped[str | None] = mapped_column(String(20))
     correo: Mapped[str | None] = mapped_column(String(100))
+    idTenant: Mapped[int] = mapped_column(
+        ForeignKey("tenant.idTenant", onupdate="CASCADE"), default=TENANT_POR_DEFECTO, nullable=False
+    )
 
     productos: Mapped[list["Producto"]] = relationship(back_populates="proveedor")
 
@@ -148,6 +203,9 @@ class Producto(Base):
 
     imagen_url: Mapped[str | None] = mapped_column(Text)
     imagenes_secundarias: Mapped[list[str] | None] = mapped_column(ARRAY(Text), default=lambda: [])
+    idTenant: Mapped[int] = mapped_column(
+        ForeignKey("tenant.idTenant", onupdate="CASCADE"), default=TENANT_POR_DEFECTO, nullable=False
+    )
 
     proveedor: Mapped["Proveedor"] = relationship(back_populates="productos")
     coleccion: Mapped["Colecciones"] = relationship()
@@ -309,3 +367,44 @@ class Historial(Base):
     idProducto: Mapped[int] = mapped_column(ForeignKey("producto.idProducto", onupdate="CASCADE"), nullable=False)
     idCliente: Mapped[int] = mapped_column(ForeignKey("Cliente.idCliente", onupdate="CASCADE"), nullable=False)
     idVenta: Mapped[int] = mapped_column(ForeignKey("Venta.idVenta", ondelete="CASCADE", onupdate="CASCADE"), nullable=False)
+
+
+class Devolucion(Base):
+    """Devolucion o cambio de talla/medida dentro de las 24 h posteriores a la
+    venta (migracion 015). "fechaVenta" es un snapshot inmutable de
+    Venta.fecha tomado al registrar el cambio: la ventana de 24 h queda
+    auditada en la propia fila y no depende de releer la venta."""
+
+    __tablename__ = "devolucion"
+    __table_args__ = (
+        CheckConstraint(
+            "tipo IN ('cambio_talla', 'cambio_medida', 'devolucion')", name="chk_devolucion_tipo"
+        ),
+        CheckConstraint("cantidad > 0", name="chk_devolucion_cantidad"),
+        Index("idx_devolucion_cliente_fecha", "idCliente", "fecha"),
+        Index("idx_devolucion_tenant_fecha", "idTenant", "fecha"),
+    )
+
+    idDevolucion: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    tipo: Mapped[str] = mapped_column(String(20), nullable=False)
+    cantidad: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    motivo: Mapped[str | None] = mapped_column(String(255))
+    estado: Mapped[str] = mapped_column(String(20), default="Completada", nullable=False)
+    fecha: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=datetime.utcnow, nullable=False)
+    fechaVenta: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+    tallaOriginal: Mapped[str | None] = mapped_column(String(20))
+    tallaNueva: Mapped[str | None] = mapped_column(String(20))
+    medidaOriginal: Mapped[str | None] = mapped_column(String(60))
+    medidaNueva: Mapped[str | None] = mapped_column(String(60))
+    montoDevuelto: Mapped[float] = mapped_column(Numeric(12, 2), default=0.00, nullable=False)
+    idVenta: Mapped[int] = mapped_column(
+        ForeignKey("Venta.idVenta", ondelete="CASCADE", onupdate="CASCADE"), nullable=False
+    )
+    idProducto: Mapped[int] = mapped_column(ForeignKey("producto.idProducto", onupdate="CASCADE"), nullable=False)
+    idProductoNuevo: Mapped[int | None] = mapped_column(ForeignKey("producto.idProducto", onupdate="CASCADE"))
+    idCliente: Mapped[int] = mapped_column(ForeignKey("Cliente.idCliente", onupdate="CASCADE"), nullable=False)
+    codigoSucursal: Mapped[int | None] = mapped_column(ForeignKey("Sucursal.codigoSucursal", onupdate="CASCADE"))
+    idUsuario: Mapped[int] = mapped_column(ForeignKey("Usuario.idUser", onupdate="CASCADE"), nullable=False)
+    idTenant: Mapped[int] = mapped_column(
+        ForeignKey("tenant.idTenant", onupdate="CASCADE"), default=TENANT_POR_DEFECTO, nullable=False
+    )

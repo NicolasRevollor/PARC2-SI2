@@ -3,7 +3,7 @@ import io
 from datetime import date, datetime, time
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
@@ -15,13 +15,20 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.models import DetalleVenta, Inventario, Producto, Sucursal, Venta
 from app.schemas.reports import (
+    AnalisisSucursalesOut,
+    ConsolidadoSucursalesOut,
+    HallazgoSucursalOut,
     InventarioReporteFila,
     InventarioReporteOut,
     ReportFiltrosOut,
+    SucursalMetricaOut,
+    TransferenciaSugeridaOut,
     VentaReporteFila,
     VentaReporteOut,
 )
 from app.security import require_permiso
+from app.services import reportes_ia
+from app.services.tenancy import require_feature, tenant_actual
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
 
@@ -361,4 +368,75 @@ async def inventory_report_pdf(
         iter([pdf_bytes]),
         media_type="application/pdf",
         headers={"Content-Disposition": 'attachment; filename="reporte_inventario.pdf"'},
+    )
+
+
+# --- CU29: consolidado multi-sucursal y analisis con IA -------------------
+
+def _a_metrica_out(m: dict) -> SucursalMetricaOut:
+    return SucursalMetricaOut(**m)
+
+
+@router.get("/branches", response_model=ConsolidadoSucursalesOut)
+async def branches_report(
+    fecha_desde: date | None = None,
+    fecha_hasta: date | None = None,
+    session: AsyncSession = Depends(get_db),
+    _=Depends(require_permiso("reporte.ver")),
+    id_tenant: int = Depends(tenant_actual),
+):
+    """Consolidado por sucursal del tenant (sin IA, disponible en todo plan).
+
+    Es tambien la base que se le entrega al modelo en `/ai-insights`: el
+    analisis nunca ve datos distintos de los que ve el usuario.
+    """
+    metricas = await reportes_ia.metricas_por_sucursal(session, id_tenant, fecha_desde, fecha_hasta)
+    return ConsolidadoSucursalesOut(
+        sucursales=[_a_metrica_out(m) for m in metricas],
+        total_unidades=sum(m["unidades_vendidas"] for m in metricas),
+        total_monto=sum((m["monto_vendido"] for m in metricas), Decimal("0")),
+        filtros=ReportFiltrosOut(fecha_desde=fecha_desde, fecha_hasta=fecha_hasta),
+    )
+
+
+@router.get("/ai-insights", response_model=AnalisisSucursalesOut)
+async def branches_ai_insights(
+    fecha_desde: date | None = None,
+    fecha_hasta: date | None = None,
+    session: AsyncSession = Depends(get_db),
+    _=Depends(require_permiso("reporte.ver")),
+    __=Depends(require_feature("permiteIA")),
+    id_tenant: int = Depends(tenant_actual),
+):
+    """Lectura asistida por IA del consolidado multi-sucursal.
+
+    Doble puerta: el PERMISO (`reporte.ver`) dice que el rol puede ver
+    reportes, y el PLAN (`permiteIA`) dice que la suscripcion incluye el
+    analisis automatico — un Administrador en plan Basico recibe 402.
+    """
+    metricas = await reportes_ia.metricas_por_sucursal(session, id_tenant, fecha_desde, fecha_hasta)
+    if not metricas:
+        raise HTTPException(status_code=400, detail="La organizacion no tiene sucursales cargadas")
+
+    detalle = await reportes_ia.detalle_producto_sucursal(session, id_tenant)
+    periodo = _describe_filtros({"fecha_desde": fecha_desde, "fecha_hasta": fecha_hasta})
+
+    try:
+        analisis = await reportes_ia.analizar_sucursales(metricas, detalle, periodo)
+    except reportes_ia.GeminiNoConfigurado:
+        raise HTTPException(
+            status_code=503,
+            detail="El analisis con IA no esta configurado en este servidor (falta GEMINI_API_KEY)",
+        )
+    except reportes_ia.AnalisisNoDisponible:
+        raise HTTPException(status_code=503, detail="El modelo no devolvio un analisis utilizable")
+
+    return AnalisisSucursalesOut(
+        resumen=analisis.resumen,
+        hallazgos=[HallazgoSucursalOut(**h.model_dump()) for h in analisis.hallazgos],
+        transferencias=[TransferenciaSugeridaOut(**t.model_dump()) for t in analisis.transferencias],
+        alertas=analisis.alertas,
+        sucursales=[_a_metrica_out(m) for m in metricas],
+        generado_por=reportes_ia.MODEL,
+        filtros=ReportFiltrosOut(fecha_desde=fecha_desde, fecha_hasta=fecha_hasta),
     )
