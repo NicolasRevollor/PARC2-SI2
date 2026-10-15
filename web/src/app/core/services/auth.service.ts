@@ -3,6 +3,9 @@ import { HttpClient } from '@angular/common/http';
 import { firstValueFrom, timeout } from 'rxjs';
 import { AuthUser, LoginResponse, RegisterRequest } from '../models';
 import { NotificationService } from './notification.service';
+import { OfflineSyncService } from './offline-sync.service';
+import { PwaService } from './pwa.service';
+import { TenantService } from './tenant.service';
 import { environment } from '../../../environments/environment';
 
 const API_URL = environment.apiUrl;
@@ -40,8 +43,21 @@ export class AuthService {
   constructor(
     private http: HttpClient,
     private notificationService: NotificationService,
+    private tenantService: TenantService,
+    private offlineSync: OfflineSyncService,
+    private pwaService: PwaService,
   ) {
     this.loadTokenFromStorage();
+  }
+
+  /**
+   * Arranque de sesión: contexto del tenant (plan vigente) + modo offline.
+   * Nada de esto puede tumbar el login, así que los fallos se tragan dentro
+   * de cada servicio y acá solo se dispara.
+   */
+  private async iniciarSesionLocal(): Promise<void> {
+    await this.tenantService.cargarContexto();
+    void this.offlineSync.iniciar();
   }
 
   private loadTokenFromStorage() {
@@ -72,6 +88,7 @@ export class AuthService {
       localStorage.setItem('refresh_token', res.refresh_token);
       this.currentUserSignal.set(this.mapBackendUser(res.user));
       this.isAuthenticatedSignal.set(true);
+      void this.iniciarSesionLocal();
       this.notificationService.success('Acceso concedido', `Bienvenido, ${res.user.nombre}`);
       return true;
     }).catch((err) => {
@@ -96,6 +113,7 @@ export class AuthService {
       localStorage.setItem('refresh_token', res.refresh_token);
       this.currentUserSignal.set(this.mapBackendUser(res.user));
       this.isAuthenticatedSignal.set(true);
+      void this.iniciarSesionLocal();
       this.notificationService.success('Registro exitoso', `Bienvenido, ${res.user.nombre}`);
       return { ok: true } as RegisterResult;
     }).catch((err) => {
@@ -165,6 +183,7 @@ export class AuthService {
         permisos: u.permisos,
       });
       this.isAuthenticatedSignal.set(true);
+      void this.iniciarSesionLocal();
     }).catch(() => {
       this.notificationService.error('Sesión no válida', 'No pudimos validar tu sesión. Volvé a iniciar sesión.');
       this.logout();
@@ -240,6 +259,13 @@ export class AuthService {
     this.accessTokenSignal.set(null);
     localStorage.removeItem('access_token');
     localStorage.removeItem('refresh_token');
+    // El snapshot local, la cola pendiente y las respuestas de API cacheadas
+    // son del usuario que se va: en un dispositivo compartido no pueden
+    // quedar disponibles para el siguiente.
+    this.tenantService.limpiar();
+    this.offlineSync.detener();
+    void this.offlineSync.limpiar();
+    this.pwaService.limpiarCacheApi();
     this.notificationService.info('Sesión cerrada', 'Tu sesión administrativa ha terminado de forma segura.');
   }
 

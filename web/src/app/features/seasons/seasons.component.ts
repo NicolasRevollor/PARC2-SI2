@@ -69,7 +69,7 @@ type SeasonsTab = 'temporadas' | 'colecciones';
       </div>
 
       <!-- Tabla de temporadas -->
-      <div *ngIf="activeTab() === 'temporadas'" class="bg-white rounded-xl border border-gray-200 shadow-xs overflow-hidden">
+      <div *ngIf="activeTab() === 'temporadas'" class="bg-[#18191d] rounded-xl border border-gray-200 shadow-xs overflow-hidden">
         <div class="overflow-x-auto">
           <table class="w-full text-left border-collapse">
             <thead>
@@ -117,7 +117,7 @@ type SeasonsTab = 'temporadas' | 'colecciones';
       </div>
 
       <!-- Tabla de colecciones -->
-      <div *ngIf="activeTab() === 'colecciones'" class="bg-white rounded-xl border border-gray-200 shadow-xs overflow-hidden">
+      <div *ngIf="activeTab() === 'colecciones'" class="bg-[#18191d] rounded-xl border border-gray-200 shadow-xs overflow-hidden">
         <div class="overflow-x-auto">
           <table class="w-full text-left border-collapse">
             <thead>
@@ -165,8 +165,8 @@ type SeasonsTab = 'temporadas' | 'colecciones';
     </div>
 
     <!-- Modal: Crear/Editar temporada -->
-    <div *ngIf="showSeasonModal()" class="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/40 backdrop-blur-xs p-4 animate-in fade-in duration-150">
-      <div class="bg-white max-w-md w-full rounded-2xl border border-gray-200 shadow-xl p-6 md:p-8 relative">
+    <div *ngIf="showSeasonModal()" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+      <div class="bg-[#18191d] max-w-md w-full rounded-2xl border border-gray-200 shadow-xl p-6 md:p-8 relative">
         <button (click)="showSeasonModal.set(false)" class="absolute top-4 right-4 text-gray-400 hover:text-gray-700 p-1">
           <span class="material-symbols-outlined text-[20px]">close</span>
         </button>
@@ -206,8 +206,8 @@ type SeasonsTab = 'temporadas' | 'colecciones';
     </div>
 
     <!-- Modal: Crear/Editar colección -->
-    <div *ngIf="showCollectionModal()" class="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/40 backdrop-blur-xs p-4 animate-in fade-in duration-150">
-      <div class="bg-white max-w-md w-full rounded-2xl border border-gray-200 shadow-xl p-6 md:p-8 relative">
+    <div *ngIf="showCollectionModal()" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+      <div class="bg-[#18191d] max-w-md w-full rounded-2xl border border-gray-200 shadow-xl p-6 md:p-8 relative">
         <button (click)="showCollectionModal.set(false)" class="absolute top-4 right-4 text-gray-400 hover:text-gray-700 p-1">
           <span class="material-symbols-outlined text-[20px]">close</span>
         </button>
@@ -224,7 +224,7 @@ type SeasonsTab = 'temporadas' | 'colecciones';
           </div>
           <div>
             <label class="text-xs font-bold text-gray-700 uppercase tracking-wide">Temporada</label>
-            <select [(ngModel)]="collectionForm.idTemporada" name="idTemporada" required class="w-full mt-1 px-3.5 py-2 border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-white">
+            <select [(ngModel)]="collectionForm.idTemporada" name="idTemporada" required class="w-full mt-1 px-3.5 py-2 border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-[#18191d]">
               <option [ngValue]="0" disabled>Seleccionar temporada</option>
               <option *ngFor="let t of seasonsService.seasons()" [ngValue]="t.idTemporada">{{ t.nombreTemporada }}</option>
             </select>
@@ -242,8 +242,8 @@ type SeasonsTab = 'temporadas' | 'colecciones';
     </div>
 
     <!-- Modal: Confirmar eliminación de temporada -->
-    <div *ngIf="deletingSeason() as item" class="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/40 backdrop-blur-xs p-4 animate-in fade-in duration-150">
-      <div class="bg-white max-w-sm w-full rounded-2xl border border-gray-200 shadow-xl p-6 relative">
+    <div *ngIf="deletingSeason() as item" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+      <div class="bg-[#18191d] max-w-sm w-full rounded-2xl border border-gray-200 shadow-xl p-6 relative">
         <h2 class="text-base font-bold text-gray-900">¿Eliminar temporada?</h2>
         <p class="text-xs text-gray-500 mt-2">
           Esta acción eliminará la temporada "{{ item.nombreTemporada }}" permanentemente. No se puede deshacer.
@@ -260,8 +260,8 @@ type SeasonsTab = 'temporadas' | 'colecciones';
     </div>
 
     <!-- Modal: Confirmar eliminación de colección -->
-    <div *ngIf="deletingCollection() as item" class="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/40 backdrop-blur-xs p-4 animate-in fade-in duration-150">
-      <div class="bg-white max-w-sm w-full rounded-2xl border border-gray-200 shadow-xl p-6 relative">
+    <div *ngIf="deletingCollection() as item" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+      <div class="bg-[#18191d] max-w-sm w-full rounded-2xl border border-gray-200 shadow-xl p-6 relative">
         <h2 class="text-base font-bold text-gray-900">¿Eliminar colección?</h2>
         <p class="text-xs text-gray-500 mt-2">
           Esta acción eliminará la colección "{{ item.nombre_coleccion }}" permanentemente. No se puede deshacer.

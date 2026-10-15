@@ -1,0 +1,43 @@
+{
+  "name": "YouShop Collective — Operaciones",
+  "short_name": "YouShop",
+  "description": "Plataforma de operaciones, archivo e inventario de la red de boutiques YouShop Collective. Funciona sin conexión con base de datos local en el dispositivo.",
+  "id": "/",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#121316",
+  "theme_color": "#7a1c30",
+  "lang": "es",
+  "dir": "ltr",
+  "categories": ["business", "productivity", "shopping"],
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-maskable.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Caja (venta presencial)",
+      "short_name": "Caja",
+      "description": "Abrir el punto de venta",
+      "url": "/?view=pos"
+    },
+    {
+      "name": "Devoluciones y cambios",
+      "short_name": "Devoluciones",
+      "description": "Registrar un cambio de talla dentro de las 24 h",
+      "url": "/?view=returns"
+    }
+  ]
+}

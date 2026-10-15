@@ -44,7 +44,7 @@ interface VentaPunto extends VentaDiariaFila {
       </div>
 
       <!-- Filtro: rango de fechas (una sola fila, arriba de todo — aplica a todos los gráficos) -->
-      <div class="bg-white rounded-xl border border-gray-200 p-4 shadow-xs flex flex-wrap items-end gap-4">
+      <div class="bg-[#18191d] rounded-xl border border-gray-200 p-4 shadow-xs flex flex-wrap items-end gap-4">
         <div>
           <label class="text-[10px] font-bold uppercase tracking-wider text-gray-400">Desde</label>
           <input type="date" [ngModel]="fechaDesde()" (ngModelChange)="onFechaDesdeChange($event)" class="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none" />
@@ -59,7 +59,7 @@ interface VentaPunto extends VentaDiariaFila {
 
       <!-- KPI stat tiles -->
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6" [class.opacity-60]="refreshing()">
-        <div class="bg-white p-5 rounded-xl border border-gray-200 shadow-2xs">
+        <div class="bg-[#18191d] p-5 rounded-xl border border-gray-200 shadow-2xs">
           <span class="text-xs font-bold uppercase tracking-wider text-gray-400">Total ventas</span>
           <p class="text-2xl font-bold text-gray-900 tracking-tight mt-2">
             Bs {{ (kpis()?.total_ventas_monto ?? 0).toLocaleString() }}
@@ -67,7 +67,7 @@ interface VentaPunto extends VentaDiariaFila {
           <p class="text-xs text-gray-500 mt-1">en el período seleccionado</p>
         </div>
 
-        <div class="bg-white p-5 rounded-xl border border-gray-200 shadow-2xs">
+        <div class="bg-[#18191d] p-5 rounded-xl border border-gray-200 shadow-2xs">
           <span class="text-xs font-bold uppercase tracking-wider text-gray-400">Items vendidos</span>
           <p class="text-2xl font-bold text-gray-900 tracking-tight mt-2">
             {{ kpis()?.total_ventas_items ?? 0 }}
@@ -75,7 +75,7 @@ interface VentaPunto extends VentaDiariaFila {
           <p class="text-xs text-gray-500 mt-1">unidades en el período</p>
         </div>
 
-        <div class="bg-white p-5 rounded-xl border border-gray-200 shadow-2xs">
+        <div class="bg-[#18191d] p-5 rounded-xl border border-gray-200 shadow-2xs">
           <span class="text-xs font-bold uppercase tracking-wider text-gray-400">Stock total</span>
           <p class="text-2xl font-bold text-gray-900 tracking-tight mt-2">
             {{ kpis()?.stock_total ?? 0 }} <span class="text-sm font-normal text-gray-500">pzs</span>
@@ -83,7 +83,7 @@ interface VentaPunto extends VentaDiariaFila {
           <p class="text-xs text-gray-500 mt-1">en todas las sucursales</p>
         </div>
 
-        <div class="bg-white p-5 rounded-xl border border-gray-200 shadow-2xs">
+        <div class="bg-[#18191d] p-5 rounded-xl border border-gray-200 shadow-2xs">
           <span class="text-xs font-bold uppercase tracking-wider text-gray-400">Productos con stock bajo</span>
           <p class="text-2xl font-bold tracking-tight mt-2 flex items-center gap-1.5"
              [style.color]="(kpis()?.productos_bajo_stock ?? 0) > 0 ? statusWarning : '#111827'">
@@ -95,7 +95,7 @@ interface VentaPunto extends VentaDiariaFila {
       </div>
 
       <!-- Ventas por día (line chart) -->
-      <div class="bg-white rounded-xl border border-gray-200 p-6 shadow-2xs" [class.opacity-60]="refreshing()">
+      <div class="bg-[#18191d] rounded-xl border border-gray-200 p-6 shadow-2xs" [class.opacity-60]="refreshing()">
         <div class="flex items-center justify-between pb-4 border-b border-gray-100 mb-4">
           <div>
             <h2 class="text-base font-bold text-gray-900">Ventas por día</h2>
@@ -139,7 +139,7 @@ interface VentaPunto extends VentaDiariaFila {
           <!-- Tooltip (posicionado por % del viewBox, coincide con el escalado del SVG) -->
           <div
             *ngIf="hoveredPunto() as p"
-            class="absolute pointer-events-none bg-gray-900 text-white rounded-lg px-3 py-2 text-xs shadow-lg -translate-x-1/2 -translate-y-full"
+            class="absolute pointer-events-none bg-black text-white rounded-lg px-3 py-2 text-xs shadow-lg -translate-x-1/2 -translate-y-full"
             [style.left.%]="(p.x / chartWidth) * 100"
             [style.top.%]="(p.y / chartHeight) * 100 - 2"
           >
@@ -174,7 +174,7 @@ interface VentaPunto extends VentaDiariaFila {
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
 
         <!-- Top productos por venta (horizontal bars) -->
-        <div class="bg-white rounded-xl border border-gray-200 p-6 shadow-2xs" [class.opacity-60]="refreshing()">
+        <div class="bg-[#18191d] rounded-xl border border-gray-200 p-6 shadow-2xs" [class.opacity-60]="refreshing()">
           <div class="pb-4 border-b border-gray-100 mb-4">
             <h2 class="text-base font-bold text-gray-900">Top productos por venta</h2>
             <p class="text-xs text-gray-500">Los {{ topProductos()?.productos?.length ?? 0 }} productos con mayor facturación</p>
@@ -205,7 +205,7 @@ interface VentaPunto extends VentaDiariaFila {
 
               <div
                 *ngIf="hoveredTopIndex() === i"
-                class="absolute right-0 -top-7 bg-gray-900 text-white rounded-lg px-2.5 py-1 text-[11px] shadow-lg pointer-events-none z-10"
+                class="absolute right-0 -top-7 bg-black text-white rounded-lg px-2.5 py-1 text-[11px] shadow-lg pointer-events-none z-10"
               >
                 {{ p.cantidad }} unidades vendidas
               </div>
@@ -218,7 +218,7 @@ interface VentaPunto extends VentaDiariaFila {
         </div>
 
         <!-- Stock por sucursal (vertical bars) -->
-        <div class="bg-white rounded-xl border border-gray-200 p-6 shadow-2xs" [class.opacity-60]="refreshing()">
+        <div class="bg-[#18191d] rounded-xl border border-gray-200 p-6 shadow-2xs" [class.opacity-60]="refreshing()">
           <div class="pb-4 border-b border-gray-100 mb-4">
             <h2 class="text-base font-bold text-gray-900">Stock por sucursal</h2>
             <p class="text-xs text-gray-500">Unidades actuales asignadas, foto actual (no depende del rango de fechas)</p>
@@ -236,7 +236,7 @@ interface VentaPunto extends VentaDiariaFila {
             >
               <div
                 *ngIf="hoveredSucursalIndex() === i"
-                class="absolute -top-2 -translate-y-full bg-gray-900 text-white rounded-lg px-2.5 py-1 text-[11px] shadow-lg pointer-events-none whitespace-nowrap z-10"
+                class="absolute -top-2 -translate-y-full bg-black text-white rounded-lg px-2.5 py-1 text-[11px] shadow-lg pointer-events-none whitespace-nowrap z-10"
               >
                 {{ s.stock_total }} unidades
               </div>

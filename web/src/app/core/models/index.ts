@@ -498,6 +498,158 @@ export interface RecomendacionOut {
 }
 
 // ─────────────────────────────────────────────
+// MULTITENENCIA Y PLANES (CU26/CU27 — migración 014)
+// ─────────────────────────────────────────────
+
+/** Flags booleanos del plan. Son los mismos nombres que usa el backend en
+ *  `services/tenancy.py::FLAGS_PLAN`, para poder pedirlos por clave. */
+export type FeaturePlan = 'permiteIA' | 'permiteOffline' | 'permiteMultiSucursal' | 'soloLocal';
+
+export interface PlanOut {
+  idPlan: number;
+  codigo: 'free_lite' | 'basico' | 'intermedio' | 'avanzado' | string;
+  nombre: string;
+  descripcion: string | null;
+  precioMensual: number;
+  /** -1 significa ilimitado. */
+  maxSucursales: number;
+  maxUsuarios: number;
+  maxProductos: number;
+  permiteIA: boolean;
+  permiteOffline: boolean;
+  permiteMultiSucursal: boolean;
+  soloLocal: boolean;
+  orden: number;
+}
+
+export interface TenantOut {
+  idTenant: number;
+  nombre: string;
+  slug: string;
+  estado: string;
+  fechaAlta: string;
+}
+
+export interface UsoTenantOut {
+  sucursales: number;
+  usuarios: number;
+  productos: number;
+}
+
+export interface TenantMeOut {
+  tenant: TenantOut;
+  plan: PlanOut;
+  uso: UsoTenantOut;
+}
+
+// ─────────────────────────────────────────────
+// DEVOLUCIONES Y CAMBIOS DE TALLA (CU28 — migración 015)
+// ─────────────────────────────────────────────
+
+export type TipoDevolucion = 'cambio_talla' | 'cambio_medida' | 'devolucion';
+
+export interface DevolucionIn {
+  idVenta: number;
+  idProducto: number;
+  tipo: TipoDevolucion;
+  cantidad: number;
+  idProductoNuevo?: number | null;
+  codigoSucursal?: number | null;
+  motivo?: string | null;
+  medidaOriginal?: string | null;
+  medidaNueva?: string | null;
+}
+
+export interface DevolucionOut {
+  idDevolucion: number;
+  tipo: TipoDevolucion;
+  cantidad: number;
+  motivo: string | null;
+  estado: string;
+  fecha: string;
+  fechaVenta: string;
+  tallaOriginal: string | null;
+  tallaNueva: string | null;
+  medidaOriginal: string | null;
+  medidaNueva: string | null;
+  montoDevuelto: number;
+  idVenta: number;
+  idProducto: number;
+  producto_nombre: string | null;
+  idProductoNuevo: number | null;
+  producto_nuevo_nombre: string | null;
+  idCliente: number;
+  cliente_nombre: string | null;
+  codigoSucursal: number | null;
+  sucursal_nombre: string | null;
+  idUsuario: number;
+}
+
+/** Item vendido que todavía está dentro de la ventana de 24 h. */
+export interface ItemElegible {
+  idVenta: number;
+  fechaVenta: string;
+  horasRestantes: number;
+  idProducto: number;
+  producto_nombre: string;
+  talla: string | null;
+  cantidadVendida: number;
+  cantidadDevuelta: number;
+  cantidadDisponible: number;
+  precio_unitario: number;
+  idCliente: number;
+  cliente_nombre: string | null;
+}
+
+// ─────────────────────────────────────────────
+// REPORTES MULTI-SUCURSAL CON IA (CU29)
+// ─────────────────────────────────────────────
+
+export interface SucursalMetrica {
+  codigoSucursal: number;
+  sucursal: string;
+  unidades_vendidas: number;
+  monto_vendido: number;
+  stock_total: number;
+  stock_reservado: number;
+  skus: number;
+  skus_criticos: number;
+}
+
+export interface ConsolidadoSucursales {
+  sucursales: SucursalMetrica[];
+  total_unidades: number;
+  total_monto: number;
+  filtros: { fecha_desde: string | null; fecha_hasta: string | null };
+}
+
+export interface HallazgoSucursal {
+  codigoSucursal: number;
+  sucursal: string;
+  diagnostico: string;
+  severidad: 'Alta' | 'Media' | 'Baja' | string;
+}
+
+export interface TransferenciaSugerida {
+  idProducto: number;
+  producto: string;
+  desdeSucursal: string;
+  haciaSucursal: string;
+  unidades: number;
+  motivo: string;
+}
+
+export interface AnalisisSucursales {
+  resumen: string;
+  hallazgos: HallazgoSucursal[];
+  transferencias: TransferenciaSugerida[];
+  alertas: string[];
+  sucursales: SucursalMetrica[];
+  generado_por: string;
+  filtros: { fecha_desde: string | null; fecha_hasta: string | null };
+}
+
+// ─────────────────────────────────────────────
 // UI (no necesita backend)
 // ─────────────────────────────────────────────
 

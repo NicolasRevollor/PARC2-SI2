@@ -1,15 +1,17 @@
 import { Component, EventEmitter, Input, Output } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { AuthService } from '../../core/services/auth.service';
+import { OfflineSyncService } from '../../core/services/offline-sync.service';
+import { TenantService } from '../../core/services/tenant.service';
 
-export type AppView = 'dashboard' | 'archive' | 'inventory' | 'logistics' | 'suppliers' | 'seasons' | 'team' | 'reservations' | 'pos' | 'locations' | 'reports' | 'indicadores';
+export type AppView = 'dashboard' | 'archive' | 'inventory' | 'logistics' | 'suppliers' | 'seasons' | 'team' | 'reservations' | 'pos' | 'locations' | 'reports' | 'indicadores' | 'returns' | 'subscription';
 
 @Component({
   selector: 'app-sidebar',
   standalone: true,
   imports: [CommonModule],
   template: `
-    <aside class="w-64 bg-white text-gray-900 flex flex-col justify-between h-full border-r border-gray-200 select-none">
+    <aside class="w-64 bg-[#18191d] text-gray-900 flex flex-col justify-between h-full border-r border-gray-200 select-none">
 
       <!-- Sección superior -->
       <div>
@@ -25,7 +27,7 @@ export type AppView = 'dashboard' | 'archive' | 'inventory' | 'logistics' | 'sup
             </div>
           </div>
           <span class="text-[10px] font-bold px-2 py-0.5 bg-green-50 text-green-700 rounded-full border border-green-200 uppercase">
-            v26.4
+            {{ tenantService.plan()?.nombre || 'v26.4' }}
           </span>
         </div>
 
@@ -204,6 +206,29 @@ export type AppView = 'dashboard' | 'archive' | 'inventory' | 'logistics' | 'sup
             <span class="font-medium tracking-tight">Caja</span>
           </button>
 
+          <!-- Devoluciones y cambios de talla (CU28) — mismo permiso que Caja:
+               quien cobra en el mostrador es quien recibe el cambio. -->
+          <button
+            *ngIf="canOpenPos"
+            (click)="selectView('returns')"
+            [class.bg-indigo-50]="currentView === 'returns'"
+            [class.text-indigo-700]="currentView === 'returns'"
+            [class.font-semibold]="currentView === 'returns'"
+            [class.text-gray-600]="currentView !== 'returns'"
+            class="w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left text-sm transition-colors hover:bg-gray-50 hover:text-gray-900 cursor-pointer group"
+          >
+            <div
+              [class.bg-indigo-600]="currentView === 'returns'"
+              [class.text-white]="currentView === 'returns'"
+              [class.bg-gray-100]="currentView !== 'returns'"
+              [class.text-gray-500]="currentView !== 'returns'"
+              class="w-7 h-7 rounded-md flex items-center justify-center shrink-0 transition-colors"
+            >
+              <span class="material-symbols-outlined text-[18px]">swap_horiz</span>
+            </div>
+            <span class="font-medium tracking-tight">Devoluciones y Cambios</span>
+          </button>
+
           <div class="pt-4 text-[10px] uppercase tracking-widest text-gray-400 font-bold mb-2 px-2">
             Administración
           </div>
@@ -295,6 +320,27 @@ export type AppView = 'dashboard' | 'archive' | 'inventory' | 'logistics' | 'sup
             </div>
             <span class="font-medium tracking-tight">Indicadores</span>
           </button>
+
+          <!-- Suscripcion, plan y modo offline (CU26/CU27/CU30). -->
+          <button
+            (click)="selectView('subscription')"
+            [class.bg-indigo-50]="currentView === 'subscription'"
+            [class.text-indigo-700]="currentView === 'subscription'"
+            [class.font-semibold]="currentView === 'subscription'"
+            [class.text-gray-600]="currentView !== 'subscription'"
+            class="w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left text-sm transition-colors hover:bg-gray-50 hover:text-gray-900 cursor-pointer group"
+          >
+            <div
+              [class.bg-indigo-600]="currentView === 'subscription'"
+              [class.text-white]="currentView === 'subscription'"
+              [class.bg-gray-100]="currentView !== 'subscription'"
+              [class.text-gray-500]="currentView !== 'subscription'"
+              class="w-7 h-7 rounded-md flex items-center justify-center shrink-0 transition-colors"
+            >
+              <span class="material-symbols-outlined text-[18px]">workspace_premium</span>
+            </div>
+            <span class="font-medium tracking-tight">Suscripción y Plan</span>
+          </button>
         </nav>
       </div>
 
@@ -302,17 +348,25 @@ export type AppView = 'dashboard' | 'archive' | 'inventory' | 'logistics' | 'sup
       <div class="p-4 border-t border-gray-100 space-y-2">
         <div class="p-3 bg-gray-50 rounded-lg border border-gray-200">
           <div class="flex items-center space-x-2 mb-1">
-            <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
-            <p class="text-[11px] font-bold text-gray-900 uppercase tracking-tight">Bóveda de Zurich Activa</p>
+            <span class="w-2 h-2 rounded-full"
+                  [ngClass]="offlineSync.enLinea() ? 'bg-emerald-500' : 'bg-amber-500'"></span>
+            <p class="text-[11px] font-bold text-gray-900 uppercase tracking-tight">
+              {{ tenantService.tenant()?.nombre || 'Bóveda de Zurich Activa' }}
+            </p>
           </div>
           <p class="text-xs text-gray-500 leading-relaxed">
-            Sincronizada con ateliers de París y Ginza.
+            {{ offlineSync.enLinea()
+                ? 'Sincronizada con la bóveda central.'
+                : 'Sin conexión: operando con la base local del dispositivo.' }}
+          </p>
+          <p *ngIf="offlineSync.hayPendientes()" class="text-[11px] text-amber-700 font-semibold mt-1.5">
+            {{ offlineSync.pendientes() }} operación(es) esperando sincronizar
           </p>
         </div>
 
         <button
           (click)="viewAuthScreen.emit()"
-          class="w-full py-2 px-3 rounded-lg bg-white hover:bg-gray-50 border border-gray-200 text-gray-700 font-semibold text-xs transition-colors flex items-center justify-center space-x-2 cursor-pointer shadow-2xs"
+          class="w-full py-2 px-3 rounded-lg bg-[#18191d] hover:bg-gray-50 border border-gray-200 text-gray-700 font-semibold text-xs transition-colors flex items-center justify-center space-x-2 cursor-pointer shadow-2xs"
         >
           <span class="material-symbols-outlined text-[16px] text-gray-500">lock_reset</span>
           <span>Cambiar a Vista de Inicio de Sesión</span>
@@ -326,7 +380,11 @@ export class SidebarComponent {
   @Output() viewChange = new EventEmitter<AppView>();
   @Output() viewAuthScreen = new EventEmitter<void>();
 
-  constructor(private authService: AuthService) {}
+  constructor(
+    private authService: AuthService,
+    public tenantService: TenantService,
+    public offlineSync: OfflineSyncService,
+  ) {}
 
   get canOpenPos(): boolean {
     return this.authService.currentUser()?.permisos.includes('venta.crear') ?? false;

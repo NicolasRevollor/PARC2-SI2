@@ -18,12 +18,13 @@ import { CommonModule } from '@angular/common';
       display: flex;
       align-items: center;
       justify-content: center;
-      background: #111827;
+      background: #121316;
     }
 
     .loader {
       max-width: fit-content;
-      color: rgb(242, 255, 240);
+      color: #f5eceD;
+      font-family: 'Playfair Display', Georgia, serif;
       font-size: 50px;
       position: relative;
       font-style: italic;
@@ -42,7 +43,7 @@ import { CommonModule } from '@angular/common';
       width: 100%;
       height: 6px;
       border-radius: 4px;
-      background-color: #ff828291;
+      background-color: #9b1d3d91;
       top: 0px;
       filter: blur(10px);
       animation: scan 2s infinite;
@@ -57,7 +58,7 @@ import { CommonModule } from '@angular/common';
       width: 100%;
       height: 5px;
       border-radius: 4px;
-      background-color: #ff8282;
+      background-color: #9b1d3d;
       top: 0px;
       animation: scan 2s infinite;
       left: 0;

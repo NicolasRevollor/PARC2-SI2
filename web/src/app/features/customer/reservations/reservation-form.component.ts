@@ -32,8 +32,8 @@ type EstadoReserva = 'iniciando' | 'cobrando' | 'cobrado_sin_reserva' | 'reserva
   standalone: true,
   imports: [CommonModule, FormsModule, CardPaymentComponent],
   template: `
-    <div class="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/40 backdrop-blur-xs p-4 animate-in fade-in duration-150">
-      <div class="bg-white max-w-md w-full rounded-2xl border border-gray-200 shadow-xl overflow-hidden flex flex-col">
+    <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+      <div class="bg-[#18191d] max-w-md w-full rounded-2xl border border-gray-200 shadow-xl overflow-hidden flex flex-col">
         <div class="p-5 border-b border-gray-100 flex items-start justify-between">
           <div>
             <span class="text-[11px] font-bold uppercase tracking-wider text-indigo-600">Nueva reserva</span>
@@ -42,7 +42,7 @@ type EstadoReserva = 'iniciando' | 'cobrando' | 'cobrado_sin_reserva' | 'reserva
           <button
             *ngIf="estado() !== 'cobrado_sin_reserva'"
             (click)="cerrar.emit()"
-            class="w-8 h-8 rounded-full bg-gray-50 text-gray-500 flex items-center justify-center hover:bg-gray-900 hover:text-white transition-colors cursor-pointer"
+            class="w-8 h-8 rounded-full bg-gray-50 text-gray-500 flex items-center justify-center hover:bg-black hover:text-white transition-colors cursor-pointer"
             aria-label="Cerrar"
           >
             <span class="material-symbols-outlined text-[18px]">close</span>
@@ -57,7 +57,7 @@ type EstadoReserva = 'iniciando' | 'cobrando' | 'cobrado_sin_reserva' | 'reserva
               id="sucursal"
               name="sucursal"
               [(ngModel)]="codigoSucursal"
-              class="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+              class="w-full px-3 py-2 bg-[#18191d] border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
             >
               <option [ngValue]="null">Seleccione una sucursal</option>
               <option *ngFor="let s of inventoryService.locations()" [ngValue]="s.codigoSucursal">
@@ -73,7 +73,7 @@ type EstadoReserva = 'iniciando' | 'cobrando' | 'cobrado_sin_reserva' | 'reserva
               name="fecha"
               type="date"
               [(ngModel)]="fecha"
-              class="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+              class="w-full px-3 py-2 bg-[#18191d] border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
             />
             <p *ngIf="fecha && !isFechaValida()" class="text-xs text-rose-600">La fecha debe ser hoy o una fecha futura.</p>
           </div>
@@ -85,7 +85,7 @@ type EstadoReserva = 'iniciando' | 'cobrando' | 'cobrado_sin_reserva' | 'reserva
               name="horario"
               type="time"
               [(ngModel)]="horario"
-              class="w-full px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+              class="w-full px-3 py-2 bg-[#18191d] border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
             />
             <p *ngIf="horario && !isHorarioValido()" class="text-xs text-rose-600">Formato de horario inválido (HH:MM).</p>
           </div>

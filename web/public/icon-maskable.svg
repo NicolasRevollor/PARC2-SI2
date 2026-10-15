@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="YouShop">
+  <defs>
+    <linearGradient id="wineMask" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#9b1d3d"/>
+      <stop offset="100%" stop-color="#53101e"/>
+    </linearGradient>
+  </defs>
+  <!-- Maskable: el contenido vive dentro del 80% central (safe zone) porque
+       el lanzador puede recortar los bordes con cualquier forma. -->
+  <rect width="512" height="512" fill="#121316"/>
+  <circle cx="256" cy="256" r="118" fill="url(#wineMask)"/>
+  <text x="256" y="256" fill="#ffffff" font-family="Georgia, 'Playfair Display', serif" font-size="140"
+        font-weight="700" font-style="italic" text-anchor="middle" dominant-baseline="central">Y</text>
+</svg>

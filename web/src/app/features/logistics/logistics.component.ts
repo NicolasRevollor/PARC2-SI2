@@ -38,7 +38,7 @@ import { DispatchIn, DispatchItem } from '../../core/models';
       <div class="space-y-4">
         <div
           *ngFor="let order of dispatchService.dispatches()"
-          class="bg-white rounded-xl border border-gray-200 p-5 shadow-xs hover:border-gray-300 transition-all space-y-4"
+          class="bg-[#18191d] rounded-xl border border-gray-200 p-5 shadow-xs hover:border-gray-300 transition-all space-y-4"
         >
           <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3.5 border-b border-gray-100">
             <div class="flex items-center space-x-3">
@@ -87,8 +87,8 @@ import { DispatchIn, DispatchItem } from '../../core/models';
     </div>
 
     <!-- Modal: Registrar nuevo despacho -->
-    <div *ngIf="showNewDispatchModal()" class="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/40 backdrop-blur-xs p-4 animate-in fade-in duration-150">
-      <div class="bg-white max-w-lg w-full rounded-2xl border border-gray-200 shadow-xl p-6 md:p-8 max-h-[90vh] overflow-y-auto relative">
+    <div *ngIf="showNewDispatchModal()" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+      <div class="bg-[#18191d] max-w-lg w-full rounded-2xl border border-gray-200 shadow-xl p-6 md:p-8 max-h-[90vh] overflow-y-auto relative">
         <button (click)="showNewDispatchModal.set(false)" class="absolute top-4 right-4 text-gray-400 hover:text-gray-700 p-1">
           <span class="material-symbols-outlined text-[20px]">close</span>
         </button>
@@ -103,7 +103,7 @@ import { DispatchIn, DispatchItem } from '../../core/models';
           <div class="grid grid-cols-2 gap-4">
             <div>
               <label class="text-xs font-bold text-gray-700 uppercase tracking-wide">Sucursal Origen</label>
-              <select [(ngModel)]="newOrigen" name="origen" required class="w-full mt-1 px-2.5 py-2 border border-gray-200 rounded-lg text-xs bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+              <select [(ngModel)]="newOrigen" name="origen" required class="w-full mt-1 px-2.5 py-2 border border-gray-200 rounded-lg text-xs bg-[#18191d] focus:ring-2 focus:ring-indigo-500 focus:outline-none">
                 <option *ngFor="let loc of inventoryService.locations()" [ngValue]="loc.codigoSucursal">
                   {{ loc.nombre }}
                 </option>
@@ -111,7 +111,7 @@ import { DispatchIn, DispatchItem } from '../../core/models';
             </div>
             <div>
               <label class="text-xs font-bold text-gray-700 uppercase tracking-wide">Sucursal Destino</label>
-              <select [(ngModel)]="newDestino" name="destino" required class="w-full mt-1 px-2.5 py-2 border border-gray-200 rounded-lg text-xs bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+              <select [(ngModel)]="newDestino" name="destino" required class="w-full mt-1 px-2.5 py-2 border border-gray-200 rounded-lg text-xs bg-[#18191d] focus:ring-2 focus:ring-indigo-500 focus:outline-none">
                 <option *ngFor="let loc of inventoryService.locations()" [ngValue]="loc.codigoSucursal">
                   {{ loc.nombre }}
                 </option>
@@ -135,7 +135,7 @@ import { DispatchIn, DispatchItem } from '../../core/models';
             <div *ngFor="let item of newItems; let i = index" class="grid grid-cols-7 gap-2 items-end">
               <div class="col-span-4">
                 <label *ngIf="i === 0" class="text-[10px] font-bold text-gray-500 uppercase">Producto</label>
-                <select [(ngModel)]="item.idProducto" [name]="'item_producto_' + i" class="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-xs bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                <select [(ngModel)]="item.idProducto" [name]="'item_producto_' + i" class="w-full px-2 py-1.5 border border-gray-200 rounded-lg text-xs bg-[#18191d] focus:ring-2 focus:ring-indigo-500 focus:outline-none">
                   <option *ngFor="let p of archiveService.products()" [ngValue]="p.idProducto">
                     {{ p.nombre }}
                   </option>

@@ -25,7 +25,7 @@ import { InventoryStockEntry } from '../../core/models';
         <div class="flex items-center space-x-3">
           <button
             (click)="openLoteModal()"
-            class="px-4 py-2 bg-white hover:bg-gray-50 border border-gray-200 text-gray-700 rounded-lg text-xs font-bold tracking-wide uppercase transition-colors shadow-xs flex items-center space-x-1.5 cursor-pointer"
+            class="px-4 py-2 bg-[#18191d] hover:bg-gray-50 border border-gray-200 text-gray-700 rounded-lg text-xs font-bold tracking-wide uppercase transition-colors shadow-xs flex items-center space-x-1.5 cursor-pointer"
           >
             <span class="material-symbols-outlined text-[18px]">inventory_2</span>
             <span>Ingreso de Lote</span>
@@ -41,7 +41,7 @@ import { InventoryStockEntry } from '../../core/models';
       </div>
 
       <!-- Chips de filtro por ubicación -->
-      <div class="flex flex-wrap items-center gap-2 bg-white p-3.5 rounded-xl border border-gray-200 shadow-xs">
+      <div class="flex flex-wrap items-center gap-2 bg-[#18191d] p-3.5 rounded-xl border border-gray-200 shadow-xs">
         <span class="text-xs font-bold uppercase tracking-wider text-gray-400 mr-1">Filtrar por nodo:</span>
         <button
           (click)="selectedLocation.set('ALL')"
@@ -65,7 +65,7 @@ import { InventoryStockEntry } from '../../core/models';
       </div>
 
       <!-- Tabla de inventario -->
-      <div class="bg-white rounded-xl border border-gray-200 shadow-xs overflow-hidden">
+      <div class="bg-[#18191d] rounded-xl border border-gray-200 shadow-xs overflow-hidden">
         <div class="overflow-x-auto">
           <table class="w-full text-left border-collapse">
             <thead>
@@ -120,13 +120,13 @@ import { InventoryStockEntry } from '../../core/models';
                   <div class="inline-flex items-center space-x-1 bg-gray-50 p-1 rounded-lg border border-gray-200">
                     <button
                       (click)="adjustStock(item, -1)"
-                      class="w-6 h-6 rounded bg-white hover:bg-gray-200 text-gray-700 font-bold flex items-center justify-center transition-colors cursor-pointer text-xs shadow-xs"
+                      class="w-6 h-6 rounded bg-[#18191d] hover:bg-gray-200 text-gray-700 font-bold flex items-center justify-center transition-colors cursor-pointer text-xs shadow-xs"
                       title="Reducir 1 unidad"
                     >-</button>
                     <span class="px-2 text-xs font-bold text-gray-900 min-w-[24px] text-center">{{ item.cantidad_actual }}</span>
                     <button
                       (click)="adjustStock(item, 1)"
-                      class="w-6 h-6 rounded bg-white hover:bg-gray-200 text-gray-700 font-bold flex items-center justify-center transition-colors cursor-pointer text-xs shadow-xs"
+                      class="w-6 h-6 rounded bg-[#18191d] hover:bg-gray-200 text-gray-700 font-bold flex items-center justify-center transition-colors cursor-pointer text-xs shadow-xs"
                       title="Agregar 1 unidad"
                     >+</button>
                   </div>
@@ -145,8 +145,8 @@ import { InventoryStockEntry } from '../../core/models';
     </div>
 
     <!-- Modal: Ingreso de Lote (stock inicial / reabastecimiento) -->
-    <div *ngIf="showLoteModal()" class="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/40 backdrop-blur-xs p-4 animate-in fade-in duration-150">
-      <div class="bg-white max-w-lg w-full rounded-2xl border border-gray-200 shadow-xl p-6 md:p-8 relative">
+    <div *ngIf="showLoteModal()" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+      <div class="bg-[#18191d] max-w-lg w-full rounded-2xl border border-gray-200 shadow-xl p-6 md:p-8 relative">
         <button (click)="showLoteModal.set(false)" class="absolute top-4 right-4 text-gray-400 hover:text-gray-700 p-1">
           <span class="material-symbols-outlined text-[20px]">close</span>
         </button>
@@ -160,7 +160,7 @@ import { InventoryStockEntry } from '../../core/models';
         <div class="space-y-4">
           <div>
             <label class="text-xs font-bold text-gray-700 uppercase tracking-wide">Producto</label>
-            <select [(ngModel)]="loteProductoId" class="w-full mt-1 px-3.5 py-2 border border-gray-200 rounded-lg text-xs bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+            <select [(ngModel)]="loteProductoId" class="w-full mt-1 px-3.5 py-2 border border-gray-200 rounded-lg text-xs bg-[#18191d] focus:ring-2 focus:ring-indigo-500 focus:outline-none">
               <option *ngFor="let p of archiveService.products()" [ngValue]="p.idProducto">
                 {{ p.nombre }} ({{ p.tipo || 'Sin tipo' }} - {{ p.talla || 'S/T' }})
               </option>
@@ -170,7 +170,7 @@ import { InventoryStockEntry } from '../../core/models';
           <div class="grid grid-cols-2 gap-4">
             <div>
               <label class="text-xs font-bold text-gray-700 uppercase tracking-wide">Sucursal</label>
-              <select [(ngModel)]="loteSucursal" class="w-full mt-1 px-2.5 py-2 border border-gray-200 rounded-lg text-xs bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+              <select [(ngModel)]="loteSucursal" class="w-full mt-1 px-2.5 py-2 border border-gray-200 rounded-lg text-xs bg-[#18191d] focus:ring-2 focus:ring-indigo-500 focus:outline-none">
                 <option *ngFor="let loc of inventoryService.locations()" [ngValue]="loc.codigoSucursal">
                   {{ loc.nombre }}
                 </option>
@@ -184,7 +184,7 @@ import { InventoryStockEntry } from '../../core/models';
 
           <div>
             <label class="text-xs font-bold text-gray-700 uppercase tracking-wide">Proveedor (opcional)</label>
-            <select [(ngModel)]="loteProveedor" class="w-full mt-1 px-2.5 py-2 border border-gray-200 rounded-lg text-xs bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+            <select [(ngModel)]="loteProveedor" class="w-full mt-1 px-2.5 py-2 border border-gray-200 rounded-lg text-xs bg-[#18191d] focus:ring-2 focus:ring-indigo-500 focus:outline-none">
               <option [ngValue]="null">Sin especificar</option>
               <option *ngFor="let pr of archiveService.proveedores()" [ngValue]="pr.idProveedor">
                 {{ pr.nombre }}
@@ -209,8 +209,8 @@ import { InventoryStockEntry } from '../../core/models';
     </div>
 
     <!-- Modal: Transferencia entre sucursales -->
-    <div *ngIf="showTransferModal()" class="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/40 backdrop-blur-xs p-4 animate-in fade-in duration-150">
-      <div class="bg-white max-w-lg w-full rounded-2xl border border-gray-200 shadow-xl p-6 md:p-8 relative">
+    <div *ngIf="showTransferModal()" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+      <div class="bg-[#18191d] max-w-lg w-full rounded-2xl border border-gray-200 shadow-xl p-6 md:p-8 relative">
         <button (click)="showTransferModal.set(false)" class="absolute top-4 right-4 text-gray-400 hover:text-gray-700 p-1">
           <span class="material-symbols-outlined text-[20px]">close</span>
         </button>
@@ -224,7 +224,7 @@ import { InventoryStockEntry } from '../../core/models';
         <div class="space-y-4">
           <div>
             <label class="text-xs font-bold text-gray-700 uppercase tracking-wide">Producto</label>
-            <select [(ngModel)]="transferProductoId" class="w-full mt-1 px-3.5 py-2 border border-gray-200 rounded-lg text-xs bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+            <select [(ngModel)]="transferProductoId" class="w-full mt-1 px-3.5 py-2 border border-gray-200 rounded-lg text-xs bg-[#18191d] focus:ring-2 focus:ring-indigo-500 focus:outline-none">
               <option *ngFor="let p of archiveService.products()" [ngValue]="p.idProducto">
                 {{ p.nombre }} ({{ p.tipo || 'Sin tipo' }} - {{ p.talla || 'S/T' }})
               </option>
@@ -234,7 +234,7 @@ import { InventoryStockEntry } from '../../core/models';
           <div class="grid grid-cols-2 gap-4">
             <div>
               <label class="text-xs font-bold text-gray-700 uppercase tracking-wide">Sucursal Origen</label>
-              <select [(ngModel)]="transferOrigen" class="w-full mt-1 px-2.5 py-2 border border-gray-200 rounded-lg text-xs bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+              <select [(ngModel)]="transferOrigen" class="w-full mt-1 px-2.5 py-2 border border-gray-200 rounded-lg text-xs bg-[#18191d] focus:ring-2 focus:ring-indigo-500 focus:outline-none">
                 <option *ngFor="let loc of inventoryService.locations()" [ngValue]="loc.codigoSucursal">
                   {{ loc.nombre }}
                 </option>
@@ -242,7 +242,7 @@ import { InventoryStockEntry } from '../../core/models';
             </div>
             <div>
               <label class="text-xs font-bold text-gray-700 uppercase tracking-wide">Sucursal Destino</label>
-              <select [(ngModel)]="transferDestino" class="w-full mt-1 px-2.5 py-2 border border-gray-200 rounded-lg text-xs bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+              <select [(ngModel)]="transferDestino" class="w-full mt-1 px-2.5 py-2 border border-gray-200 rounded-lg text-xs bg-[#18191d] focus:ring-2 focus:ring-indigo-500 focus:outline-none">
                 <option *ngFor="let loc of inventoryService.locations()" [ngValue]="loc.codigoSucursal">
                   {{ loc.nombre }}
                 </option>

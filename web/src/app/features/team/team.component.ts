@@ -40,7 +40,7 @@ const STAFF_ROLES: StaffRole[] = ['Administrador', 'Encargado de Sucursal', 'Caj
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
         <div
           *ngFor="let member of teamService.teamMembers()"
-          class="bg-white rounded-xl border border-gray-200 p-5 shadow-xs hover:border-gray-300 transition-all flex flex-col justify-between"
+          class="bg-[#18191d] rounded-xl border border-gray-200 p-5 shadow-xs hover:border-gray-300 transition-all flex flex-col justify-between"
         >
           <div>
             <div class="flex items-start justify-between mb-3.5">
@@ -90,7 +90,7 @@ const STAFF_ROLES: StaffRole[] = ['Administrador', 'Encargado de Sucursal', 'Caj
       </div>
 
       <!-- Registro de auditoría de seguridad -->
-      <div class="bg-white rounded-xl border border-gray-200 p-5 lg:p-6 shadow-xs">
+      <div class="bg-[#18191d] rounded-xl border border-gray-200 p-5 lg:p-6 shadow-xs">
         <div class="flex items-center justify-between pb-3.5 border-b border-gray-100">
           <div>
             <h2 class="text-sm font-bold text-gray-900">Registro de Auditoría y Actividad de Seguridad</h2>
@@ -119,8 +119,8 @@ const STAFF_ROLES: StaffRole[] = ['Administrador', 'Encargado de Sucursal', 'Caj
     </div>
 
     <!-- Modal: Crear usuario de personal -->
-    <div *ngIf="showCreateModal()" class="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/40 backdrop-blur-xs p-4 animate-in fade-in duration-150">
-      <div class="bg-white max-w-md w-full rounded-2xl border border-gray-200 shadow-xl p-6 md:p-8 relative">
+    <div *ngIf="showCreateModal()" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+      <div class="bg-[#18191d] max-w-md w-full rounded-2xl border border-gray-200 shadow-xl p-6 md:p-8 relative">
         <button (click)="closeCreateModal()" class="absolute top-4 right-4 text-gray-400 hover:text-gray-700 p-1">
           <span class="material-symbols-outlined text-[20px]">close</span>
         </button>

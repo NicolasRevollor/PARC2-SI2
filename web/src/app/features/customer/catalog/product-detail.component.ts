@@ -14,11 +14,11 @@ const API_URL = environment.apiUrl;
   standalone: true,
   imports: [CommonModule],
   template: `
-    <div class="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/40 backdrop-blur-xs p-4 animate-in fade-in duration-150">
-      <div class="bg-white max-w-3xl w-full rounded-2xl border border-gray-200 shadow-xl overflow-hidden max-h-[90vh] flex flex-col relative">
+    <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+      <div class="bg-[#18191d] max-w-3xl w-full rounded-2xl border border-gray-200 shadow-xl overflow-hidden max-h-[90vh] flex flex-col relative">
         <button
           (click)="cerrar.emit()"
-          class="absolute top-4 right-4 z-10 w-8 h-8 rounded-full bg-white/90 shadow-sm text-gray-700 flex items-center justify-center hover:bg-gray-900 hover:text-white transition-colors cursor-pointer"
+          class="absolute top-4 right-4 z-10 w-8 h-8 rounded-full bg-[#18191d]/90 shadow-sm text-gray-700 flex items-center justify-center hover:bg-black hover:text-white transition-colors cursor-pointer"
           aria-label="Cerrar"
         >
           <span class="material-symbols-outlined text-[18px]">close</span>
@@ -98,7 +98,7 @@ const API_URL = environment.apiUrl;
                 <button
                   *ngIf="stripeDisponible"
                   (click)="onAgregarAlCarrito(p)"
-                  class="flex-1 py-2.5 bg-white hover:bg-gray-50 text-indigo-600 border border-indigo-200 rounded-lg text-xs font-bold uppercase tracking-wide transition-colors shadow-xs cursor-pointer"
+                  class="flex-1 py-2.5 bg-[#18191d] hover:bg-gray-50 text-indigo-600 border border-indigo-200 rounded-lg text-xs font-bold uppercase tracking-wide transition-colors shadow-xs cursor-pointer"
                 >
                   Agregar al carrito
                 </button>
@@ -135,7 +135,7 @@ const API_URL = environment.apiUrl;
         <div class="p-4 bg-gray-50 border-t border-gray-200 flex justify-end">
           <button
             (click)="cerrar.emit()"
-            class="px-4 py-2 bg-gray-900 hover:bg-black text-white rounded-lg text-xs font-bold uppercase tracking-wide transition-colors cursor-pointer"
+            class="px-4 py-2 bg-black hover:bg-black text-white rounded-lg text-xs font-bold uppercase tracking-wide transition-colors cursor-pointer"
           >
             Cerrar
           </button>

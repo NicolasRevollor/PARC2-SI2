@@ -14,6 +14,7 @@ import {
 import { SalesService } from '../../core/services/sales.service';
 import { PaymentsService } from '../../core/services/payments.service';
 import { NotificationService } from '../../core/services/notification.service';
+import { OfflineSyncService } from '../../core/services/offline-sync.service';
 import { CardPaymentComponent } from '../../shared/components/card-payment.component';
 import { ReceiptModalComponent } from '../../shared/components/receipt-modal.component';
 import { environment } from '../../../environments/environment';
@@ -54,7 +55,7 @@ type Modalidad = 'efectivo' | 'tarjeta';
         <div class="space-y-1">
           <label class="text-[10px] uppercase tracking-wider text-gray-400 font-bold">Sucursal *</label>
           <select
-            class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white cursor-pointer disabled:bg-gray-50 disabled:cursor-not-allowed"
+            class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-[#18191d] cursor-pointer disabled:bg-gray-50 disabled:cursor-not-allowed"
             [ngModel]="selectedBranch()"
             (ngModelChange)="onBranchChange($event)"
             name="branch"
@@ -70,7 +71,7 @@ type Modalidad = 'efectivo' | 'tarjeta';
         <div class="space-y-1">
           <label class="text-[10px] uppercase tracking-wider text-gray-400 font-bold">Cliente *</label>
           <select
-            class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white cursor-pointer"
+            class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-[#18191d] cursor-pointer"
             [ngModel]="selectedCliente()"
             (ngModelChange)="selectedCliente.set($event)"
             name="cliente"
@@ -118,7 +119,7 @@ type Modalidad = 'efectivo' | 'tarjeta';
       </div>
 
       <!-- Ticket -->
-      <div class="bg-white rounded-xl border border-gray-200 shadow-xs overflow-hidden" *ngIf="ticketLines().length > 0">
+      <div class="bg-[#18191d] rounded-xl border border-gray-200 shadow-xs overflow-hidden" *ngIf="ticketLines().length > 0">
         <table class="w-full text-sm">
           <thead>
             <tr class="text-left text-[10px] uppercase tracking-wider text-gray-400 font-bold border-b border-gray-100">
@@ -171,7 +172,7 @@ type Modalidad = 'efectivo' | 'tarjeta';
       <!-- Elección de modalidad de pago -->
       <div
         *ngIf="ticketLines().length > 0 && estado() === 'ticket'"
-        class="bg-white rounded-xl border border-gray-200 shadow-xs p-5 space-y-4"
+        class="bg-[#18191d] rounded-xl border border-gray-200 shadow-xs p-5 space-y-4"
       >
         <label class="text-[10px] uppercase tracking-wider text-gray-400 font-bold">Modalidad de pago</label>
         <div class="flex gap-3">
@@ -222,7 +223,7 @@ type Modalidad = 'efectivo' | 'tarjeta';
       </div>
 
       <!-- Widget de tarjeta (Stripe) -->
-      <div *ngIf="estado() === 'cobrando' && clientSecret()" class="bg-white rounded-xl border border-gray-200 shadow-xs p-5">
+      <div *ngIf="estado() === 'cobrando' && clientSecret()" class="bg-[#18191d] rounded-xl border border-gray-200 shadow-xs p-5">
         <app-card-payment
           [clientSecret]="clientSecret()"
           concepto="Venta presencial"
@@ -328,6 +329,7 @@ export class PosComponent implements OnInit {
     private salesService: SalesService,
     private paymentsService: PaymentsService,
     private notificationService: NotificationService,
+    public offlineSync: OfflineSyncService,
   ) {}
 
   ngOnInit(): void {
@@ -454,6 +456,15 @@ export class PosComponent implements OnInit {
     if (this.enviando() || !this.validarAntesDeCobrar()) {
       return;
     }
+
+    // Sin conexion solo se admite efectivo: la tarjeta necesita a Stripe en
+    // linea si o si. La venta se guarda en la base local del dispositivo
+    // (CU30) y se reenvia sola cuando vuelve la red.
+    if (!this.offlineSync.enLinea()) {
+      await this.registrarVentaSinConexion();
+      return;
+    }
+
     this.enviando.set(true);
     this.estado.set('cobrando');
     const metodo = await this.salesService.crearMetodoEfectivo(this.subtotalIndicativo());
@@ -574,6 +585,32 @@ export class PosComponent implements OnInit {
 
   async onReintentarVenta(): Promise<void> {
     await this.intentarVenta();
+  }
+
+  /**
+   * Venta en efectivo registrada sin conexion: no hay `idMetPago` todavia
+   * (lo crea el servidor), asi que se encola monto + venta y el ticket se
+   * cierra en el acto. El cliente se lleva su prenda; la cola se vacia sola
+   * al reconectar.
+   */
+  private async registrarVentaSinConexion(): Promise<void> {
+    const idCliente = this.selectedCliente();
+    const codigoSucursal = this.selectedBranch();
+    if (idCliente === null || codigoSucursal === null) {
+      return;
+    }
+
+    this.enviando.set(true);
+    const encolada = await this.offlineSync.encolarVentaEfectivo(this.subtotalIndicativo(), {
+      idCliente,
+      codigoSucursal,
+      items: this.ticketLines().map(l => ({ idProducto: l.idProducto, cantidad: l.cantidad })),
+    } as VentaIn);
+    this.enviando.set(false);
+
+    if (encolada) {
+      this.resetearTicket();
+    }
   }
 
   onAbandonar(): void {

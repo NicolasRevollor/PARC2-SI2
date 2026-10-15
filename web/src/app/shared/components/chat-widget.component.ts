@@ -34,7 +34,7 @@ const SALUDO = '¡Hola! Preguntame sobre el catálogo o tus compras/reservas.';
 
     <div
       *ngIf="abierto()"
-      class="fixed bottom-6 right-24 z-40 w-80 sm:w-96 h-[28rem] max-h-[70vh] bg-white rounded-2xl border border-gray-200 shadow-2xl flex flex-col overflow-hidden"
+      class="fixed bottom-6 right-24 z-40 w-80 sm:w-96 h-[28rem] max-h-[70vh] bg-[#18191d] rounded-2xl border border-gray-200 shadow-2xl flex flex-col overflow-hidden"
     >
       <div class="px-4 py-3 bg-indigo-600 text-white flex items-center justify-between shrink-0">
         <div class="flex items-center gap-2">
@@ -52,14 +52,14 @@ const SALUDO = '¡Hola! Preguntame sobre el catálogo o tus compras/reservas.';
             class="max-w-[85%] px-3 py-2 rounded-xl text-xs leading-relaxed"
             [ngClass]="m.role === 'user'
               ? 'bg-indigo-600 text-white rounded-br-sm'
-              : (m.esSaludo ? 'bg-white border border-gray-200 text-gray-600 italic rounded-bl-sm' : 'bg-white border border-gray-200 text-gray-800 rounded-bl-sm')"
+              : (m.esSaludo ? 'bg-[#18191d] border border-gray-200 text-gray-600 italic rounded-bl-sm' : 'bg-[#18191d] border border-gray-200 text-gray-800 rounded-bl-sm')"
           >
             {{ m.texto }}
           </div>
         </div>
 
         <div *ngIf="cargando()" class="flex justify-start">
-          <div class="bg-white border border-gray-200 rounded-xl rounded-bl-sm px-3 py-2 text-xs text-gray-400">
+          <div class="bg-[#18191d] border border-gray-200 rounded-xl rounded-bl-sm px-3 py-2 text-xs text-gray-400">
             Escribiendo…
           </div>
         </div>

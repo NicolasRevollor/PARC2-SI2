@@ -2,6 +2,8 @@ import { Injectable } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 import {
+  AnalisisSucursales,
+  ConsolidadoSucursales,
   InventarioReporteOut,
   InventoryReportFiltros,
   SalesReportFiltros,
@@ -104,5 +106,50 @@ export class ReportsService {
 
   downloadInventoryPdf(filtros: InventoryReportFiltros): Promise<void> {
     return this.downloadBlob(`${API_URL}/api/reports/inventory/pdf`, this.buildInventoryParams(filtros), 'reporte_inventario.pdf');
+  }
+
+  // --- CU29: consolidado multi-sucursal y lectura con IA -----------------
+
+  private buildPeriodoParams(fechaDesde?: string, fechaHasta?: string): HttpParams {
+    let params = new HttpParams();
+    if (fechaDesde) params = params.set('fecha_desde', fechaDesde);
+    if (fechaHasta) params = params.set('fecha_hasta', fechaHasta);
+    return params;
+  }
+
+  /** Consolidado por sucursal. Disponible en cualquier plan. */
+  getBranchesReport(fechaDesde?: string, fechaHasta?: string): Promise<ConsolidadoSucursales | null> {
+    return firstValueFrom(
+      this.http.get<ConsolidadoSucursales>(`${API_URL}/api/reports/branches`, {
+        params: this.buildPeriodoParams(fechaDesde, fechaHasta),
+      })
+    ).catch(() => {
+      this.notificationService.error('Error', 'No se pudo cargar el consolidado por sucursal.');
+      return null;
+    });
+  }
+
+  /**
+   * Análisis con IA sobre el consolidado. Requiere un plan con `permiteIA`:
+   * el backend responde 402 si la suscripción no lo incluye y 503 si el
+   * servidor no tiene configurada la clave de Gemini — se distinguen para
+   * que el usuario sepa si debe mejorar el plan o avisar al administrador.
+   */
+  getAiInsights(fechaDesde?: string, fechaHasta?: string): Promise<AnalisisSucursales | null> {
+    return firstValueFrom(
+      this.http.get<AnalisisSucursales>(`${API_URL}/api/reports/ai-insights`, {
+        params: this.buildPeriodoParams(fechaDesde, fechaHasta),
+      })
+    ).catch((err: { status?: number; error?: { detail?: string } }) => {
+      const detalle = err?.error?.detail;
+      if (err?.status === 402) {
+        this.notificationService.warning('Función no incluida en tu plan', detalle || 'Mejorá tu suscripción para usar el análisis con IA.');
+      } else if (err?.status === 503) {
+        this.notificationService.warning('Análisis no disponible', detalle || 'El servidor no tiene habilitado el motor de IA.');
+      } else {
+        this.notificationService.error('Error', detalle || 'No se pudo generar el análisis con IA.');
+      }
+      return null;
+    });
   }
 }

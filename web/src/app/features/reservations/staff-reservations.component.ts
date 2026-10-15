@@ -23,7 +23,7 @@ import { ReservationsService } from '../../core/services/reservations.service';
         <div class="flex flex-col gap-1">
           <label class="text-[10px] uppercase tracking-wider text-gray-400 font-bold">Sucursal</label>
           <select
-            class="text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white cursor-pointer"
+            class="text-sm border border-gray-200 rounded-lg px-3 py-2 bg-[#18191d] cursor-pointer"
             [ngModel]="branchFilter()"
             (ngModelChange)="branchFilter.set($event)"
             name="branchFilter"
@@ -38,7 +38,7 @@ import { ReservationsService } from '../../core/services/reservations.service';
         No hay reservas para mostrar.
       </div>
 
-      <div class="overflow-x-auto bg-white rounded-xl border border-gray-200 shadow-xs" *ngIf="filteredReservations().length > 0">
+      <div class="overflow-x-auto bg-[#18191d] rounded-xl border border-gray-200 shadow-xs" *ngIf="filteredReservations().length > 0">
         <table class="w-full text-sm">
           <thead>
             <tr class="text-left text-[10px] uppercase tracking-wider text-gray-400 font-bold border-b border-gray-100">
@@ -118,10 +118,10 @@ import { ReservationsService } from '../../core/services/reservations.service';
       <!-- Modal de confirmación de pago -->
       <div
         *ngIf="reservaAConfirmar()"
-        class="fixed inset-0 z-50 bg-gray-900/40 backdrop-blur-xs flex items-center justify-center p-4"
+        class="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs flex items-center justify-center p-4"
         (click)="onCerrarModal()"
       >
-        <div class="bg-white rounded-xl shadow-2xl p-6 w-full max-w-sm space-y-4" (click)="$event.stopPropagation()">
+        <div class="bg-[#18191d] rounded-xl shadow-2xl p-6 w-full max-w-sm space-y-4" (click)="$event.stopPropagation()">
           <div>
             <h3 class="text-base font-bold text-gray-900">Confirmar atención</h3>
             <p class="text-xs text-gray-500 mt-1">
@@ -133,7 +133,7 @@ import { ReservationsService } from '../../core/services/reservations.service';
           <div class="space-y-1">
             <label class="text-[10px] uppercase tracking-wider text-gray-400 font-bold">Método de pago</label>
             <select
-              class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-white cursor-pointer"
+              class="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 bg-[#18191d] cursor-pointer"
               [ngModel]="selectedMetodoPago()"
               (ngModelChange)="selectedMetodoPago.set($event)"
               name="metodoPago"

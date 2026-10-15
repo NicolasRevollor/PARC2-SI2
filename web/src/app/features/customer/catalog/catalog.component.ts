@@ -44,7 +44,7 @@ const PAGE_SIZE = 12;
             *ngFor="let r of recomendaciones()"
             (click)="openRecomendacion(r)"
             [disabled]="r.idProducto === null"
-            class="shrink-0 w-44 text-left bg-white rounded-lg border border-gray-200 hover:border-indigo-300 hover:shadow-sm transition-all p-3 cursor-pointer disabled:cursor-default disabled:opacity-60"
+            class="shrink-0 w-44 text-left bg-[#18191d] rounded-lg border border-gray-200 hover:border-indigo-300 hover:shadow-sm transition-all p-3 cursor-pointer disabled:cursor-default disabled:opacity-60"
           >
             <span
               class="inline-block px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider mb-1.5"
@@ -60,7 +60,7 @@ const PAGE_SIZE = 12;
       </div>
 
       <!-- Filtros -->
-      <div class="flex flex-wrap items-center gap-3 bg-white p-3.5 rounded-xl border border-gray-200 shadow-xs">
+      <div class="flex flex-wrap items-center gap-3 bg-[#18191d] p-3.5 rounded-xl border border-gray-200 shadow-xs">
         <div class="relative min-w-[200px] flex-1">
           <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-[18px] text-gray-400">search</span>
           <input
@@ -68,14 +68,14 @@ const PAGE_SIZE = 12;
             [(ngModel)]="q"
             (ngModelChange)="onFilterChange()"
             placeholder="Buscar por nombre..."
-            class="w-full pl-9 pr-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all"
+            class="w-full pl-9 pr-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-[#18191d] transition-all"
           />
         </div>
 
         <select
           [(ngModel)]="tipo"
           (ngModelChange)="onFilterChange()"
-          class="px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+          class="px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs bg-[#18191d] focus:ring-2 focus:ring-indigo-500 focus:outline-none"
         >
           <option value="">Todos los tipos</option>
           <option value="Camisa">Camisa</option>
@@ -91,13 +91,13 @@ const PAGE_SIZE = 12;
           [(ngModel)]="talla"
           (ngModelChange)="onFilterChange()"
           placeholder="Talla (ej. M)"
-          class="w-28 px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all"
+          class="w-28 px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-[#18191d] transition-all"
         />
 
         <select
           [(ngModel)]="color"
           (ngModelChange)="onFilterChange()"
-          class="px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+          class="px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs bg-[#18191d] focus:ring-2 focus:ring-indigo-500 focus:outline-none"
         >
           <option value="">Todos los colores</option>
           <option value="Negro">Negro</option>
@@ -110,7 +110,7 @@ const PAGE_SIZE = 12;
         <select
           [(ngModel)]="idColeccion"
           (ngModelChange)="onFilterChange()"
-          class="px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+          class="px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs bg-[#18191d] focus:ring-2 focus:ring-indigo-500 focus:outline-none"
         >
           <option [ngValue]="null">Todas las colecciones</option>
           <option *ngFor="let c of archiveService.colecciones()" [ngValue]="c.idColeccion">
@@ -121,7 +121,7 @@ const PAGE_SIZE = 12;
         <select
           [(ngModel)]="idProveedor"
           (ngModelChange)="onFilterChange()"
-          class="px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+          class="px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs bg-[#18191d] focus:ring-2 focus:ring-indigo-500 focus:outline-none"
         >
           <option [ngValue]="null">Todos los proveedores</option>
           <option *ngFor="let pr of archiveService.proveedores()" [ngValue]="pr.idProveedor">
@@ -135,7 +135,7 @@ const PAGE_SIZE = 12;
         <div
           *ngFor="let item of archiveService.products()"
           (click)="openDetail(item)"
-          class="bg-white rounded-xl overflow-hidden border border-gray-200 shadow-xs hover:shadow-sm hover:border-indigo-300 transition-all flex flex-col cursor-pointer group"
+          class="bg-[#18191d] rounded-xl overflow-hidden border border-gray-200 shadow-xs hover:shadow-sm hover:border-indigo-300 transition-all flex flex-col cursor-pointer group"
         >
           <div class="aspect-[4/3] w-full bg-gray-100 overflow-hidden relative">
             <img
@@ -143,7 +143,7 @@ const PAGE_SIZE = 12;
               [alt]="item.nombre"
               class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
             />
-            <div class="absolute bottom-3 right-3 bg-white/95 backdrop-blur-xs px-2.5 py-1 rounded-lg border border-gray-200/80 shadow-xs text-right">
+            <div class="absolute bottom-3 right-3 bg-[#18191d]/95 backdrop-blur-xs px-2.5 py-1 rounded-lg border border-gray-200/80 shadow-xs text-right">
               <p class="text-xs font-bold text-gray-900">{{ item.venta.toLocaleString() }} Bs</p>
             </div>
           </div>
@@ -169,7 +169,7 @@ const PAGE_SIZE = 12;
         <button
           (click)="goToPage(page() - 1)"
           [disabled]="page() === 1"
-          class="px-3 py-1.5 rounded-lg text-xs font-semibold border border-gray-200 bg-white text-gray-600 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50 cursor-pointer"
+          class="px-3 py-1.5 rounded-lg text-xs font-semibold border border-gray-200 bg-[#18191d] text-gray-600 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50 cursor-pointer"
         >
           Anterior
         </button>
@@ -177,7 +177,7 @@ const PAGE_SIZE = 12;
         <button
           (click)="goToPage(page() + 1)"
           [disabled]="page() === totalPages()"
-          class="px-3 py-1.5 rounded-lg text-xs font-semibold border border-gray-200 bg-white text-gray-600 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50 cursor-pointer"
+          class="px-3 py-1.5 rounded-lg text-xs font-semibold border border-gray-200 bg-[#18191d] text-gray-600 disabled:opacity-40 disabled:cursor-not-allowed hover:bg-gray-50 cursor-pointer"
         >
           Siguiente
         </button>

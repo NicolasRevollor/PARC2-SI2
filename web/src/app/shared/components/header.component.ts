@@ -2,13 +2,15 @@ import { Component, EventEmitter, Input, Output, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { AuthService } from '../../core/services/auth.service';
+import { OfflineSyncService } from '../../core/services/offline-sync.service';
+import { PwaService } from '../../core/services/pwa.service';
 
 @Component({
   selector: 'app-header',
   standalone: true,
   imports: [CommonModule, FormsModule],
   template: `
-    <header class="h-16 bg-white border-b border-gray-200 px-6 lg:px-8 flex items-center justify-between sticky top-0 z-30">
+    <header class="h-16 bg-[#18191d] border-b border-gray-200 px-6 lg:px-8 flex items-center justify-between sticky top-0 z-30">
 
       <!-- Izquierda: Menú móvil y breadcrumb -->
       <div class="flex items-center space-x-3">
@@ -32,10 +34,37 @@ import { AuthService } from '../../core/services/auth.service';
       <!-- Derecha: Estado en vivo e identidad de usuario -->
       <div class="flex items-center space-x-3">
 
-        <!-- Indicador de estado del sistema -->
-        <div class="hidden sm:flex items-center space-x-1.5 px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-200">
-          <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-          <span class="text-[11px] font-bold text-emerald-700 uppercase tracking-tight">Bóveda Sincronizada</span>
+        <!-- Instalar como app (solo cuando el navegador lo permite) -->
+        <button
+          *ngIf="pwaService.instalable()"
+          (click)="instalarApp()"
+          class="hidden sm:flex items-center space-x-1.5 px-2.5 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-700 hover:bg-indigo-100 transition-colors cursor-pointer"
+          title="Instalar YouShop en este dispositivo"
+        >
+          <span class="material-symbols-outlined text-[14px]">install_mobile</span>
+          <span class="text-[11px] font-bold uppercase tracking-tight">Instalar</span>
+        </button>
+
+        <!-- Estado real de conexión y cola offline (CU30) -->
+        <div
+          class="hidden sm:flex items-center space-x-1.5 px-2.5 py-1 rounded-full border"
+          [ngClass]="offlineSync.enLinea()
+            ? 'bg-emerald-50 border-emerald-200'
+            : 'bg-amber-50 border-amber-200'"
+          [title]="offlineSync.enLinea()
+            ? 'Conectado a la bóveda central'
+            : 'Sin conexión: las operaciones quedan en la base local del dispositivo'"
+        >
+          <span class="w-2 h-2 rounded-full animate-pulse"
+                [ngClass]="offlineSync.enLinea() ? 'bg-emerald-500' : 'bg-amber-500'"></span>
+          <span class="text-[11px] font-bold uppercase tracking-tight"
+                [ngClass]="offlineSync.enLinea() ? 'text-emerald-700' : 'text-amber-700'">
+            {{ offlineSync.enLinea() ? 'Bóveda Sincronizada' : 'Modo sin conexión' }}
+          </span>
+          <span *ngIf="offlineSync.hayPendientes()"
+                class="ml-1 px-1.5 rounded-full bg-amber-600 text-white text-[10px] font-bold">
+            {{ offlineSync.pendientes() }}
+          </span>
         </div>
 
         <!-- Menú de usuario -->
@@ -57,7 +86,7 @@ import { AuthService } from '../../core/services/auth.service';
           <!-- Menú desplegable -->
           <div
             *ngIf="showUserDropdown()"
-            class="absolute right-0 mt-2 w-72 bg-white rounded-xl border border-gray-200 shadow-xl p-2 z-50 animate-in fade-in zoom-in-95 duration-150"
+            class="absolute right-0 mt-2 w-72 bg-[#18191d] rounded-xl border border-gray-200 shadow-xl p-2 z-50 animate-in fade-in zoom-in-95 duration-150"
           >
             <div class="px-3 py-2 border-b border-gray-100">
               <p class="text-xs font-bold text-gray-900">{{ user.nombre }}</p>
@@ -98,8 +127,8 @@ import { AuthService } from '../../core/services/auth.service';
     </header>
 
     <!-- Modal: Cambiar contraseña -->
-    <div *ngIf="showChangePasswordModal()" class="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/40 backdrop-blur-xs p-4 animate-in fade-in duration-150">
-      <div class="bg-white max-w-md w-full p-6 sm:p-8 rounded-2xl border border-gray-200 shadow-xl relative">
+    <div *ngIf="showChangePasswordModal()" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+      <div class="bg-[#18191d] max-w-md w-full p-6 sm:p-8 rounded-2xl border border-gray-200 shadow-xl relative">
         <button (click)="showChangePasswordModal.set(false)" class="absolute top-4 right-4 text-gray-400 hover:text-gray-700 p-1">
           <span class="material-symbols-outlined text-[20px]">close</span>
         </button>
@@ -175,7 +204,15 @@ export class HeaderComponent {
   newPassword = '';
   confirmPassword = '';
 
-  constructor(public authService: AuthService) {}
+  constructor(
+    public authService: AuthService,
+    public offlineSync: OfflineSyncService,
+    public pwaService: PwaService,
+  ) {}
+
+  async instalarApp(): Promise<void> {
+    await this.pwaService.instalar();
+  }
 
   openChangePassword() {
     this.currentPassword = '';

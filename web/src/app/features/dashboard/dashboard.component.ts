@@ -14,28 +14,28 @@ import { AppView } from '../../shared/components/sidebar.component';
     <div class="p-6 md:p-8 space-y-6 max-w-[1400px] mx-auto animate-in fade-in duration-200">
 
       <!-- Banner de bienvenida -->
-      <div class="bg-gradient-to-r from-gray-900 to-indigo-950 text-white rounded-2xl p-6 lg:p-8 relative overflow-hidden shadow-xs">
+      <div class="bg-gradient-to-r from-[#18191d] via-[#1f161a] to-[#2a131b] text-white rounded-2xl p-6 lg:p-8 relative overflow-hidden shadow-xs border border-[#564243]/40">
         <div class="absolute right-0 top-0 bottom-0 w-1/2 opacity-20 pointer-events-none hidden md:block">
           <img
             src="https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=1000&auto=format&fit=crop&q=80"
             alt="Operaciones YouShop"
             class="w-full h-full object-cover mix-blend-luminosity"
           />
-          <div class="absolute inset-0 bg-gradient-to-r from-gray-900 to-transparent"></div>
+          <div class="absolute inset-0 bg-gradient-to-r from-[#18191d] to-transparent"></div>
         </div>
 
         <div class="relative z-10 max-w-2xl">
           <div class="flex items-center space-x-2 mb-2">
-            <span class="px-2.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-200 text-xs font-bold tracking-wide uppercase border border-indigo-400/30">
+            <span class="px-2.5 py-0.5 rounded-full bg-indigo-500/20 text-[#ffb2ba] text-xs font-bold tracking-wide uppercase border border-indigo-400/30">
               Terminal de Operaciones
             </span>
-            <span class="text-gray-300 text-xs">• {{ inventoryService.locations().length }} Sucursales Sincronizadas</span>
+            <span class="text-[#dcc0c1] text-xs">• {{ inventoryService.locations().length }} Sucursales Sincronizadas</span>
           </div>
 
           <h1 class="text-2xl lg:text-3xl font-bold text-white tracking-tight">
             Resumen Global de Operaciones YouShop
           </h1>
-          <p class="text-sm text-gray-300 mt-2 leading-relaxed max-w-xl">
+          <p class="text-sm text-[#dcc0c1] mt-2 leading-relaxed max-w-xl">
             Telemetría en tiempo real de inventarios de boutiques, reservas de bóveda, despachos seguros y archivo permanente de prendas.
           </p>
 
@@ -49,7 +49,7 @@ import { AppView } from '../../shared/components/sidebar.component';
             </button>
             <button
               (click)="navigate.emit('inventory')"
-              class="px-4 py-2 bg-white/10 hover:bg-white/20 text-white border border-white/20 text-xs font-bold rounded-lg transition-colors flex items-center space-x-2 cursor-pointer"
+              class="px-4 py-2 bg-[#18191d]/10 hover:bg-[#18191d]/20 text-white border border-white/20 text-xs font-bold rounded-lg transition-colors flex items-center space-x-2 cursor-pointer"
             >
               <span class="material-symbols-outlined text-[18px]">swap_horiz</span>
               <span>Transferir Stock de Boutique</span>
@@ -61,7 +61,7 @@ import { AppView } from '../../shared/components/sidebar.component';
       <!-- Métricas clave de rendimiento -->
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
 
-        <div class="bg-white p-5 rounded-xl border border-gray-200 shadow-2xs">
+        <div class="bg-[#18191d] p-5 rounded-xl border border-gray-200 shadow-2xs">
           <div class="flex items-center justify-between text-gray-500 mb-2">
             <span class="text-xs font-bold uppercase tracking-wider text-gray-400">Valoración del Archivo</span>
             <div class="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
@@ -78,7 +78,7 @@ import { AppView } from '../../shared/components/sidebar.component';
           </div>
         </div>
 
-        <div class="bg-white p-5 rounded-xl border border-gray-200 shadow-2xs">
+        <div class="bg-[#18191d] p-5 rounded-xl border border-gray-200 shadow-2xs">
           <div class="flex items-center justify-between text-gray-500 mb-2">
             <span class="text-xs font-bold uppercase tracking-wider text-gray-400">Unidades en Boutiques</span>
             <div class="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
@@ -94,7 +94,7 @@ import { AppView } from '../../shared/components/sidebar.component';
           </div>
         </div>
 
-        <div class="bg-white p-5 rounded-xl border border-gray-200 shadow-2xs">
+        <div class="bg-[#18191d] p-5 rounded-xl border border-gray-200 shadow-2xs">
           <div class="flex items-center justify-between text-gray-500 mb-2">
             <span class="text-xs font-bold uppercase tracking-wider text-gray-400">Despachos Activos</span>
             <div class="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
@@ -110,7 +110,7 @@ import { AppView } from '../../shared/components/sidebar.component';
           </div>
         </div>
 
-        <div class="bg-white p-5 rounded-xl border border-gray-200 shadow-2xs">
+        <div class="bg-[#18191d] p-5 rounded-xl border border-gray-200 shadow-2xs">
           <div class="flex items-center justify-between text-gray-500 mb-2">
             <span class="text-xs font-bold uppercase tracking-wider text-gray-400">SKUs Archivados</span>
             <div class="w-8 h-8 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center">
@@ -130,7 +130,7 @@ import { AppView } from '../../shared/components/sidebar.component';
       <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
         <!-- Izquierda: Red global de boutiques -->
-        <div class="lg:col-span-2 bg-white rounded-xl border border-gray-200 p-6 shadow-2xs">
+        <div class="lg:col-span-2 bg-[#18191d] rounded-xl border border-gray-200 p-6 shadow-2xs">
           <div class="flex items-center justify-between pb-4 border-b border-gray-100">
             <div>
               <h2 class="text-base font-bold text-gray-900">Nodos Globales de Boutique</h2>
@@ -170,7 +170,7 @@ import { AppView } from '../../shared/components/sidebar.component';
         </div>
 
         <!-- Derecha: Despachos recientes -->
-        <div class="bg-white rounded-xl border border-gray-200 p-6 shadow-2xs flex flex-col justify-between">
+        <div class="bg-[#18191d] rounded-xl border border-gray-200 p-6 shadow-2xs flex flex-col justify-between">
           <div>
             <div class="flex items-center justify-between pb-4 border-b border-gray-100">
               <h2 class="text-base font-bold text-gray-900">Despachos en Vivo</h2>
@@ -216,7 +216,7 @@ import { AppView } from '../../shared/components/sidebar.component';
       </div>
 
       <!-- Prendas destacadas del archivo permanente -->
-      <div class="bg-white rounded-xl border border-gray-200 p-6 shadow-2xs">
+      <div class="bg-[#18191d] rounded-xl border border-gray-200 p-6 shadow-2xs">
         <div class="flex items-center justify-between mb-6">
           <div>
             <h2 class="text-base font-bold text-gray-900">Prendas Destacadas del Archivo Permanente</h2>
@@ -224,7 +224,7 @@ import { AppView } from '../../shared/components/sidebar.component';
           </div>
           <button
             (click)="navigate.emit('archive')"
-            class="px-3 py-1.5 bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 rounded-lg text-xs font-semibold transition-colors"
+            class="px-3 py-1.5 bg-[#18191d] border border-gray-200 text-gray-700 hover:bg-gray-50 rounded-lg text-xs font-semibold transition-colors"
           >
             Explorar Archivo Completo →
           </button>
@@ -233,7 +233,7 @@ import { AppView } from '../../shared/components/sidebar.component';
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
           <div
             *ngFor="let item of archiveService.products().slice(0, 3)"
-            class="group bg-white rounded-xl overflow-hidden border border-gray-200 hover:border-indigo-300 hover:shadow-sm transition-all flex flex-col justify-between"
+            class="group bg-[#18191d] rounded-xl overflow-hidden border border-gray-200 hover:border-indigo-300 hover:shadow-sm transition-all flex flex-col justify-between"
           >
             <div class="aspect-[4/3] w-full overflow-hidden relative bg-gray-100">
               <img
@@ -241,10 +241,10 @@ import { AppView } from '../../shared/components/sidebar.component';
                 [alt]="item.nombre"
                 class="w-full h-full object-cover group-hover:scale-102 transition-transform duration-300"
               />
-              <div class="absolute top-2.5 left-2.5 bg-gray-900/80 backdrop-blur-xs text-white px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider">
+              <div class="absolute top-2.5 left-2.5 bg-black/80 backdrop-blur-xs text-white px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider">
                 ID {{ item.idProducto }}
               </div>
-              <div class="absolute bottom-2.5 right-2.5 bg-white/95 backdrop-blur-xs text-gray-900 px-2 py-0.5 rounded text-xs font-bold shadow-xs">
+              <div class="absolute bottom-2.5 right-2.5 bg-[#18191d]/95 backdrop-blur-xs text-gray-900 px-2 py-0.5 rounded text-xs font-bold shadow-xs">
                 {{ item.venta.toLocaleString() }} Bs
               </div>
             </div>

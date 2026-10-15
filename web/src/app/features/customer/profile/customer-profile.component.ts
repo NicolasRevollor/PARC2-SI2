@@ -14,7 +14,7 @@ import { AuthService } from '../../../core/services/auth.service';
         <p class="text-sm text-gray-500 mt-1">Información de solo lectura asociada a tu cuenta.</p>
       </div>
 
-      <div class="bg-white rounded-2xl border border-gray-200 shadow-xs p-6 space-y-5" *ngIf="authService.currentUser() as user; else noUser">
+      <div class="bg-[#18191d] rounded-2xl border border-gray-200 shadow-xs p-6 space-y-5" *ngIf="authService.currentUser() as user; else noUser">
         <div class="flex items-center space-x-4">
           <div class="w-14 h-14 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-lg border border-indigo-200">
             {{ user.nombre.substring(0, 2).toUpperCase() }}
@@ -44,7 +44,7 @@ import { AuthService } from '../../../core/services/auth.service';
       </div>
 
       <ng-template #noUser>
-        <div class="bg-white rounded-2xl border border-gray-200 shadow-xs p-6 text-sm text-gray-500">
+        <div class="bg-[#18191d] rounded-2xl border border-gray-200 shadow-xs p-6 text-sm text-gray-500">
           No se encontraron datos de la cuenta.
         </div>
       </ng-template>

@@ -22,7 +22,7 @@ import { ReservationsService } from '../../../core/services/reservations.service
       <div class="space-y-3">
         <div
           *ngFor="let r of reservationsService.reservations()"
-          class="bg-white rounded-xl border border-gray-200 shadow-xs p-4 flex items-center justify-between gap-4"
+          class="bg-[#18191d] rounded-xl border border-gray-200 shadow-xs p-4 flex items-center justify-between gap-4"
         >
           <div class="min-w-0">
             <div class="flex items-center gap-2">

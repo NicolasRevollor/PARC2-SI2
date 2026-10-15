@@ -31,7 +31,7 @@ import { ProductOut, ProductoIn } from '../../core/models';
       </div>
 
       <!-- Filtros -->
-      <div class="flex flex-wrap items-center gap-3 bg-white p-3.5 rounded-xl border border-gray-200 shadow-xs">
+      <div class="flex flex-wrap items-center gap-3 bg-[#18191d] p-3.5 rounded-xl border border-gray-200 shadow-xs">
         <div class="relative min-w-[200px] flex-1">
           <span class="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-[18px] text-gray-400">search</span>
           <input
@@ -39,13 +39,13 @@ import { ProductOut, ProductoIn } from '../../core/models';
             [(ngModel)]="searchQuery"
             (ngModelChange)="onSearch()"
             placeholder="Buscar por nombre..."
-            class="w-full pl-9 pr-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white transition-all"
+            class="w-full pl-9 pr-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-[#18191d] transition-all"
           />
         </div>
         <select
           [(ngModel)]="filterTipo"
           (ngModelChange)="onFilter()"
-          class="px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+          class="px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs bg-[#18191d] focus:ring-2 focus:ring-indigo-500 focus:outline-none"
         >
           <option value="">Todos los tipos</option>
           <option value="Camisa">Camisa</option>
@@ -57,7 +57,7 @@ import { ProductOut, ProductoIn } from '../../core/models';
         <select
           [(ngModel)]="filterColor"
           (ngModelChange)="onFilter()"
-          class="px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+          class="px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs bg-[#18191d] focus:ring-2 focus:ring-indigo-500 focus:outline-none"
         >
           <option value="">Todos los colores</option>
           <option value="Negro">Negro</option>
@@ -72,7 +72,7 @@ import { ProductOut, ProductoIn } from '../../core/models';
       <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
         <div
           *ngFor="let item of filteredProducts()"
-          class="bg-white rounded-xl overflow-hidden border border-gray-200 shadow-xs hover:shadow-sm hover:border-gray-300 transition-all flex flex-col group"
+          class="bg-[#18191d] rounded-xl overflow-hidden border border-gray-200 shadow-xs hover:shadow-sm hover:border-gray-300 transition-all flex flex-col group"
         >
           <div class="aspect-[4/3] w-full bg-gray-100 overflow-hidden relative">
             <img
@@ -81,11 +81,11 @@ import { ProductOut, ProductoIn } from '../../core/models';
               class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
             />
             <div class="absolute top-3 left-3 flex flex-col gap-1.5">
-              <span class="px-2.5 py-1 bg-gray-900/90 backdrop-blur-xs text-white rounded-md text-[10px] font-bold tracking-wider uppercase shadow-xs">
+              <span class="px-2.5 py-1 bg-black/90 backdrop-blur-xs text-white rounded-md text-[10px] font-bold tracking-wider uppercase shadow-xs">
                 ID {{ item.idProducto }}
               </span>
             </div>
-            <div class="absolute bottom-3 right-3 bg-white/95 backdrop-blur-xs px-2.5 py-1 rounded-lg border border-gray-200/80 shadow-xs text-right">
+            <div class="absolute bottom-3 right-3 bg-[#18191d]/95 backdrop-blur-xs px-2.5 py-1 rounded-lg border border-gray-200/80 shadow-xs text-right">
               <p class="text-[10px] text-gray-500">Venta</p>
               <p class="text-xs font-bold text-gray-900">{{ item.venta.toLocaleString() }} Bs</p>
             </div>
@@ -109,7 +109,7 @@ import { ProductOut, ProductoIn } from '../../core/models';
               </div>
               <button
                 (click)="inspectProduct(item)"
-                class="px-3 py-1.5 bg-gray-900 text-white hover:bg-indigo-600 rounded-lg text-xs font-bold uppercase tracking-wide transition-colors cursor-pointer"
+                class="px-3 py-1.5 bg-black text-white hover:bg-indigo-600 rounded-lg text-xs font-bold uppercase tracking-wide transition-colors cursor-pointer"
               >Inspeccionar</button>
             </div>
           </div>
@@ -122,11 +122,11 @@ import { ProductOut, ProductoIn } from '../../core/models';
     </div>
 
     <!-- Modal: Inspección detallada de producto -->
-    <div *ngIf="inspectingItem()" class="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/40 backdrop-blur-xs p-4 animate-in fade-in duration-150">
-      <div class="bg-white max-w-3xl w-full rounded-2xl border border-gray-200 shadow-xl overflow-hidden max-h-[90vh] flex flex-col relative">
+    <div *ngIf="inspectingItem()" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+      <div class="bg-[#18191d] max-w-3xl w-full rounded-2xl border border-gray-200 shadow-xl overflow-hidden max-h-[90vh] flex flex-col relative">
         <button
           (click)="inspectingItem.set(null)"
-          class="absolute top-4 right-4 z-10 w-8 h-8 rounded-full bg-white/90 shadow-sm text-gray-700 flex items-center justify-center hover:bg-gray-900 hover:text-white transition-colors"
+          class="absolute top-4 right-4 z-10 w-8 h-8 rounded-full bg-[#18191d]/90 shadow-sm text-gray-700 flex items-center justify-center hover:bg-black hover:text-white transition-colors"
         >
           <span class="material-symbols-outlined text-[18px]">close</span>
         </button>
@@ -192,7 +192,7 @@ import { ProductOut, ProductoIn } from '../../core/models';
         </div>
 
         <div class="p-4 bg-gray-50 border-t border-gray-200 flex justify-end">
-          <button (click)="inspectingItem.set(null)" class="px-4 py-2 bg-gray-900 hover:bg-black text-white rounded-lg text-xs font-bold uppercase tracking-wide transition-colors">
+          <button (click)="inspectingItem.set(null)" class="px-4 py-2 bg-black hover:bg-black text-white rounded-lg text-xs font-bold uppercase tracking-wide transition-colors">
             Cerrar
           </button>
         </div>
@@ -200,8 +200,8 @@ import { ProductOut, ProductoIn } from '../../core/models';
     </div>
 
     <!-- Modal: Agregar nuevo producto -->
-    <div *ngIf="showCreateModal()" class="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/40 backdrop-blur-xs p-4 animate-in fade-in duration-150">
-      <div class="bg-white max-w-xl w-full rounded-2xl border border-gray-200 shadow-xl p-6 md:p-8 max-h-[90vh] overflow-y-auto relative">
+    <div *ngIf="showCreateModal()" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+      <div class="bg-[#18191d] max-w-xl w-full rounded-2xl border border-gray-200 shadow-xl p-6 md:p-8 max-h-[90vh] overflow-y-auto relative">
         <button (click)="showCreateModal.set(false)" class="absolute top-4 right-4 text-gray-400 hover:text-gray-700 p-1">
           <span class="material-symbols-outlined text-[20px]">close</span>
         </button>
@@ -254,7 +254,7 @@ import { ProductOut, ProductoIn } from '../../core/models';
           <div class="grid grid-cols-2 gap-4">
             <div>
               <label class="text-xs font-bold text-gray-700 uppercase tracking-wide">Proveedor *</label>
-              <select [(ngModel)]="newProduct.idProveedor" name="idProveedor" required class="w-full mt-1 px-2.5 py-2 border border-gray-200 rounded-lg text-xs bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+              <select [(ngModel)]="newProduct.idProveedor" name="idProveedor" required class="w-full mt-1 px-2.5 py-2 border border-gray-200 rounded-lg text-xs bg-[#18191d] focus:ring-2 focus:ring-indigo-500 focus:outline-none">
                 <option [ngValue]="null" disabled>Seleccionar proveedor</option>
                 <option *ngFor="let pr of archiveService.proveedores()" [ngValue]="pr.idProveedor">
                   {{ pr.nombre }}
@@ -263,7 +263,7 @@ import { ProductOut, ProductoIn } from '../../core/models';
             </div>
             <div>
               <label class="text-xs font-bold text-gray-700 uppercase tracking-wide">Colección *</label>
-              <select [(ngModel)]="newProduct.idColeccion" name="idColeccion" required class="w-full mt-1 px-2.5 py-2 border border-gray-200 rounded-lg text-xs bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+              <select [(ngModel)]="newProduct.idColeccion" name="idColeccion" required class="w-full mt-1 px-2.5 py-2 border border-gray-200 rounded-lg text-xs bg-[#18191d] focus:ring-2 focus:ring-indigo-500 focus:outline-none">
                 <option [ngValue]="null" disabled>Seleccionar colección</option>
                 <option *ngFor="let c of archiveService.colecciones()" [ngValue]="c.idColeccion">
                   {{ c.nombre_coleccion }}

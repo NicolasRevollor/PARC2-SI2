@@ -68,7 +68,7 @@ type LocationsTab = 'ciudades' | 'sucursales';
       </div>
 
       <!-- Tabla de ciudades -->
-      <div *ngIf="activeTab() === 'ciudades'" class="bg-white rounded-xl border border-gray-200 shadow-xs overflow-hidden">
+      <div *ngIf="activeTab() === 'ciudades'" class="bg-[#18191d] rounded-xl border border-gray-200 shadow-xs overflow-hidden">
         <div class="overflow-x-auto">
           <table class="w-full text-left border-collapse">
             <thead>
@@ -112,7 +112,7 @@ type LocationsTab = 'ciudades' | 'sucursales';
       </div>
 
       <!-- Tabla de sucursales -->
-      <div *ngIf="activeTab() === 'sucursales'" class="bg-white rounded-xl border border-gray-200 shadow-xs overflow-hidden">
+      <div *ngIf="activeTab() === 'sucursales'" class="bg-[#18191d] rounded-xl border border-gray-200 shadow-xs overflow-hidden">
         <div class="overflow-x-auto">
           <table class="w-full text-left border-collapse">
             <thead>
@@ -162,8 +162,8 @@ type LocationsTab = 'ciudades' | 'sucursales';
     </div>
 
     <!-- Modal: Crear/Editar ciudad -->
-    <div *ngIf="showCityModal()" class="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/40 backdrop-blur-xs p-4 animate-in fade-in duration-150">
-      <div class="bg-white max-w-md w-full rounded-2xl border border-gray-200 shadow-xl p-6 md:p-8 relative">
+    <div *ngIf="showCityModal()" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+      <div class="bg-[#18191d] max-w-md w-full rounded-2xl border border-gray-200 shadow-xl p-6 md:p-8 relative">
         <button (click)="showCityModal.set(false)" class="absolute top-4 right-4 text-gray-400 hover:text-gray-700 p-1">
           <span class="material-symbols-outlined text-[20px]">close</span>
         </button>
@@ -191,8 +191,8 @@ type LocationsTab = 'ciudades' | 'sucursales';
     </div>
 
     <!-- Modal: Crear/Editar sucursal -->
-    <div *ngIf="showBranchModal()" class="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/40 backdrop-blur-xs p-4 animate-in fade-in duration-150">
-      <div class="bg-white max-w-md w-full rounded-2xl border border-gray-200 shadow-xl p-6 md:p-8 relative">
+    <div *ngIf="showBranchModal()" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+      <div class="bg-[#18191d] max-w-md w-full rounded-2xl border border-gray-200 shadow-xl p-6 md:p-8 relative">
         <button (click)="showBranchModal.set(false)" class="absolute top-4 right-4 text-gray-400 hover:text-gray-700 p-1">
           <span class="material-symbols-outlined text-[20px]">close</span>
         </button>
@@ -213,7 +213,7 @@ type LocationsTab = 'ciudades' | 'sucursales';
           </div>
           <div>
             <label class="text-xs font-bold text-gray-700 uppercase tracking-wide">Ciudad</label>
-            <select [(ngModel)]="branchForm.idCiudad" name="idCiudad" required class="w-full mt-1 px-3.5 py-2 border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-white">
+            <select [(ngModel)]="branchForm.idCiudad" name="idCiudad" required class="w-full mt-1 px-3.5 py-2 border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-[#18191d]">
               <option [ngValue]="0" disabled>Seleccionar ciudad</option>
               <option *ngFor="let c of locationsAdminService.cities()" [ngValue]="c.idCiudad">{{ c.nombCiudad }}</option>
             </select>
@@ -231,8 +231,8 @@ type LocationsTab = 'ciudades' | 'sucursales';
     </div>
 
     <!-- Modal: Confirmar eliminación de ciudad -->
-    <div *ngIf="deletingCity() as item" class="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/40 backdrop-blur-xs p-4 animate-in fade-in duration-150">
-      <div class="bg-white max-w-sm w-full rounded-2xl border border-gray-200 shadow-xl p-6 relative">
+    <div *ngIf="deletingCity() as item" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+      <div class="bg-[#18191d] max-w-sm w-full rounded-2xl border border-gray-200 shadow-xl p-6 relative">
         <h2 class="text-base font-bold text-gray-900">¿Eliminar ciudad?</h2>
         <p class="text-xs text-gray-500 mt-2">
           Esta acción eliminará la ciudad "{{ item.nombCiudad }}" permanentemente. No se puede deshacer.
@@ -249,8 +249,8 @@ type LocationsTab = 'ciudades' | 'sucursales';
     </div>
 
     <!-- Modal: Confirmar eliminación de sucursal -->
-    <div *ngIf="deletingBranch() as item" class="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/40 backdrop-blur-xs p-4 animate-in fade-in duration-150">
-      <div class="bg-white max-w-sm w-full rounded-2xl border border-gray-200 shadow-xl p-6 relative">
+    <div *ngIf="deletingBranch() as item" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+      <div class="bg-[#18191d] max-w-sm w-full rounded-2xl border border-gray-200 shadow-xl p-6 relative">
         <h2 class="text-base font-bold text-gray-900">¿Eliminar sucursal?</h2>
         <p class="text-xs text-gray-500 mt-2">
           Esta acción eliminará la sucursal "{{ item.nombre }}" permanentemente. No se puede deshacer.

@@ -10,7 +10,7 @@ import { NotificationService } from '../../core/services/notification.service';
     <div class="fixed bottom-6 right-6 z-50 flex flex-col space-y-2 pointer-events-none max-w-sm w-full">
       <div
         *ngFor="let toast of notificationService.toasts()"
-        class="pointer-events-auto p-4 rounded-xl border shadow-lg bg-white transition-all duration-200 flex items-start space-x-3"
+        class="pointer-events-auto p-4 rounded-xl border shadow-lg bg-[#18191d] transition-all duration-200 flex items-start space-x-3"
         [ngClass]="{
           'border-emerald-200 text-emerald-950': toast.type === 'success',
           'border-amber-200 text-amber-950': toast.type === 'warning',

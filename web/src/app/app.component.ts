@@ -7,6 +7,7 @@ import { HeaderComponent } from './shared/components/header.component';
 import { SidebarComponent, AppView } from './shared/components/sidebar.component';
 import { ToastContainerComponent } from './shared/components/toast-container.component';
 import { SplashScreenComponent } from './shared/components/splash-screen.component';
+import { LandingComponent } from './features/landing/landing.component';
 import { DashboardComponent } from './features/dashboard/dashboard.component';
 import { ArchiveComponent } from './features/archive/archive.component';
 import { InventoryComponent } from './features/inventory/inventory.component';
@@ -20,6 +21,9 @@ import { PosComponent } from './features/pos/pos.component';
 import { LocationsComponent } from './features/locations/locations.component';
 import { ReportsComponent } from './features/reports/reports.component';
 import { IndicadoresComponent } from './features/indicadores/indicadores.component';
+import { ReturnsComponent } from './features/returns/returns.component';
+import { SubscriptionComponent } from './features/subscription/subscription.component';
+import { PwaService } from './core/services/pwa.service';
 
 @Component({
   selector: 'app-root',
@@ -27,6 +31,7 @@ import { IndicadoresComponent } from './features/indicadores/indicadores.compone
   imports: [
     CommonModule,
     SplashScreenComponent,
+    LandingComponent,
     LoginComponent,
     RegisterComponent,
     HeaderComponent,
@@ -44,28 +49,39 @@ import { IndicadoresComponent } from './features/indicadores/indicadores.compone
     PosComponent,
     LocationsComponent,
     ReportsComponent,
-    IndicadoresComponent
+    IndicadoresComponent,
+    ReturnsComponent,
+    SubscriptionComponent
   ],
   template: `
-    <!-- Initial Splash: shown briefly before the Login/Portal router takes over -->
+    <!-- Branded loader overlay: shown briefly when moving from the landing page
+         into the login screen, and while a restored session is resolving. -->
     <app-splash-screen *ngIf="showSplash()"></app-splash-screen>
 
-    <ng-container *ngIf="!showSplash()">
+    <!-- Public Marketing Landing Page: shown before login for unauthenticated visitors -->
+    <app-landing
+      *ngIf="showLanding() && !authService.isAuthenticated()"
+      (enterLogin)="onEnterLogin()"
+    ></app-landing>
+
     <!-- Top Level Screen Router: Show Login/Register or Authenticated Portal -->
+    <ng-container *ngIf="!showLanding() || authService.isAuthenticated()">
     <ng-container *ngIf="!authService.isAuthenticated() || showAuthScreen(); else authGate">
       <app-login
         *ngIf="authMode() === 'login'"
         (loggedIn)="onLoginSuccess()"
         (showRegister)="authMode.set('register')"
+        (backToLanding)="onBackToLanding()"
       ></app-login>
       <app-register
         *ngIf="authMode() === 'register'"
         (registered)="onRegisterSuccess()"
         (backToLogin)="authMode.set('login')"
+        (backToLanding)="onBackToLanding()"
       ></app-register>
     </ng-container>
 
-    <!-- Authenticated but currentUser() not yet resolved: neutral loading state to avoid
+    <!-- Authenticated but currentUser() not yet resolved: branded loader to avoid
          flashing the staff shell for a Cliente that reloads the page (loadTokenFromStorage
          sets isAuthenticated before fetchCurrentUser() resolves). -->
     <ng-template #authGate>
@@ -77,9 +93,7 @@ import { IndicadoresComponent } from './features/indicadores/indicadores.compone
     </ng-template>
 
     <ng-template #loadingState>
-      <div class="flex h-screen w-screen items-center justify-center bg-gray-50 text-gray-500 text-sm font-medium">
-        Cargando sesión…
-      </div>
+      <app-splash-screen></app-splash-screen>
     </ng-template>
 
     <!-- Main Operational Workspace Shell -->
@@ -98,11 +112,11 @@ import { IndicadoresComponent } from './features/indicadores/indicadores.compone
         <!-- Mobile Drawer Navigation -->
         <div
           *ngIf="mobileMenuOpen()"
-          class="fixed inset-0 z-50 bg-gray-900/40 backdrop-blur-xs md:hidden animate-in fade-in"
+          class="fixed inset-0 z-50 bg-black/40 backdrop-blur-xs md:hidden animate-in fade-in"
           (click)="mobileMenuOpen.set(false)"
         >
           <div
-            class="w-64 h-full bg-white shadow-2xl"
+            class="w-64 h-full bg-[#18191d] shadow-2xl"
             (click)="$event.stopPropagation()"
           >
             <app-sidebar
@@ -173,6 +187,14 @@ import { IndicadoresComponent } from './features/indicadores/indicadores.compone
             <app-indicadores
               *ngIf="activeView() === 'indicadores'"
             ></app-indicadores>
+
+            <app-returns
+              *ngIf="activeView() === 'returns'"
+            ></app-returns>
+
+            <app-subscription
+              *ngIf="activeView() === 'subscription'"
+            ></app-subscription>
           </main>
         </div>
       </div>
@@ -188,12 +210,32 @@ export class AppComponent {
   showAuthScreen = signal<boolean>(false);
   mobileMenuOpen = signal<boolean>(false);
   authMode = signal<'login' | 'register'>('login');
-  showSplash = signal<boolean>(true);
+  showSplash = signal<boolean>(false);
+  showLanding = signal<boolean>(true);
 
   isCustomer = computed(() => this.authService.currentUser()?.rol === 'Cliente');
 
-  constructor(public authService: AuthService) {
-    setTimeout(() => this.showSplash.set(false), 2200);
+  constructor(
+    public authService: AuthService,
+    private pwaService: PwaService,
+  ) {
+    this.showLanding.set(!authService.isAuthenticated());
+    // Registro del service worker e instalabilidad: no depende de la sesión,
+    // la vitrina pública también se cachea para abrir sin red.
+    void this.pwaService.iniciar();
+  }
+
+  onEnterLogin() {
+    this.showSplash.set(true);
+    setTimeout(() => {
+      this.showLanding.set(false);
+      this.showSplash.set(false);
+    }, 1600);
+  }
+
+  onBackToLanding() {
+    this.authMode.set('login');
+    this.showLanding.set(true);
   }
 
   onLoginSuccess() {
@@ -246,6 +288,10 @@ export class AppComponent {
         return 'Reportes de Ventas e Inventario';
       case 'indicadores':
         return 'Dashboard de Indicadores Empresariales';
+      case 'returns':
+        return 'Devoluciones y Cambios de Talla';
+      case 'subscription':
+        return 'Suscripción y Operación Local';
       default:
         return 'Operaciones';
     }

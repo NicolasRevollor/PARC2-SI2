@@ -33,7 +33,7 @@ import { Proveedor, ProveedorIn } from '../../core/models';
       </div>
 
       <!-- Tabla de proveedores -->
-      <div class="bg-white rounded-xl border border-gray-200 shadow-xs overflow-hidden">
+      <div class="bg-[#18191d] rounded-xl border border-gray-200 shadow-xs overflow-hidden">
         <div class="overflow-x-auto">
           <table class="w-full text-left border-collapse">
             <thead>
@@ -83,8 +83,8 @@ import { Proveedor, ProveedorIn } from '../../core/models';
     </div>
 
     <!-- Modal: Crear/Editar proveedor -->
-    <div *ngIf="showModal()" class="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/40 backdrop-blur-xs p-4 animate-in fade-in duration-150">
-      <div class="bg-white max-w-md w-full rounded-2xl border border-gray-200 shadow-xl p-6 md:p-8 relative">
+    <div *ngIf="showModal()" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+      <div class="bg-[#18191d] max-w-md w-full rounded-2xl border border-gray-200 shadow-xl p-6 md:p-8 relative">
         <button (click)="showModal.set(false)" class="absolute top-4 right-4 text-gray-400 hover:text-gray-700 p-1">
           <span class="material-symbols-outlined text-[20px]">close</span>
         </button>
@@ -120,8 +120,8 @@ import { Proveedor, ProveedorIn } from '../../core/models';
     </div>
 
     <!-- Modal: Confirmar eliminación -->
-    <div *ngIf="deletingItem() as item" class="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/40 backdrop-blur-xs p-4 animate-in fade-in duration-150">
-      <div class="bg-white max-w-sm w-full rounded-2xl border border-gray-200 shadow-xl p-6 relative">
+    <div *ngIf="deletingItem() as item" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+      <div class="bg-[#18191d] max-w-sm w-full rounded-2xl border border-gray-200 shadow-xl p-6 relative">
         <h2 class="text-base font-bold text-gray-900">¿Eliminar proveedor?</h2>
         <p class="text-xs text-gray-500 mt-2">
           Esta acción eliminará a "{{ item.nombre }}" permanentemente. No se puede deshacer.

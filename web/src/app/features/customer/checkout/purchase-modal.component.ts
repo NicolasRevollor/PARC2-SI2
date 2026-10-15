@@ -32,10 +32,10 @@ type EstadoCompra = 'iniciando' | 'cobrando' | 'cobrado_sin_venta' | 'comprado' 
   standalone: true,
   imports: [CommonModule, CardPaymentComponent, ReceiptModalComponent],
   template: `
-    <div class="fixed inset-0 z-50 flex items-center justify-center bg-gray-900/40 backdrop-blur-xs p-4 animate-in fade-in duration-150">
+    <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4 animate-in fade-in duration-150">
       <div
         *ngIf="estado() !== 'comprado'"
-        class="bg-white max-w-md w-full rounded-2xl border border-gray-200 shadow-xl overflow-hidden flex flex-col"
+        class="bg-[#18191d] max-w-md w-full rounded-2xl border border-gray-200 shadow-xl overflow-hidden flex flex-col"
       >
         <div class="p-5 border-b border-gray-100 flex items-start justify-between">
           <div>
@@ -46,7 +46,7 @@ type EstadoCompra = 'iniciando' | 'cobrando' | 'cobrado_sin_venta' | 'comprado' 
           <button
             *ngIf="estado() !== 'cobrado_sin_venta'"
             (click)="cerrar.emit()"
-            class="w-8 h-8 rounded-full bg-gray-50 text-gray-500 flex items-center justify-center hover:bg-gray-900 hover:text-white transition-colors cursor-pointer"
+            class="w-8 h-8 rounded-full bg-gray-50 text-gray-500 flex items-center justify-center hover:bg-black hover:text-white transition-colors cursor-pointer"
             aria-label="Cerrar"
           >
             <span class="material-symbols-outlined text-[18px]">close</span>

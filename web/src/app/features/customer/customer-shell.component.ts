@@ -17,7 +17,7 @@ export type CustomerView = 'catalog' | 'reservations' | 'profile';
     <div class="flex flex-col h-screen w-screen overflow-hidden bg-gray-50 text-gray-900 font-sans">
 
       <!-- Navegación superior del cliente (sin sidebar tipo staff) -->
-      <header class="h-16 bg-white border-b border-gray-200 px-4 sm:px-6 flex items-center justify-between shrink-0">
+      <header class="h-16 bg-[#18191d] border-b border-gray-200 px-4 sm:px-6 flex items-center justify-between shrink-0">
         <div class="flex items-center space-x-6">
           <div class="flex items-center space-x-2">
             <div class="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white font-bold text-xs shadow-xs">
@@ -91,7 +91,7 @@ export type CustomerView = 'catalog' | 'reservations' | 'profile';
       </header>
 
       <!-- Navegación inferior móvil -->
-      <nav class="sm:hidden flex items-center justify-around bg-white border-b border-gray-200 py-1 shrink-0">
+      <nav class="sm:hidden flex items-center justify-around bg-[#18191d] border-b border-gray-200 py-1 shrink-0">
         <button
           (click)="currentView.set('catalog')"
           [class.text-indigo-700]="currentView() === 'catalog'"

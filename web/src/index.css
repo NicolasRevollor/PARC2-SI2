@@ -1,24 +1,92 @@
 @import "tailwindcss";
 
+/*
+ * Reskin del portal administrativo a la paleta "Maison Umbrella" de la
+ * landing (guindo/plomizo sobre fondo oscuro). Redefine los tokens de color
+ * que Tailwind resuelve para las utilidades `gray-*` e `indigo-*` (y los
+ * tonos semánticos de estado) para que TODO el chrome autenticado (sidebar,
+ * header, dashboard y cada módulo) herede el nuevo look sin tocar las
+ * plantillas/lógica de cada componente. `receipt-modal.component.ts` usa
+ * `slate-*`/`violet-*` a propósito para quedar fuera de este reskin, porque
+ * el comprobante debe imprimirse en claro.
+ */
+@theme {
+  /* Neutros: superficie/borde/texto del chrome oscuro */
+  --color-gray-50: #121316;  /* fondo de página */
+  --color-gray-100: #1f1f23; /* superficie alterna / hover */
+  --color-gray-200: #564243; /* bordes (el más usado, tono exacto de la landing) */
+  --color-gray-300: #6b5558; /* bordes/disabled más marcados */
+  --color-gray-400: #8f7a7c; /* texto/íconos tenues */
+  --color-gray-500: #a48b8c; /* texto secundario (tono de la landing) */
+  --color-gray-600: #c3b0b1; /* texto secundario, un paso más claro */
+  --color-gray-700: #e3e2e6; /* texto de cuerpo (base de la landing) */
+  --color-gray-800: #f0ecea; /* texto casi blanco, uso puntual */
+  --color-gray-900: #ffffff; /* titulares / texto de mayor énfasis */
+
+  /* Marca: guindo/plomizo en lugar de índigo */
+  --color-indigo-50: #1f141a;
+  --color-indigo-100: #2a1820;
+  --color-indigo-200: #3d2028;
+  --color-indigo-300: #c94868;
+  --color-indigo-400: #c94868;
+  --color-indigo-500: #c94868; /* anillos de foco */
+  --color-indigo-600: #9b1d3d; /* botones primarios / enlaces */
+  --color-indigo-700: #b0324f; /* hover / énfasis */
+  --color-indigo-800: #ffb2ba; /* texto de mayor énfasis */
+  --color-indigo-950: #2a131b;
+
+  /* Estados semánticos: mismo significado, ajustados para fondo oscuro */
+  --color-emerald-50: #112420;
+  --color-emerald-200: #1e4a3d;
+  --color-emerald-600: #34d399;
+  --color-emerald-700: #34d399;
+  --color-emerald-950: #6ee7b7;
+
+  --color-amber-50: #241d10;
+  --color-amber-200: #4a3a1a;
+  --color-amber-600: #fbbf24;
+  --color-amber-700: #fbbf24;
+  --color-amber-800: #fbbf24;
+  --color-amber-950: #fde68a;
+
+  --color-rose-50: #24121a;
+  --color-rose-200: #4a1f2e;
+  --color-rose-600: #fb7185;
+  --color-rose-700: #fb7185;
+  --color-rose-950: #fecdd3;
+
+  --color-red-50: #241212;
+  --color-red-600: #f87171;
+  --color-red-700: #f87171;
+
+  --color-sky-50: #0f2230;
+  --color-sky-200: #1e3a4d;
+  --color-sky-700: #38bdf8;
+
+  --color-green-50: #112420;
+  --color-green-200: #1e4a3d;
+  --color-green-700: #34d399;
+}
+
 @layer base {
   :root {
-    --color-bg-base: #f9fafb;
-    --color-bg-surface: #ffffff;
-    --color-border-subtle: #f3f4f6;
-    --color-border: #e5e7eb;
-    --color-border-strong: #d1d5db;
-    --color-text-main: #111827;
-    --color-text-muted: #6b7280;
-    --color-text-subtle: #9ca3af;
-    --color-primary: #4f46e5;
-    --color-primary-hover: #4338ca;
-    --color-primary-light: #eef2ff;
+    --color-bg-base: #121316;
+    --color-bg-surface: #18191d;
+    --color-border-subtle: #1f1f23;
+    --color-border: #3a3238;
+    --color-border-strong: #4a4149;
+    --color-text-main: #e3e2e6;
+    --color-text-muted: #a48b8c;
+    --color-text-subtle: #6b6366;
+    --color-primary: #9b1d3d;
+    --color-primary-hover: #b0324f;
+    --color-primary-light: #1f141a;
   }
 
   body {
     font-family: 'Plus Jakarta Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    background-color: #f9fafb;
-    color: #111827;
+    background-color: #121316;
+    color: #e3e2e6;
     margin: 0;
     padding: 0;
     -webkit-font-smoothing: antialiased;
@@ -32,14 +100,14 @@
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #f9fafb;
+  background: #121316;
 }
 ::-webkit-scrollbar-thumb {
-  background: #e5e7eb;
+  background: #3a3238;
   border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #d1d5db;
+  background: #7a1c30;
 }
 
 /* Comprobante de venta imprimible (CU19/CU20, receipt-modal.component.ts):

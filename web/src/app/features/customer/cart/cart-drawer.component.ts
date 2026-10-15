@@ -18,11 +18,11 @@ import { CartService } from '../../../core/services/cart.service';
   template: `
     <div
       *ngIf="cartService.panelAbierto()"
-      class="fixed inset-0 z-50 flex items-center justify-end bg-gray-900/40 backdrop-blur-xs animate-in fade-in duration-150"
+      class="fixed inset-0 z-50 flex items-center justify-end bg-black/40 backdrop-blur-xs animate-in fade-in duration-150"
       (click)="cartService.cerrarPanel()"
     >
       <div
-        class="bg-white w-full max-w-sm h-full shadow-xl flex flex-col"
+        class="bg-[#18191d] w-full max-w-sm h-full shadow-xl flex flex-col"
         (click)="$event.stopPropagation()"
       >
         <div class="p-5 border-b border-gray-100 flex items-start justify-between">
@@ -32,7 +32,7 @@ import { CartService } from '../../../core/services/cart.service';
           </div>
           <button
             (click)="cartService.cerrarPanel()"
-            class="w-8 h-8 rounded-full bg-gray-50 text-gray-500 flex items-center justify-center hover:bg-gray-900 hover:text-white transition-colors cursor-pointer"
+            class="w-8 h-8 rounded-full bg-gray-50 text-gray-500 flex items-center justify-center hover:bg-black hover:text-white transition-colors cursor-pointer"
             aria-label="Cerrar"
           >
             <span class="material-symbols-outlined text-[18px]">close</span>
@@ -68,13 +68,13 @@ import { CartService } from '../../../core/services/cart.service';
               <button
                 type="button"
                 (click)="cartService.actualizarCantidad(linea.producto.idProducto, linea.cantidad - 1)"
-                class="w-6 h-6 rounded border border-gray-200 text-gray-600 hover:bg-white cursor-pointer text-xs"
+                class="w-6 h-6 rounded border border-gray-200 text-gray-600 hover:bg-[#18191d] cursor-pointer text-xs"
               >−</button>
               <span class="w-6 text-center text-xs font-bold text-gray-900">{{ linea.cantidad }}</span>
               <button
                 type="button"
                 (click)="cartService.actualizarCantidad(linea.producto.idProducto, linea.cantidad + 1)"
-                class="w-6 h-6 rounded border border-gray-200 text-gray-600 hover:bg-white cursor-pointer text-xs"
+                class="w-6 h-6 rounded border border-gray-200 text-gray-600 hover:bg-[#18191d] cursor-pointer text-xs"
               >+</button>
             </div>
             <button
