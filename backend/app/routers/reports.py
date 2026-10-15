@@ -428,6 +428,15 @@ async def branches_ai_insights(
             status_code=503,
             detail="El analisis con IA no esta configurado en este servidor (falta GEMINI_API_KEY)",
         )
+    except reportes_ia.GeminiCredencialInvalida:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Google rechazo la clave de Gemini configurada en el servidor. "
+                "Genera una API key en aistudio.google.com/apikey (empieza con 'AIza') "
+                "y reemplaza GEMINI_API_KEY."
+            ),
+        )
     except reportes_ia.AnalisisNoDisponible:
         raise HTTPException(status_code=503, detail="El modelo no devolvio un analisis utilizable")
 

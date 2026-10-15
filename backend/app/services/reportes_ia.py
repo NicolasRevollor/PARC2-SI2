@@ -30,9 +30,11 @@ from app.models import DetalleVenta, Inventario, Producto, Sucursal, Venta
 
 try:
     from google import genai
+    from google.genai import errors as genai_errors
     from google.genai import types
 except ImportError:  # pragma: no cover - google-genai siempre deberia estar instalado
     genai = None
+    genai_errors = None
     types = None
 
 logger = logging.getLogger("app.errors")
@@ -88,6 +90,12 @@ class GeminiNoConfigurado(RuntimeError):
 
 class AnalisisNoDisponible(RuntimeError):
     """La API respondio pero no se pudo obtener un analisis valido."""
+
+
+class GeminiCredencialInvalida(RuntimeError):
+    """Google rechazo la credencial (401/403): la clave existe pero no sirve,
+    tipicamente porque se pego un token de acceso ("AQ....") en vez de una
+    API key de AI Studio ("AIza...")."""
 
 
 def _client() -> "genai.Client":
@@ -232,15 +240,23 @@ async def analizar_sucursales(
     metricas: list[dict], detalle: list[dict], periodo: str
 ) -> AnalisisSucursales:
     client = _client()
-    response = await client.aio.models.generate_content(
-        model=MODEL,
-        contents=_prompt(metricas, detalle, periodo),
-        config=types.GenerateContentConfig(
-            system_instruction=SYSTEM_INSTRUCTION,
-            response_mime_type="application/json",
-            response_schema=AnalisisSucursales,
-        ),
-    )
+    try:
+        response = await client.aio.models.generate_content(
+            model=MODEL,
+            contents=_prompt(metricas, detalle, periodo),
+            config=types.GenerateContentConfig(
+                system_instruction=SYSTEM_INSTRUCTION,
+                response_mime_type="application/json",
+                response_schema=AnalisisSucursales,
+            ),
+        )
+    except genai_errors.ClientError as exc:
+        if exc.code in (401, 403):
+            raise GeminiCredencialInvalida(str(exc)) from exc
+        raise AnalisisNoDisponible(f"Gemini rechazo el pedido ({exc.code})") from exc
+    except genai_errors.APIError as exc:
+        # 5xx de Google (sobrecarga, mantenimiento): transitorio, no es culpa del pedido.
+        raise AnalisisNoDisponible(f"Gemini no esta disponible ({exc.code})") from exc
 
     analisis = response.parsed
     if analisis is None:
