@@ -240,7 +240,7 @@ type ReportsTab = 'ventas' | 'inventario' | 'sucursales';
       <!-- Consolidado multi-sucursal + lectura con IA (CU29) -->
       <div *ngIf="activeTab() === 'sucursales'" class="space-y-5">
 
-        <div class="bg-white rounded-xl border border-gray-200 p-5 shadow-xs">
+        <div class="bg-[#18191d] rounded-xl border border-gray-200 p-5 shadow-xs">
           <div class="flex flex-col md:flex-row md:items-end gap-4">
             <div>
               <label class="text-[10px] font-bold uppercase tracking-wider text-gray-400">Desde</label>
@@ -258,7 +258,7 @@ type ReportsTab = 'ventas' | 'inventario' | 'sucursales';
             </button>
             <button (click)="generarAnalisis()" [disabled]="loadingAnalisis() || !puedeUsarIA()"
                     [title]="puedeUsarIA() ? 'Analizar con IA' : 'Tu plan no incluye el analisis con IA'"
-                    class="px-4 py-2 bg-gray-900 hover:bg-black disabled:bg-gray-300 disabled:cursor-not-allowed text-white rounded-lg text-xs font-bold tracking-wide uppercase transition-colors shadow-xs cursor-pointer flex items-center gap-2">
+                    class="px-4 py-2 bg-black hover:bg-[#2a131b] disabled:bg-gray-300 disabled:cursor-not-allowed text-white rounded-lg text-xs font-bold tracking-wide uppercase transition-colors shadow-xs cursor-pointer flex items-center gap-2">
               <span class="material-symbols-outlined text-[16px]">auto_awesome</span>
               {{ loadingAnalisis() ? 'Analizando...' : 'Analizar con IA' }}
             </button>
@@ -270,7 +270,7 @@ type ReportsTab = 'ventas' | 'inventario' | 'sucursales';
         </div>
 
         <!-- Tabla consolidada -->
-        <div *ngIf="consolidado() as data" class="bg-white rounded-xl border border-gray-200 shadow-xs overflow-hidden">
+        <div *ngIf="consolidado() as data" class="bg-[#18191d] rounded-xl border border-gray-200 shadow-xs overflow-hidden">
           <div class="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
             <div>
               <h2 class="text-base font-bold text-gray-900">Consolidado por sucursal</h2>
@@ -308,7 +308,7 @@ type ReportsTab = 'ventas' | 'inventario' | 'sucursales';
         </div>
 
         <!-- Lectura con IA -->
-        <div *ngIf="analisis() as ia" class="bg-white rounded-xl border border-indigo-200 shadow-xs overflow-hidden">
+        <div *ngIf="analisis() as ia" class="bg-[#18191d] rounded-xl border border-indigo-200 shadow-xs overflow-hidden">
           <div class="px-5 py-4 bg-indigo-50 border-b border-indigo-200 flex items-center gap-2">
             <span class="material-symbols-outlined text-[18px] text-indigo-700">auto_awesome</span>
             <div>

@@ -30,7 +30,7 @@ import { PlanOut } from '../../core/models';
 
       <!-- Plan vigente + consumo -->
       <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div class="lg:col-span-1 bg-white rounded-xl border border-gray-200 p-6 shadow-2xs">
+        <div class="lg:col-span-1 bg-[#18191d] rounded-xl border border-gray-200 p-6 shadow-2xs">
           <span class="text-[10px] font-bold uppercase tracking-widest text-indigo-600">Plan vigente</span>
           <h2 class="text-2xl font-bold text-gray-900 mt-1">{{ tenantService.plan()?.nombre || '—' }}</h2>
           <p class="text-xs text-gray-500 mt-1">{{ tenantService.plan()?.descripcion }}</p>
@@ -55,7 +55,7 @@ import { PlanOut } from '../../core/models';
         </div>
 
         <!-- Consumo de cupos -->
-        <div class="lg:col-span-2 bg-white rounded-xl border border-gray-200 p-6 shadow-2xs">
+        <div class="lg:col-span-2 bg-[#18191d] rounded-xl border border-gray-200 p-6 shadow-2xs">
           <h2 class="text-base font-bold text-gray-900">Consumo de cupos</h2>
           <p class="text-xs text-gray-500 mb-5">Al llegar al tope, el backend rechaza la creación con un aviso de mejora de plan.</p>
 
@@ -79,7 +79,7 @@ import { PlanOut } from '../../core/models';
       </div>
 
       <!-- Estado offline / PWA -->
-      <div class="bg-white rounded-xl border border-gray-200 p-6 shadow-2xs">
+      <div class="bg-[#18191d] rounded-xl border border-gray-200 p-6 shadow-2xs">
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-5">
           <div>
             <h2 class="text-base font-bold text-gray-900">Operación sin conexión</h2>
@@ -94,7 +94,7 @@ import { PlanOut } from '../../core/models';
               Instalar app
             </button>
             <button (click)="sincronizar()" [disabled]="!offlineSync.enLinea() || offlineSync.sincronizando()"
-                    class="px-4 py-2 bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-xs font-semibold transition-colors cursor-pointer flex items-center gap-2">
+                    class="px-4 py-2 bg-[#18191d] border border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-xs font-semibold transition-colors cursor-pointer flex items-center gap-2">
               <span class="material-symbols-outlined text-[16px]">sync</span>
               {{ offlineSync.sincronizando() ? 'Sincronizando…' : 'Sincronizar ahora' }}
             </button>
@@ -156,7 +156,7 @@ import { PlanOut } from '../../core/models';
 
         <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
           <div *ngFor="let plan of tenantService.planes()"
-               class="bg-white rounded-xl border p-5 shadow-2xs flex flex-col justify-between transition-colors"
+               class="bg-[#18191d] rounded-xl border p-5 shadow-2xs flex flex-col justify-between transition-colors"
                [ngClass]="esActual(plan) ? 'border-indigo-600 ring-2 ring-indigo-500/30' : 'border-gray-200 hover:border-indigo-200'">
             <div>
               <div class="flex items-center justify-between mb-2">

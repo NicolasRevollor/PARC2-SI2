@@ -232,13 +232,13 @@ import { AppView } from '../../shared/components/sidebar.component';
 
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
           <div
-            *ngFor="let item of archiveService.products().slice(0, 3)"
+            *ngFor="let item of archiveService.products().slice(0, 3); let i = index"
             class="group bg-[#18191d] rounded-xl overflow-hidden border border-gray-200 hover:border-indigo-300 hover:shadow-sm transition-all flex flex-col justify-between"
           >
             <div class="aspect-[4/3] w-full overflow-hidden relative bg-gray-100">
               <img
-                [src]="item.imagen_url"
-                [alt]="item.nombre"
+                [src]="imagenesDestacadas[i % imagenesDestacadas.length].url"
+                [alt]="imagenesDestacadas[i % imagenesDestacadas.length].alt"
                 class="w-full h-full object-cover group-hover:scale-102 transition-transform duration-300"
               />
               <div class="absolute top-2.5 left-2.5 bg-black/80 backdrop-blur-xs text-white px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider">
@@ -275,6 +275,23 @@ import { AppView } from '../../shared/components/sidebar.component';
 })
 export class DashboardComponent implements OnInit {
   @Output() navigate = new EventEmitter<AppView>();
+
+  // Fotos editoriales fijas para la vitrina del dashboard: no dependen de la
+  // foto cargada en cada producto, para que esta sección siempre luzca bien.
+  readonly imagenesDestacadas = [
+    {
+      url: 'https://images.unsplash.com/photo-1594938374182-a57061dac3df?w=800&auto=format&fit=crop&q=80',
+      alt: 'Saco de vestir gris jaspeado con corbata bordó',
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1625910513413-c23b8bb81cba?w=800&auto=format&fit=crop&q=80',
+      alt: 'Polera negra de piqué en primer plano',
+    },
+    {
+      url: 'https://images.unsplash.com/photo-1593030089683-a9841767a610?w=800&auto=format&fit=crop&q=80',
+      alt: 'Saco de vestir gris a cuadros con camisa celeste',
+    },
+  ];
 
   constructor(
     public archiveService: ArchiveService,

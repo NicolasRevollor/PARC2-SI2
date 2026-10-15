@@ -32,6 +32,7 @@ import { ItemElegible, TipoDevolucion } from '../../core/models';
         <button
           (click)="abrirFormulario()"
           [disabled]="elegibles().length === 0"
+          [title]="elegibles().length === 0 ? 'No hay ventas de las últimas 24 h para cambiar o devolver' : 'Registrar un cambio o devolución'"
           class="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white rounded-lg text-xs font-bold uppercase tracking-wide transition-colors shadow-xs flex items-center gap-2 cursor-pointer"
         >
           <span class="material-symbols-outlined text-[18px]">swap_horiz</span>
@@ -39,19 +40,37 @@ import { ItemElegible, TipoDevolucion } from '../../core/models';
         </button>
       </div>
 
+      <!-- Sin ventas elegibles: explicar por qué el botón está deshabilitado -->
+      <div *ngIf="cargoElegibles() && elegibles().length === 0"
+           class="flex items-start gap-3 p-4 rounded-xl border border-amber-200 bg-amber-50">
+        <span class="material-symbols-outlined text-[20px] text-amber-600 shrink-0">schedule</span>
+        <div class="text-xs">
+          <p class="font-bold text-amber-700">No hay ventas dentro de las últimas 24 horas</p>
+          <p class="text-gray-600 mt-1 leading-relaxed">
+            Solo se pueden cambiar o devolver prendas vendidas hace menos de 24 h. Cuando se registre una venta
+            en <span class="font-semibold">Caja</span>, va a aparecer acá y se habilita el botón.
+          </p>
+          <button (click)="recargarElegibles()"
+                  class="mt-2 inline-flex items-center gap-1 text-[11px] font-bold uppercase tracking-wide text-amber-700 hover:underline bg-transparent border-0 p-0 cursor-pointer">
+            <span class="material-symbols-outlined text-[14px]">refresh</span>
+            Volver a buscar ventas
+          </button>
+        </div>
+      </div>
+
       <!-- Métricas -->
       <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div class="bg-white p-5 rounded-xl border border-gray-200 shadow-2xs">
+        <div class="bg-[#18191d] p-5 rounded-xl border border-gray-200 shadow-2xs">
           <span class="text-xs font-bold uppercase tracking-wider text-gray-400">Dentro de las 24 h</span>
           <p class="text-2xl font-bold text-gray-900 mt-1">{{ elegibles().length }}</p>
           <p class="text-xs text-gray-500 mt-1">Items todavía cambiables</p>
         </div>
-        <div class="bg-white p-5 rounded-xl border border-gray-200 shadow-2xs">
+        <div class="bg-[#18191d] p-5 rounded-xl border border-gray-200 shadow-2xs">
           <span class="text-xs font-bold uppercase tracking-wider text-gray-400">Cambios de talla</span>
           <p class="text-2xl font-bold text-gray-900 mt-1">{{ totalPorTipo('cambio_talla') }}</p>
           <p class="text-xs text-gray-500 mt-1">En el historial filtrado</p>
         </div>
-        <div class="bg-white p-5 rounded-xl border border-gray-200 shadow-2xs">
+        <div class="bg-[#18191d] p-5 rounded-xl border border-gray-200 shadow-2xs">
           <span class="text-xs font-bold uppercase tracking-wider text-gray-400">Monto devuelto</span>
           <p class="text-2xl font-bold text-gray-900 mt-1">{{ montoDevuelto().toLocaleString() }} Bs</p>
           <p class="text-xs text-gray-500 mt-1">Solo devoluciones, no cambios</p>
@@ -59,7 +78,7 @@ import { ItemElegible, TipoDevolucion } from '../../core/models';
       </div>
 
       <!-- Filtros del historial -->
-      <div class="flex flex-wrap items-end gap-3 bg-white p-3.5 rounded-xl border border-gray-200 shadow-xs">
+      <div class="flex flex-wrap items-end gap-3 bg-[#18191d] p-3.5 rounded-xl border border-gray-200 shadow-xs">
         <div class="flex flex-col gap-1">
           <label class="text-[10px] font-bold uppercase tracking-wider text-gray-400">Desde</label>
           <input type="date" [(ngModel)]="fechaDesde"
@@ -95,13 +114,13 @@ import { ItemElegible, TipoDevolucion } from '../../core/models';
           Filtrar
         </button>
         <button (click)="limpiarFiltros()"
-                class="px-4 py-2 bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 rounded-lg text-xs font-semibold transition-colors cursor-pointer">
+                class="px-4 py-2 bg-[#18191d] border border-gray-200 text-gray-700 hover:bg-gray-50 rounded-lg text-xs font-semibold transition-colors cursor-pointer">
           Limpiar
         </button>
       </div>
 
       <!-- Historial -->
-      <div class="bg-white rounded-xl border border-gray-200 shadow-2xs overflow-hidden">
+      <div class="bg-[#18191d] rounded-xl border border-gray-200 shadow-2xs overflow-hidden">
         <div class="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
           <div>
             <h2 class="text-base font-bold text-gray-900">Historial de devoluciones y cambios</h2>
@@ -171,7 +190,7 @@ import { ItemElegible, TipoDevolucion } from '../../core/models';
     <!-- Modal: registrar devolución o cambio -->
     <div *ngIf="mostrarFormulario()"
          class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4 animate-in fade-in duration-150">
-      <div class="bg-white max-w-xl w-full p-6 sm:p-8 rounded-2xl border border-gray-200 shadow-xl relative max-h-[90vh] overflow-y-auto">
+      <div class="bg-[#18191d] max-w-xl w-full p-6 sm:p-8 rounded-2xl border border-gray-200 shadow-xl relative max-h-[90vh] overflow-y-auto">
         <button (click)="mostrarFormulario.set(false)"
                 class="absolute top-4 right-4 text-gray-400 hover:text-gray-700 p-1 bg-transparent border-0 cursor-pointer">
           <span class="material-symbols-outlined text-[20px]">close</span>
@@ -211,7 +230,7 @@ import { ItemElegible, TipoDevolucion } from '../../core/models';
                       class="px-3 py-2 rounded-lg border text-[11px] font-bold uppercase tracking-wide transition-colors cursor-pointer"
                       [ngClass]="tipo() === t.valor
                         ? 'bg-indigo-600 text-white border-indigo-600'
-                        : 'bg-white text-gray-600 border-gray-200 hover:border-indigo-200'">
+                        : 'bg-[#18191d] text-gray-600 border-gray-200 hover:border-indigo-200'">
                 {{ t.etiqueta }}
               </button>
             </div>
@@ -287,6 +306,8 @@ export class ReturnsComponent implements OnInit {
   ];
 
   readonly elegibles = signal<ItemElegible[]>([]);
+  /** Evita mostrar el aviso de "sin ventas" mientras la primera carga está en curso. */
+  readonly cargoElegibles = signal<boolean>(false);
   readonly mostrarFormulario = signal<boolean>(false);
   readonly guardando = signal<boolean>(false);
   readonly tipo = signal<TipoDevolucion>('cambio_talla');
@@ -342,8 +363,13 @@ export class ReturnsComponent implements OnInit {
     await Promise.all([this.cargarElegibles(), this.returnsService.cargarDevoluciones()]);
   }
 
+  async recargarElegibles(): Promise<void> {
+    await this.cargarElegibles();
+  }
+
   private async cargarElegibles(): Promise<void> {
     this.elegibles.set(await this.returnsService.cargarElegibles());
+    this.cargoElegibles.set(true);
   }
 
   claveItem(item: ItemElegible): string {
