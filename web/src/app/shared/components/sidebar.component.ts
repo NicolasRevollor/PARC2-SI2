@@ -13,10 +13,11 @@ export type AppView = 'dashboard' | 'archive' | 'inventory' | 'logistics' | 'sup
   template: `
     <aside class="w-64 bg-[#18191d] text-gray-900 flex flex-col justify-between h-full border-r border-gray-200 select-none">
 
-      <!-- Sección superior -->
-      <div>
+      <!-- Sección superior: min-h-0 deja que el nav se encoja y scrollee
+           en vez de empujar el panel inferior fuera de la pantalla. -->
+      <div class="flex-1 min-h-0 flex flex-col">
         <!-- Encabezado de marca en sidebar -->
-        <div class="p-6 border-b border-gray-100 flex items-center justify-between">
+        <div class="shrink-0 p-6 border-b border-gray-100 flex items-center justify-between">
           <div class="flex items-center space-x-3">
             <div class="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white font-bold text-xs shadow-xs">
               A
@@ -32,7 +33,7 @@ export type AppView = 'dashboard' | 'archive' | 'inventory' | 'logistics' | 'sup
         </div>
 
         <!-- Sección de navegación -->
-        <nav class="flex-1 p-4 space-y-1">
+        <nav class="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 space-y-1">
           <div class="text-[10px] uppercase tracking-widest text-gray-400 font-bold mb-2 px-2">
             Módulos Principales
           </div>
@@ -345,7 +346,7 @@ export type AppView = 'dashboard' | 'archive' | 'inventory' | 'logistics' | 'sup
       </div>
 
       <!-- Sección inferior -->
-      <div class="p-4 border-t border-gray-100 space-y-2">
+      <div class="shrink-0 p-4 border-t border-gray-100 space-y-2">
         <div class="p-3 bg-gray-50 rounded-lg border border-gray-200">
           <div class="flex items-center space-x-2 mb-1">
             <span class="w-2 h-2 rounded-full"
