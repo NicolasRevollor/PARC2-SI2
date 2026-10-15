@@ -13,7 +13,7 @@ class Settings(BaseSettings):
         "http://localhost:3000",
         "http://localhost:8080",
         "http://127.0.0.1:3000",
-        "https://parc-2-si-2.vercel.app/",
+        "https://parc-2-si-2.vercel.app",
     ]
 
     FRONTEND_URL: str = "https://parc-2-si-2.vercel.app"
