@@ -113,6 +113,16 @@ docker exec -i ropaDocker \
   -v ON_ERROR_STOP=1 \
   -f /dev/stdin \
   < database/migrations/016_superadmin_plataforma.sql
+
+# 14) Migracion 017 (el Superadministrador queda SOLO con "plataforma.admin")
+#     Corrige bases donde se aplico la primera version de la 016, que le
+#     copiaba los permisos del Administrador y lo dejaba entrar a los modulos
+#     de negocio de las empresas. En una base nueva no borra nada.
+docker exec -i ropaDocker \
+  psql -U yimysito -d ropaDB \
+  -v ON_ERROR_STOP=1 \
+  -f /dev/stdin \
+  < database/migrations/017_superadmin_solo_plataforma.sql
 ```
 
 > **Las migraciones 014 y 015 no son opcionales.** Los modelos SQLAlchemy ya

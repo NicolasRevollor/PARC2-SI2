@@ -61,6 +61,10 @@ export type AppView = 'dashboard' | 'archive' | 'inventory' | 'logistics' | 'sup
             </button>
           </ng-container>
 
+          <!-- Modulos de NEGOCIO: son de cada empresa. El superadministrador
+               opera la plataforma, no el negocio de un cliente, asi que no los ve
+               (y el backend igual le responde 403: no tiene esos permisos). -->
+          <ng-container *ngIf="!esSuperadmin">
           <div class="text-[10px] uppercase tracking-widest text-gray-400 font-bold mb-2 px-2">
             Módulos Principales
           </div>
@@ -369,6 +373,7 @@ export type AppView = 'dashboard' | 'archive' | 'inventory' | 'logistics' | 'sup
             </div>
             <span class="font-medium tracking-tight">Suscripción y Plan</span>
           </button>
+          </ng-container>
         </nav>
       </div>
 

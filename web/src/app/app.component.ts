@@ -1,4 +1,4 @@
-import { Component, computed, signal } from '@angular/core';
+import { Component, computed, effect, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { AuthService } from './core/services/auth.service';
 import { LoginComponent } from './features/auth/login.component';
@@ -221,12 +221,24 @@ export class AppComponent {
   showLanding = signal<boolean>(true);
 
   isCustomer = computed(() => this.authService.currentUser()?.rol === 'Cliente');
+  esSuperadmin = computed(
+    () => this.authService.currentUser()?.permisos.includes(PERMISO_PLATAFORMA) ?? false
+  );
 
   constructor(
     public authService: AuthService,
     private pwaService: PwaService,
   ) {
     this.showLanding.set(!authService.isAuthenticated());
+    // El superadministrador solo tiene la consola de plataforma: no importa
+    // como llegue (login, recarga con sesion guardada, enlace), se lo deja en
+    // ella. Sin esto, al recargar arrancaria en el dashboard de una empresa y
+    // todas sus llamadas responderian 403.
+    effect(() => {
+      if (this.esSuperadmin() && this.activeView() !== 'platform') {
+        this.activeView.set('platform');
+      }
+    });
     // Registro del service worker e instalabilidad: no depende de la sesión,
     // la vitrina pública también se cachea para abrir sin red.
     void this.pwaService.iniciar();
