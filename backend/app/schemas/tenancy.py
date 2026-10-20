@@ -1,6 +1,9 @@
 from datetime import datetime
+from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+
+from app.security import validate_password_strength
 
 
 class PlanOut(BaseModel):
@@ -48,3 +51,54 @@ class TenantMeOut(BaseModel):
 
 class CambiarPlanIn(BaseModel):
     codigo: str
+
+
+# --- Consola de plataforma (superadministrador, migracion 016) ------------
+
+EstadoTenant = Literal["Activo", "Suspendido"]
+
+
+class EmpresaOut(BaseModel):
+    """Una empresa suscrita vista desde la consola de plataforma."""
+
+    tenant: TenantOut
+    plan: PlanOut
+    uso: UsoTenantOut
+    # Correo de su administrador principal (el primero dado de alta), para
+    # que el operador sepa a quien contactar.
+    adminCorreo: str | None = None
+
+
+class PlanResumenOut(BaseModel):
+    codigo: str
+    nombre: str
+    empresas: int
+
+
+class ResumenPlataformaOut(BaseModel):
+    totalEmpresas: int
+    activas: int
+    suspendidas: int
+    # Ingreso mensual recurrente: suma del precio del plan de cada empresa ACTIVA.
+    ingresoMensual: float
+    porPlan: list[PlanResumenOut]
+
+
+class EmpresaIn(BaseModel):
+    nombre: str = Field(min_length=2, max_length=120)
+    # Identificador corto y unico de la empresa (solo minusculas, numeros y guiones).
+    slug: str = Field(min_length=2, max_length=60, pattern=r"^[a-z0-9]+(-[a-z0-9]+)*$")
+    codigoPlan: str
+    adminNombre: str = Field(min_length=2, max_length=100)
+    adminCorreo: EmailStr
+    adminPassword: str
+
+    @field_validator("adminPassword")
+    @classmethod
+    def _validar_password(cls, v: str) -> str:
+        validate_password_strength(v)
+        return v
+
+
+class CambiarEstadoIn(BaseModel):
+    estado: EstadoTenant

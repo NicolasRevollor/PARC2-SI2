@@ -3,8 +3,9 @@ import { CommonModule } from '@angular/common';
 import { AuthService } from '../../core/services/auth.service';
 import { OfflineSyncService } from '../../core/services/offline-sync.service';
 import { TenantService } from '../../core/services/tenant.service';
+import { PERMISO_PLATAFORMA } from '../../core/services/platform.service';
 
-export type AppView = 'dashboard' | 'archive' | 'inventory' | 'logistics' | 'suppliers' | 'seasons' | 'team' | 'reservations' | 'pos' | 'locations' | 'reports' | 'indicadores' | 'returns' | 'subscription';
+export type AppView = 'dashboard' | 'archive' | 'inventory' | 'logistics' | 'suppliers' | 'seasons' | 'team' | 'reservations' | 'pos' | 'locations' | 'reports' | 'indicadores' | 'returns' | 'subscription' | 'platform';
 
 @Component({
   selector: 'app-sidebar',
@@ -34,6 +35,32 @@ export type AppView = 'dashboard' | 'archive' | 'inventory' | 'logistics' | 'sup
 
         <!-- Sección de navegación -->
         <nav class="flex-1 min-h-0 overflow-y-auto overscroll-contain p-4 space-y-1">
+          <!-- Consola de plataforma (migracion 016): solo el Superadministrador. -->
+          <ng-container *ngIf="esSuperadmin">
+            <div class="text-[10px] uppercase tracking-widest text-gray-400 font-bold mb-2 px-2">
+              Plataforma
+            </div>
+            <button
+              (click)="selectView('platform')"
+              [class.bg-indigo-50]="currentView === 'platform'"
+              [class.text-indigo-700]="currentView === 'platform'"
+              [class.font-semibold]="currentView === 'platform'"
+              [class.text-gray-600]="currentView !== 'platform'"
+              class="w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left text-sm transition-colors hover:bg-gray-50 hover:text-gray-900 cursor-pointer group mb-3"
+            >
+              <div
+                [class.bg-indigo-600]="currentView === 'platform'"
+                [class.text-white]="currentView === 'platform'"
+                [class.bg-gray-100]="currentView !== 'platform'"
+                [class.text-gray-500]="currentView !== 'platform'"
+                class="w-7 h-7 rounded-md flex items-center justify-center shrink-0 transition-colors"
+              >
+                <span class="material-symbols-outlined text-[18px]">domain</span>
+              </div>
+              <span class="font-medium tracking-tight">Empresas suscritas</span>
+            </button>
+          </ng-container>
+
           <div class="text-[10px] uppercase tracking-widest text-gray-400 font-bold mb-2 px-2">
             Módulos Principales
           </div>
@@ -393,6 +420,10 @@ export class SidebarComponent {
 
   get canViewReports(): boolean {
     return this.authService.currentUser()?.permisos.includes('reporte.ver') ?? false;
+  }
+
+  get esSuperadmin(): boolean {
+    return this.authService.currentUser()?.permisos.includes(PERMISO_PLATAFORMA) ?? false;
   }
 
   get canViewIndicadores(): boolean {

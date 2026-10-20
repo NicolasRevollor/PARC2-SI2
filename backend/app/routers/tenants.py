@@ -21,7 +21,7 @@ from app.schemas.tenancy import (
 )
 from app.security import get_current_payload, require_permiso
 from app.services.bitacora import registrar_bitacora
-from app.services.tenancy import cargar_contexto, tenant_actual, uso_actual
+from app.services.tenancy import cargar_contexto, excesos_para_plan, tenant_actual, uso_actual
 
 router = APIRouter(prefix="/api", tags=["tenant"])
 
@@ -72,15 +72,7 @@ async def cambiar_plan(
         raise HTTPException(status_code=404, detail=f"El plan '{payload.codigo}' no existe")
 
     uso = await uso_actual(session, id_tenant)
-    excedidos = [
-        f"{recurso} ({uso[recurso]} > {limite})"
-        for recurso, limite in (
-            ("sucursales", nuevo.maxSucursales),
-            ("usuarios", nuevo.maxUsuarios),
-            ("productos", nuevo.maxProductos),
-        )
-        if limite != -1 and uso[recurso] > limite
-    ]
+    excedidos = excesos_para_plan(uso, nuevo)
     if excedidos:
         raise HTTPException(
             status_code=409,

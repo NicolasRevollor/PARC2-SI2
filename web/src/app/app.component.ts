@@ -24,6 +24,8 @@ import { IndicadoresComponent } from './features/indicadores/indicadores.compone
 import { ReturnsComponent } from './features/returns/returns.component';
 import { SubscriptionComponent } from './features/subscription/subscription.component';
 import { PwaService } from './core/services/pwa.service';
+import { PlatformComponent } from './features/platform/platform.component';
+import { PERMISO_PLATAFORMA } from './core/services/platform.service';
 
 @Component({
   selector: 'app-root',
@@ -51,7 +53,8 @@ import { PwaService } from './core/services/pwa.service';
     ReportsComponent,
     IndicadoresComponent,
     ReturnsComponent,
-    SubscriptionComponent
+    SubscriptionComponent,
+    PlatformComponent
   ],
   template: `
     <!-- Branded loader overlay: shown briefly when moving from the landing page
@@ -195,6 +198,10 @@ import { PwaService } from './core/services/pwa.service';
             <app-subscription
               *ngIf="activeView() === 'subscription'"
             ></app-subscription>
+
+            <app-platform
+              *ngIf="activeView() === 'platform'"
+            ></app-platform>
           </main>
         </div>
       </div>
@@ -241,6 +248,10 @@ export class AppComponent {
   onLoginSuccess() {
     this.showAuthScreen.set(false);
     this.authMode.set('login');
+    // El superadministrador entra directo a su consola de empresas.
+    if (this.authService.currentUser()?.permisos.includes(PERMISO_PLATAFORMA)) {
+      this.activeView.set('platform');
+    }
   }
 
   onRegisterSuccess() {
@@ -292,6 +303,8 @@ export class AppComponent {
         return 'Devoluciones y Cambios de Talla';
       case 'subscription':
         return 'Suscripción y Operación Local';
+      case 'platform':
+        return 'Consola de Plataforma';
       default:
         return 'Operaciones';
     }

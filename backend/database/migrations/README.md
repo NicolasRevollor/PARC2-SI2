@@ -103,6 +103,18 @@ docker exec -i ropaDocker \
   < database/migrations/015_devoluciones_cambio_talla.sql
 ```
 
+```bash
+# 13) Migracion 016 (Superadministrador de la plataforma + empresas demo)
+#     Crea el rol Superadministrador (permiso "plataforma.admin"), el usuario
+#     superadmin@youshop.com y 3 empresas de ejemplo (Free Lite, Basico e
+#     Intermedio) con su administrador y sucursales. Depende de la 014.
+docker exec -i ropaDocker \
+  psql -U yimysito -d ropaDB \
+  -v ON_ERROR_STOP=1 \
+  -f /dev/stdin \
+  < database/migrations/016_superadmin_plataforma.sql
+```
+
 > **Las migraciones 014 y 015 no son opcionales.** Los modelos SQLAlchemy ya
 > mapean `Usuario.idTenant`, `producto.idTenant`, etc.; si la base no tiene
 > esas columnas, cualquier consulta sobre esas tablas falla con

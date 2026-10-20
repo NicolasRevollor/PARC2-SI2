@@ -122,6 +122,20 @@ async def uso_actual(session: AsyncSession, id_tenant: int) -> dict[str, int]:
     return {recurso: await contar_recurso(session, recurso, id_tenant) for recurso in RECURSOS_CON_CUPO}
 
 
+def excesos_para_plan(uso: dict[str, int], plan: Plan) -> list[str]:
+    """Recursos cuyo consumo actual supera los topes de `plan`.
+
+    Lista vacia == el tenant cabe en ese plan. Se usa para rechazar un
+    downgrade que dejaria sucursales/usuarios/productos por encima del cupo.
+    """
+    excesos = []
+    for recurso, (columna_limite, _) in RECURSOS_CON_CUPO.items():
+        limite = int(getattr(plan, columna_limite))
+        if limite != ILIMITADO and uso[recurso] > limite:
+            excesos.append(f"{recurso} ({uso[recurso]} > {limite})")
+    return excesos
+
+
 async def exigir_cupo(session: AsyncSession, ctx: ContextoTenant, recurso: str) -> None:
     """Rechaza la creacion de un recurso cuando el tenant llego al tope del plan.
 

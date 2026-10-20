@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import get_settings
 from app.database import get_db
 from app.email_utils import send_reset_email
-from app.models import Cliente, Usuario
+from app.models import Cliente, Tenant, Usuario
 from app.services.bitacora import registrar_bitacora
 from app.schemas.auth import (
     ForgotPasswordRequest,
@@ -150,6 +150,23 @@ async def login(payload: LoginRequest, request: Request, session: AsyncSession =
                 "Credenciales invalidas. "
                 f"Te quedan {restantes} intento(s) antes de bloquear la cuenta."
             ),
+        )
+
+    # Empresa suspendida por la plataforma (migracion 016): la contrasena es
+    # correcta pero la organizacion no tiene la suscripcion activa. Se valida
+    # DESPUES de la contrasena para no revelar el estado de una empresa a
+    # quien no tiene credenciales validas.
+    estado_tenant = await session.scalar(
+        select(Tenant.estado).where(Tenant.idTenant == usuario.idTenant)
+    )
+    if estado_tenant is not None and estado_tenant != "Activo":
+        await registrar_bitacora(
+            session, "Intento de inicio de sesion con empresa suspendida", usuario.idUser, ip
+        )
+        await session.commit()
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="La suscripcion de tu organizacion esta suspendida. Contacta al administrador de la plataforma.",
         )
 
     usuario.intentosFallidos = 0

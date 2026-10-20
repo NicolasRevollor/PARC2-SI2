@@ -542,6 +542,33 @@ export interface TenantMeOut {
   uso: UsoTenantOut;
 }
 
+// Consola de plataforma (superadministrador — migración 016)
+export type EstadoTenant = 'Activo' | 'Suspendido';
+
+export interface EmpresaOut {
+  tenant: TenantOut;
+  plan: PlanOut;
+  uso: UsoTenantOut;
+  adminCorreo: string | null;
+}
+
+export interface ResumenPlataforma {
+  totalEmpresas: number;
+  activas: number;
+  suspendidas: number;
+  ingresoMensual: number;
+  porPlan: { codigo: string; nombre: string; empresas: number }[];
+}
+
+export interface EmpresaIn {
+  nombre: string;
+  slug: string;
+  codigoPlan: string;
+  adminNombre: string;
+  adminCorreo: string;
+  adminPassword: string;
+}
+
 // ─────────────────────────────────────────────
 // DEVOLUCIONES Y CAMBIOS DE TALLA (CU28 — migración 015)
 // ─────────────────────────────────────────────

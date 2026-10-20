@@ -13,6 +13,7 @@ y los casos de uso de los endpoints efectivamente implementados.
 | **Encargado de Sucursal** | `rol.codigoRol = 2` | Inventario, despachos, reservas de su sucursal |
 | **Administrador** | `rol.codigoRol = 1` | Todo lo anterior + personal, planes y reportes |
 | **Proveedor** | `rol.codigoRol = 4` | Catálogo asociado a sus productos |
+| **Superadministrador** | rol `Superadministrador` (migración 016) | Opera la plataforma SaaS: todas las empresas suscritas |
 | *Pasarela de Pagos* (Stripe) | Sistema externo | Cobros con tarjeta |
 | *Motor de IA* (Gemini) | Sistema externo | Recomendaciones, chat y análisis multi-sucursal |
 | *Almacenamiento* (Supabase) | Sistema externo | Imágenes de producto |
@@ -32,6 +33,7 @@ actor "Cajero" as Cajero
 actor "Encargado\nde Sucursal" as Encargado
 actor "Administrador" as Admin
 actor "Proveedor" as Proveedor
+actor "Superadministrador" as SuperAdmin
 
 actor "Pasarela de Pagos" as Stripe <<sistema>>
 actor "Motor de IA" as Gemini <<sistema>>
@@ -94,6 +96,7 @@ rectangle "YouShop Collective" {
     usecase "Instalar aplicación (PWA)" as UC_PWA
     usecase "Operar sin conexión\ncon base local" as UC_OFFLINE
     usecase "Sincronizar cola pendiente" as UC_SYNC
+    usecase "Gestionar empresas suscritas\n(alta, plan, suspensión)" as UC_EMPRESAS
   }
 }
 
@@ -139,6 +142,10 @@ Admin --> UC_CAMBIOPLAN
 
 Proveedor --> UC_LOGIN
 Proveedor --> UC_PROD
+
+SuperAdmin --> UC_LOGIN
+SuperAdmin --> UC_EMPRESAS
+UC_EMPRESAS ..> UC_CUPO : <<include>>
 
 UC_COMPRA ..> UC_COMPROB : <<include>>
 UC_POS ..> UC_COMPROB : <<include>>
@@ -212,6 +219,21 @@ UC_PWD --> Correo
 - **Regla:** la IA solo interpreta métricas ya calculadas; nunca produce
   cifras propias, y las sucursales que no estaban en los datos se descartan.
 - **Excepciones:** plan sin IA → **402**; motor no configurado → **503**.
+
+### CU31 — Gestionar empresas suscritas (consola de plataforma)
+
+- **Actor principal:** Superadministrador.
+- **Precondición:** el usuario tiene el permiso `plataforma.admin`, que solo
+  recibe el rol Superadministrador (ningún Administrador de empresa lo tiene).
+- **Flujo básico:** ve todas las empresas con su plan, consumo de cupos,
+  administrador y estado, más el ingreso mensual de la plataforma; puede dar
+  de alta una empresa con su administrador inicial, cambiarle el plan o
+  suspenderla (`/api/platform/*`).
+- **Postcondición:** una empresa suspendida no puede iniciar sesión hasta que
+  se la reactive.
+- **Excepciones:** bajar de plan cuando el consumo supera los nuevos topes →
+  **409**; suspender la empresa operadora → **409**; un rol sin
+  `plataforma.admin` → **403**.
 
 ### CU30 — PWA, operación sin conexión y sincronización
 

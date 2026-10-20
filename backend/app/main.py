@@ -19,6 +19,7 @@ from app.routers import (
     logs,
     payment_methods,
     payments,
+    platform,
     products,
     purchase_history,
     recommendations,
@@ -105,5 +106,6 @@ for router in (
     logs.router,
     tenants.router,
     returns.router,
+    platform.router,
 ):
     app.include_router(router)
