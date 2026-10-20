@@ -123,6 +123,13 @@ docker exec -i ropaDocker \
   -v ON_ERROR_STOP=1 \
   -f /dev/stdin \
   < database/migrations/017_superadmin_solo_plataforma.sql
+
+# 15) Migracion 018 (registro de respaldos por empresa). Depende de la 014.
+docker exec -i ropaDocker \
+  psql -U yimysito -d ropaDB \
+  -v ON_ERROR_STOP=1 \
+  -f /dev/stdin \
+  < database/migrations/018_respaldos_empresas.sql
 ```
 
 > **Las migraciones 014 y 015 no son opcionales.** Los modelos SQLAlchemy ya

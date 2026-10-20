@@ -3,6 +3,8 @@
 **/__pycache__/
 *.pyc
 backend/.env
+# Respaldos locales de empresas (datos personales: nunca a Git)
+backend/respaldos/
 backend/*.env
 !backend/.env.example
 

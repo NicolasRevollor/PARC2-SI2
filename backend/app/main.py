@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 from app.config import get_settings
 from app.routers import (
     auth,
+    backups,
     branches,
     chat,
     cities,
@@ -107,5 +108,6 @@ for router in (
     tenants.router,
     returns.router,
     platform.router,
+    backups.router,
 ):
     app.include_router(router)

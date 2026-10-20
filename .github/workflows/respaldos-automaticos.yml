@@ -1,0 +1,48 @@
+# Respaldos automaticos de todas las empresas activas (migracion 018).
+#
+# Llama al backend en Render una vez por dia. El backend respalda cada empresa
+# activa en el bucket privado de Supabase y borra los automaticos que exceden
+# BACKUP_RETENCION_AUTOMATICOS.
+#
+# Secretos que hay que crear en GitHub (Settings -> Secrets and variables ->
+# Actions -> New repository secret):
+#   API_URL            -> URL del backend, ej. https://parc2-si2.onrender.com (sin "/" final)
+#   BACKUP_CRON_SECRET -> el MISMO valor que la variable BACKUP_CRON_SECRET en Render
+#
+# Tambien se puede correr a mano: pestana Actions -> "Respaldos automaticos"
+# -> Run workflow.
+
+name: Respaldos automaticos
+
+on:
+  schedule:
+    # 06:00 UTC = 02:00 en Bolivia (UTC-4), fuera del horario de atencion.
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+jobs:
+  respaldar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Despertar el backend (Render gratuito duerme tras 15 min sin trafico)
+        run: |
+          for intento in 1 2 3 4 5 6; do
+            if curl -fsS --max-time 60 "${{ secrets.API_URL }}/health" > /dev/null; then
+              echo "Backend despierto"
+              exit 0
+            fi
+            echo "Intento $intento: el backend todavia no responde, reintentando..."
+            sleep 20
+          done
+          echo "El backend no respondio" >&2
+          exit 1
+
+      - name: Ejecutar los respaldos
+        run: |
+          respuesta=$(curl -fsS --max-time 600 -X POST \
+            "${{ secrets.API_URL }}/api/platform/backups/automaticos" \
+            -H "X-Backup-Secret: ${{ secrets.BACKUP_CRON_SECRET }}")
+          echo "$respuesta"
+          # Falla el job (y GitHub avisa por correo) si alguna empresa no se pudo respaldar.
+          echo "$respuesta" | python3 -c "import json,sys; r=json.load(sys.stdin); sys.exit(1 if r['fallidos'] else 0)"

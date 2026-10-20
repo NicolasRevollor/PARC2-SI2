@@ -1,4 +1,4 @@
-from datetime import datetime, date, time
+from datetime import datetime, date, time, timezone
 
 from sqlalchemy import (
     BigInteger,
@@ -367,6 +367,38 @@ class Historial(Base):
     idProducto: Mapped[int] = mapped_column(ForeignKey("producto.idProducto", onupdate="CASCADE"), nullable=False)
     idCliente: Mapped[int] = mapped_column(ForeignKey("Cliente.idCliente", onupdate="CASCADE"), nullable=False)
     idVenta: Mapped[int] = mapped_column(ForeignKey("Venta.idVenta", ondelete="CASCADE", onupdate="CASCADE"), nullable=False)
+
+
+class Respaldo(Base):
+    """Registro de un respaldo (backup) de UNA empresa (migracion 018). El
+    archivo vive en el bucket privado de respaldos o en disco local; aca solo
+    queda donde esta y como salio."""
+
+    __tablename__ = "respaldo"
+    __table_args__ = (
+        CheckConstraint("tipo IN ('manual', 'automatico')", name="chk_respaldo_tipo"),
+        CheckConstraint("estado IN ('Completado', 'Fallido')", name="chk_respaldo_estado"),
+        CheckConstraint("almacenamiento IN ('supabase', 'local')", name="chk_respaldo_almacenamiento"),
+        Index("idx_respaldo_tenant_fecha", "idTenant", "creadoEn"),
+    )
+
+    idRespaldo: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    idTenant: Mapped[int] = mapped_column(
+        ForeignKey("tenant.idTenant", ondelete="CASCADE", onupdate="CASCADE"), nullable=False
+    )
+    tipo: Mapped[str] = mapped_column(String(12), nullable=False)
+    estado: Mapped[str] = mapped_column(String(12), nullable=False)
+    almacenamiento: Mapped[str] = mapped_column(String(10), nullable=False)
+    ruta: Mapped[str | None] = mapped_column(String(255))
+    tamanoBytes: Mapped[int] = mapped_column(BigInteger, default=0, nullable=False)
+    filas: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    error: Mapped[str | None] = mapped_column(String(500))
+    creadoEn: Mapped[datetime] = mapped_column(
+        TIMESTAMP(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
+    )
+    idUsuario: Mapped[int | None] = mapped_column(
+        ForeignKey("Usuario.idUser", ondelete="SET NULL", onupdate="CASCADE")
+    )
 
 
 class Devolucion(Base):

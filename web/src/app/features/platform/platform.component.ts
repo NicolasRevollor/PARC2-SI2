@@ -4,6 +4,10 @@ import { FormsModule } from '@angular/forms';
 import { PlatformService } from '../../core/services/platform.service';
 import { TenantService } from '../../core/services/tenant.service';
 import { EmpresaIn, EmpresaOut } from '../../core/models';
+import { PlatformAuditComponent } from './platform-audit.component';
+import { PlatformBackupsComponent } from './platform-backups.component';
+
+type PestanaPlataforma = 'empresas' | 'bitacora' | 'respaldos';
 
 /**
  * Consola de plataforma del superadministrador (migración 016): ve y gestiona
@@ -13,7 +17,7 @@ import { EmpresaIn, EmpresaOut } from '../../core/models';
 @Component({
   selector: 'app-platform',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, PlatformAuditComponent, PlatformBackupsComponent],
   template: `
     <div class="p-6 md:p-8 space-y-6 max-w-[1400px] mx-auto animate-in fade-in duration-200">
 
@@ -25,13 +29,27 @@ import { EmpresaIn, EmpresaOut } from '../../core/models';
             Todas las organizaciones que operan sobre la plataforma: plan, consumo y estado de la suscripción.
           </p>
         </div>
-        <button (click)="abrirAlta()"
+        <button *ngIf="pestana() === 'empresas'" (click)="abrirAlta()"
                 class="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold uppercase tracking-wide transition-colors shadow-xs flex items-center gap-2 cursor-pointer">
           <span class="material-symbols-outlined text-[18px]">add_business</span>
           <span>Nueva empresa</span>
         </button>
       </div>
 
+      <!-- Pestanas de la consola -->
+      <div class="flex items-center gap-1 border-b border-gray-200">
+        <button *ngFor="let t of pestanas" (click)="pestana.set(t.id)"
+                class="px-4 py-2.5 text-xs font-bold uppercase tracking-wide border-b-2 transition-colors cursor-pointer flex items-center gap-1.5 bg-transparent"
+                [ngClass]="pestana() === t.id ? 'text-indigo-600 border-indigo-600' : 'text-gray-500 border-transparent hover:text-gray-900'">
+          <span class="material-symbols-outlined text-[16px]">{{ t.icono }}</span>
+          {{ t.etiqueta }}
+        </button>
+      </div>
+
+      <app-platform-audit *ngIf="pestana() === 'bitacora'"></app-platform-audit>
+      <app-platform-backups *ngIf="pestana() === 'respaldos'"></app-platform-backups>
+
+      <ng-container *ngIf="pestana() === 'empresas'">
       <!-- Indicadores de la plataforma -->
       <div *ngIf="platformService.resumen() as r" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div class="bg-[#18191d] p-5 rounded-xl border border-gray-200 shadow-2xs">
@@ -77,7 +95,26 @@ import { EmpresaIn, EmpresaOut } from '../../core/models';
             <tbody class="divide-y divide-gray-100">
               <tr *ngFor="let e of platformService.empresas()" class="hover:bg-gray-50 transition-colors">
                 <td class="px-5 py-3">
-                  <p class="font-semibold text-gray-900">{{ e.tenant.nombre }}</p>
+                  <div *ngIf="editandoNombre() !== e.tenant.idTenant" class="flex items-center gap-1.5 group/nombre">
+                    <p class="font-semibold text-gray-900">{{ e.tenant.nombre }}</p>
+                    <button (click)="empezarEdicion(e)" title="Cambiar nombre"
+                            class="p-0.5 rounded text-gray-400 hover:text-indigo-600 bg-transparent border-0 cursor-pointer opacity-60 group-hover/nombre:opacity-100">
+                      <span class="material-symbols-outlined text-[15px]">edit</span>
+                    </button>
+                  </div>
+                  <div *ngIf="editandoNombre() === e.tenant.idTenant" class="flex items-center gap-1.5">
+                    <input type="text" [(ngModel)]="nombreEditado" (keyup.enter)="guardarNombre(e)" (keyup.escape)="cancelarEdicion()"
+                           maxlength="120" autofocus
+                           class="px-2 py-1 bg-gray-50 border border-indigo-200 rounded-lg text-xs text-gray-900 focus:ring-2 focus:ring-indigo-500 focus:outline-none w-44" />
+                    <button (click)="guardarNombre(e)" [disabled]="nombreEditado.trim().length < 2" title="Guardar"
+                            class="p-1 rounded text-emerald-600 hover:bg-emerald-50 bg-transparent border-0 cursor-pointer disabled:opacity-40">
+                      <span class="material-symbols-outlined text-[16px]">check</span>
+                    </button>
+                    <button (click)="cancelarEdicion()" title="Cancelar"
+                            class="p-1 rounded text-gray-400 hover:bg-gray-100 bg-transparent border-0 cursor-pointer">
+                      <span class="material-symbols-outlined text-[16px]">close</span>
+                    </button>
+                  </div>
                   <p class="text-[10px] text-gray-400 font-mono">{{ e.tenant.slug }} · desde {{ e.tenant.fechaAlta | date: 'dd/MM/yyyy' }}</p>
                 </td>
                 <td class="px-5 py-3 text-gray-600">{{ e.adminCorreo || '—' }}</td>
@@ -101,7 +138,11 @@ import { EmpresaIn, EmpresaOut } from '../../core/models';
                     {{ e.tenant.estado }}
                   </span>
                 </td>
-                <td class="px-5 py-3 text-right">
+                <td class="px-5 py-3 text-right whitespace-nowrap">
+                  <button (click)="respaldar(e)" [disabled]="procesando() === e.tenant.idTenant" title="Respaldar ahora"
+                          class="p-1.5 mr-1 rounded-lg text-indigo-600 hover:bg-indigo-50 bg-transparent border-0 cursor-pointer disabled:opacity-40 align-middle">
+                    <span class="material-symbols-outlined text-[18px]">backup</span>
+                  </button>
                   <button *ngIf="e.tenant.idTenant !== 1"
                           (click)="alternarEstado(e)" [disabled]="procesando() === e.tenant.idTenant"
                           class="px-3 py-1.5 rounded-lg text-[11px] font-bold uppercase tracking-wide border transition-colors cursor-pointer disabled:opacity-50"
@@ -117,6 +158,7 @@ import { EmpresaIn, EmpresaOut } from '../../core/models';
           </table>
         </div>
       </div>
+      </ng-container>
     </div>
 
     <!-- Modal: alta de empresa -->
@@ -180,6 +222,17 @@ import { EmpresaIn, EmpresaOut } from '../../core/models';
   `
 })
 export class PlatformComponent implements OnInit {
+  readonly pestanas: { id: PestanaPlataforma; etiqueta: string; icono: string }[] = [
+    { id: 'empresas', etiqueta: 'Empresas', icono: 'domain' },
+    { id: 'bitacora', etiqueta: 'Bitácora', icono: 'history' },
+    { id: 'respaldos', etiqueta: 'Respaldos', icono: 'backup' },
+  ];
+  readonly pestana = signal<PestanaPlataforma>('empresas');
+
+  /** idTenant de la empresa cuyo nombre se está editando (null: ninguna). */
+  readonly editandoNombre = signal<number | null>(null);
+  nombreEditado = '';
+
   readonly mostrarAlta = signal<boolean>(false);
   readonly guardando = signal<boolean>(false);
   /** idTenant de la fila con una operación en curso (deshabilita sus controles). */
@@ -235,6 +288,33 @@ export class PlatformComponent implements OnInit {
       // recarga para que vuelva a reflejar el plan real.
       await this.platformService.cargar();
     }
+    this.procesando.set(null);
+  }
+
+  empezarEdicion(empresa: EmpresaOut): void {
+    this.nombreEditado = empresa.tenant.nombre;
+    this.editandoNombre.set(empresa.tenant.idTenant);
+  }
+
+  cancelarEdicion(): void {
+    this.editandoNombre.set(null);
+  }
+
+  async guardarNombre(empresa: EmpresaOut): Promise<void> {
+    const nombre = this.nombreEditado.trim();
+    if (nombre.length < 2) return;
+    if (nombre === empresa.tenant.nombre) {
+      this.cancelarEdicion();
+      return;
+    }
+    if (await this.platformService.renombrar(empresa.tenant.idTenant, nombre)) {
+      this.cancelarEdicion();
+    }
+  }
+
+  async respaldar(empresa: EmpresaOut): Promise<void> {
+    this.procesando.set(empresa.tenant.idTenant);
+    await this.platformService.respaldarAhora(empresa.tenant.idTenant);
     this.procesando.set(null);
   }
 

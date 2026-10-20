@@ -9,19 +9,25 @@ Por eso todo el router exige "plataforma.admin", un permiso que solo tiene el
 rol Superadministrador. Ningun Administrador de empresa lo recibe.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Request
-from sqlalchemy import func, select
+from datetime import date
+from math import ceil
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.models import Plan, Rol, Tenant, Usuario, TENANT_POR_DEFECTO
+from app.models import Bitacora, Plan, Rol, Tenant, Usuario, TENANT_POR_DEFECTO
 from app.schemas.tenancy import (
+    BitacoraEntradaOut,
+    BitacoraPaginadaOut,
     CambiarEstadoIn,
     CambiarPlanIn,
     EmpresaIn,
     EmpresaOut,
     PlanOut,
     PlanResumenOut,
+    RenombrarEmpresaIn,
     ResumenPlataformaOut,
     TenantOut,
     UsoTenantOut,
@@ -158,6 +164,99 @@ async def crear_empresa(
     await session.commit()
     await session.refresh(tenant)
     return await _empresa_out(session, tenant, plan)
+
+
+@router.patch("/tenants/{id_tenant}", response_model=EmpresaOut)
+async def renombrar_empresa(
+    id_tenant: int,
+    payload: RenombrarEmpresaIn,
+    request: Request,
+    session: AsyncSession = Depends(get_db),
+    auth: dict = Depends(require_permiso(PERMISO)),
+):
+    """Cambia el nombre visible de la empresa. El identificador (slug) NO
+    cambia: es estable a proposito, porque puede estar en enlaces o
+    integraciones de la empresa."""
+    tenant, plan = await _tenant_con_plan(session, id_tenant)
+    anterior = tenant.nombre
+    if payload.nombre == anterior:
+        return await _empresa_out(session, tenant, plan)
+
+    tenant.nombre = payload.nombre
+    await registrar_bitacora(
+        session,
+        f"Plataforma: empresa {id_tenant} renombrada '{anterior}' -> '{payload.nombre}'"[:150],
+        int(auth["sub"]),
+        _ip(request),
+    )
+    await session.commit()
+    await session.refresh(tenant)
+    return await _empresa_out(session, tenant, plan)
+
+
+@router.get("/bitacora", response_model=BitacoraPaginadaOut)
+async def bitacora_global(
+    page: int = Query(1, ge=1),
+    size: int = Query(25, ge=1, le=100),
+    idTenant: int | None = None,
+    q: str | None = Query(None, max_length=100, description="Busca en la accion, el nombre o el correo del usuario"),
+    fecha_desde: date | None = None,
+    fecha_hasta: date | None = None,
+    session: AsyncSession = Depends(get_db),
+    _=Depends(require_permiso(PERMISO)),
+):
+    """Bitacora de TODAS las empresas, de la mas reciente a la mas antigua.
+
+    La tabla Bitacora no guarda la empresa: se obtiene por el usuario que hizo
+    la accion (Bitacora -> Usuario.idTenant -> tenant).
+    """
+    filtros = []
+    if idTenant is not None:
+        filtros.append(Usuario.idTenant == idTenant)
+    if q:
+        patron = f"%{q.strip()}%"
+        filtros.append(or_(Bitacora.accion.ilike(patron), Usuario.nombre.ilike(patron), Usuario.correo.ilike(patron)))
+    if fecha_desde is not None:
+        filtros.append(Bitacora.fecha >= fecha_desde)
+    if fecha_hasta is not None:
+        filtros.append(Bitacora.fecha <= fecha_hasta)
+
+    base = (
+        select(Bitacora, Usuario, Tenant)
+        .join(Usuario, Usuario.idUser == Bitacora.idUser)
+        .join(Tenant, Tenant.idTenant == Usuario.idTenant)
+        .where(*filtros)
+    )
+    total = await session.scalar(select(func.count()).select_from(base.subquery())) or 0
+    filas = (
+        await session.execute(
+            base.order_by(Bitacora.fecha.desc(), Bitacora.hora.desc(), Bitacora.idBitacora.desc())
+            .offset((page - 1) * size)
+            .limit(size)
+        )
+    ).all()
+
+    return BitacoraPaginadaOut(
+        items=[
+            BitacoraEntradaOut(
+                idBitacora=b.idBitacora,
+                fecha=b.fecha.isoformat(),
+                hora=b.hora.strftime("%H:%M:%S"),
+                accion=b.accion,
+                ip=str(b.ip),
+                idUser=u.idUser,
+                usuarioNombre=u.nombre,
+                usuarioCorreo=u.correo,
+                idTenant=t.idTenant,
+                empresa=t.nombre,
+            )
+            for b, u, t in filas
+        ],
+        total=total,
+        page=page,
+        size=size,
+        pages=ceil(total / size) if total else 0,
+    )
 
 
 @router.patch("/tenants/{id_tenant}/plan", response_model=EmpresaOut)

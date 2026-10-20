@@ -45,6 +45,20 @@ class Settings(BaseSettings):
     SUPABASE_SERVICE_ROLE_KEY: str | None = None
     SUPABASE_STORAGE_BUCKET: str = "primSI2"
 
+    # Respaldos por empresa (migracion 018). BACKUP_BUCKET es un bucket
+    # PRIVADO de Supabase, distinto del de imagenes (que es publico): los
+    # respaldos traen datos personales y hashes de contrasenas. Sin bucket, los
+    # archivos van a disco local (BACKUP_DIR_LOCAL), que sirve en desarrollo
+    # pero en Render se BORRA en cada redeploy.
+    BACKUP_BUCKET: str | None = None
+    BACKUP_DIR_LOCAL: str = "respaldos"
+    # Secreto que debe mandar el disparador externo (GitHub Actions) para
+    # correr los respaldos automaticos. Sin el, el endpoint queda deshabilitado.
+    BACKUP_CRON_SECRET: str | None = None
+    # Cuantos respaldos AUTOMATICOS se conservan por empresa (los manuales no
+    # se borran solos).
+    BACKUP_RETENCION_AUTOMATICOS: int = 7
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

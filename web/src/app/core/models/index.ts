@@ -569,6 +569,57 @@ export interface EmpresaIn {
   adminPassword: string;
 }
 
+export interface Paginado<T> {
+  items: T[];
+  total: number;
+  page: number;
+  size: number;
+  pages: number;
+}
+
+export interface BitacoraEntrada {
+  idBitacora: number;
+  fecha: string;
+  hora: string;
+  accion: string;
+  ip: string;
+  idUser: number;
+  usuarioNombre: string;
+  usuarioCorreo: string;
+  idTenant: number;
+  empresa: string;
+}
+
+export interface FiltrosBitacora {
+  page: number;
+  size: number;
+  idTenant?: number | null;
+  q?: string;
+  fecha_desde?: string;
+  fecha_hasta?: string;
+}
+
+// Respaldos por empresa (migración 018)
+export interface Respaldo {
+  idRespaldo: number;
+  idTenant: number;
+  empresa: string;
+  tipo: 'manual' | 'automatico';
+  estado: 'Completado' | 'Fallido';
+  almacenamiento: 'supabase' | 'local';
+  tamanoBytes: number;
+  filas: number;
+  error: string | null;
+  creadoEn: string;
+  creadoPor: string | null;
+}
+
+export interface RespaldoConfig {
+  almacenamiento: 'supabase' | 'local';
+  automaticosHabilitados: boolean;
+  retencionAutomaticos: number;
+}
+
 // ─────────────────────────────────────────────
 // DEVOLUCIONES Y CAMBIOS DE TALLA (CU28 — migración 015)
 // ─────────────────────────────────────────────

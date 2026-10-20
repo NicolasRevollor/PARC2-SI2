@@ -102,3 +102,36 @@ class EmpresaIn(BaseModel):
 
 class CambiarEstadoIn(BaseModel):
     estado: EstadoTenant
+
+
+class RenombrarEmpresaIn(BaseModel):
+    nombre: str = Field(min_length=2, max_length=120)
+
+    @field_validator("nombre")
+    @classmethod
+    def _sin_espacios_sobrantes(cls, v: str) -> str:
+        limpio = " ".join(v.split())
+        if len(limpio) < 2:
+            raise ValueError("El nombre debe tener al menos 2 caracteres")
+        return limpio
+
+
+class BitacoraEntradaOut(BaseModel):
+    idBitacora: int
+    fecha: str
+    hora: str
+    accion: str
+    ip: str
+    idUser: int
+    usuarioNombre: str
+    usuarioCorreo: str
+    idTenant: int
+    empresa: str
+
+
+class BitacoraPaginadaOut(BaseModel):
+    items: list[BitacoraEntradaOut]
+    total: int
+    page: int
+    size: int
+    pages: int

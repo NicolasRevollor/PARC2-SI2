@@ -229,6 +229,11 @@ UC_PWD --> Correo
   administrador y estado, más el ingreso mensual de la plataforma; puede dar
   de alta una empresa con su administrador inicial, cambiarle el plan o
   suspenderla (`/api/platform/*`).
+- **Flujos adicionales:** cambiar el nombre visible de una empresa (el
+  identificador no cambia); consultar la **bitácora de todas las empresas**
+  con paginación y filtros por empresa, texto y fechas; generar, descargar y
+  eliminar **respaldos por empresa** (manuales desde la consola, automáticos
+  diarios disparados por GitHub Actions, con retención configurable).
 - **Postcondición:** una empresa suspendida no puede iniciar sesión hasta que
   se la reactive.
 - **Excepciones:** bajar de plan cuando el consumo supera los nuevos topes →

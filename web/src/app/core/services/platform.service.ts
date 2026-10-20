@@ -1,7 +1,17 @@
 import { Injectable, signal } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpParams } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
-import { EmpresaIn, EmpresaOut, EstadoTenant, ResumenPlataforma } from '../models';
+import {
+  BitacoraEntrada,
+  EmpresaIn,
+  EmpresaOut,
+  EstadoTenant,
+  FiltrosBitacora,
+  Paginado,
+  Respaldo,
+  RespaldoConfig,
+  ResumenPlataforma,
+} from '../models';
 import { NotificationService } from './notification.service';
 import { environment } from '../../../environments/environment';
 
@@ -93,6 +103,109 @@ export class PlatformService {
       return true;
     } catch (err) {
       this.notificationService.error('No se pudo cambiar el plan', this.detalle(err, 'Intentá de nuevo.'));
+      return false;
+    }
+  }
+
+  async renombrar(idTenant: number, nombre: string): Promise<boolean> {
+    try {
+      const empresa = await firstValueFrom(
+        this.http.patch<EmpresaOut>(`${API_URL}/api/platform/tenants/${idTenant}`, { nombre })
+      );
+      this.reemplazar(empresa);
+      this.notificationService.success('Empresa renombrada', `Ahora se llama "${empresa.tenant.nombre}".`);
+      return true;
+    } catch (err) {
+      this.notificationService.error('No se pudo renombrar', this.detalle(err, 'Revisá el nombre e intentá de nuevo.'));
+      return false;
+    }
+  }
+
+  // --- Bitácora de todas las empresas -------------------------------------
+
+  async cargarBitacora(filtros: FiltrosBitacora): Promise<Paginado<BitacoraEntrada> | null> {
+    let params = new HttpParams().set('page', filtros.page).set('size', filtros.size);
+    if (filtros.idTenant) params = params.set('idTenant', filtros.idTenant);
+    if (filtros.q?.trim()) params = params.set('q', filtros.q.trim());
+    if (filtros.fecha_desde) params = params.set('fecha_desde', filtros.fecha_desde);
+    if (filtros.fecha_hasta) params = params.set('fecha_hasta', filtros.fecha_hasta);
+    try {
+      return await firstValueFrom(
+        this.http.get<Paginado<BitacoraEntrada>>(`${API_URL}/api/platform/bitacora`, { params })
+      );
+    } catch (err) {
+      this.notificationService.error('Error', this.detalle(err, 'No se pudo cargar la bitácora.'));
+      return null;
+    }
+  }
+
+  // --- Respaldos ------------------------------------------------------------
+
+  async configRespaldos(): Promise<RespaldoConfig | null> {
+    try {
+      return await firstValueFrom(this.http.get<RespaldoConfig>(`${API_URL}/api/platform/backups/config`));
+    } catch {
+      return null;
+    }
+  }
+
+  async listarRespaldos(page: number, size: number, idTenant?: number | null): Promise<Paginado<Respaldo> | null> {
+    let params = new HttpParams().set('page', page).set('size', size);
+    if (idTenant) params = params.set('idTenant', idTenant);
+    try {
+      return await firstValueFrom(this.http.get<Paginado<Respaldo>>(`${API_URL}/api/platform/backups`, { params }));
+    } catch (err) {
+      this.notificationService.error('Error', this.detalle(err, 'No se pudieron cargar los respaldos.'));
+      return null;
+    }
+  }
+
+  async respaldarAhora(idTenant: number): Promise<Respaldo | null> {
+    try {
+      const respaldo = await firstValueFrom(
+        this.http.post<Respaldo>(`${API_URL}/api/platform/backups`, { idTenant })
+      );
+      this.notificationService.success(
+        'Respaldo generado',
+        `${respaldo.empresa}: ${respaldo.filas} registros (${(respaldo.tamanoBytes / 1024).toFixed(1)} KB).`
+      );
+      return respaldo;
+    } catch (err) {
+      this.notificationService.error('El respaldo falló', this.detalle(err, 'Intentá de nuevo.'));
+      return null;
+    }
+  }
+
+  async descargarRespaldo(respaldo: Respaldo): Promise<void> {
+    try {
+      const resp = await firstValueFrom(
+        this.http.get(`${API_URL}/api/platform/backups/${respaldo.idRespaldo}/descargar`, {
+          responseType: 'blob',
+          observe: 'response',
+        })
+      );
+      const disposicion = resp.headers.get('Content-Disposition') ?? '';
+      const nombre = /filename="([^"]+)"/.exec(disposicion)?.[1] ?? `respaldo-${respaldo.idRespaldo}.json.gz`;
+      const url = URL.createObjectURL(resp.body as Blob);
+      const enlace = document.createElement('a');
+      enlace.href = url;
+      enlace.download = nombre;
+      document.body.appendChild(enlace);
+      enlace.click();
+      enlace.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      this.notificationService.error('No se pudo descargar', this.detalle(err, 'El archivo no está disponible.'));
+    }
+  }
+
+  async borrarRespaldo(idRespaldo: number): Promise<boolean> {
+    try {
+      await firstValueFrom(this.http.delete(`${API_URL}/api/platform/backups/${idRespaldo}`));
+      this.notificationService.success('Respaldo eliminado', 'Se borró el archivo y su registro.');
+      return true;
+    } catch (err) {
+      this.notificationService.error('No se pudo eliminar', this.detalle(err, 'Intentá de nuevo.'));
       return false;
     }
   }
