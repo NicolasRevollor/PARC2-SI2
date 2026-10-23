@@ -34,17 +34,29 @@ class _CartModalState extends State<CartModal> {
   int? _idMetPagoRetenido;
   List<Map<String, dynamic>>? _itemsRetenidos;
 
-  List<Map<String, dynamic>> _itemsDesdeCarrito(AppState appState) {
-    return appState.cart
-        .map((item) => {
-              'idProducto': int.parse(item.product.id),
-              'cantidad': item.quantity,
-            })
-        .toList();
+  /// `null` si el carrito tiene productos de demostracion (ids "prod-1"...):
+  /// quedan en pantalla cuando el catalogo real no cargo, y `int.parse`
+  /// lanzaba FormatException fuera del try — el boton de pagar no hacia nada.
+  List<Map<String, dynamic>>? _itemsDesdeCarrito(AppState appState) {
+    final items = <Map<String, dynamic>>[];
+    for (final item in appState.cart) {
+      final idProducto = int.tryParse(item.product.id);
+      if (idProducto == null) return null;
+      items.add({'idProducto': idProducto, 'cantidad': item.quantity});
+    }
+    return items;
   }
 
   Future<void> _iniciarCheckout(AppState appState) async {
     final items = _itemsDesdeCarrito(appState);
+    if (items == null) {
+      setState(() {
+        _status = _CheckoutStatus.error;
+        _errorMessage =
+            'Tu carrito tiene productos de demostracion. Recarga el catalogo con conexion y vuelve a agregarlos.';
+      });
+      return;
+    }
     setState(() {
       _status = _CheckoutStatus.cobrando;
       _errorMessage = null;

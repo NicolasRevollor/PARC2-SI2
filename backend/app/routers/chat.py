@@ -6,7 +6,8 @@ from app.database import get_db
 from app.models import Cliente
 from app.schemas.chat import ChatIn, ChatOut
 from app.security import get_current_payload
-from app.services.chat_gemini import GeminiNoConfigurado, responder_chat
+from app.services.chat_gemini import ChatNoDisponible, GeminiNoConfigurado, responder_chat
+from app.services.tenancy import tenant_actual
 
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 
@@ -32,11 +33,17 @@ async def chat(
             id_cliente=cliente.idCliente,
             mensaje=payload.mensaje,
             historial=payload.historial,
+            id_tenant=tenant_actual(auth),
         )
     except GeminiNoConfigurado:
         raise HTTPException(
             status_code=503,
             detail="El asistente virtual no esta configurado en este servidor",
+        )
+    except ChatNoDisponible:
+        raise HTTPException(
+            status_code=503,
+            detail="El asistente virtual no esta disponible en este momento. Intenta de nuevo en unos minutos.",
         )
 
     return ChatOut(respuesta=respuesta, historial=historial)

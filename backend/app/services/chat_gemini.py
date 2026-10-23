@@ -24,9 +24,11 @@ from app.schemas.chat import ChatMensaje
 
 try:
     from google import genai
+    from google.genai import errors as genai_errors
     from google.genai import types
 except ImportError:  # pragma: no cover - google-genai siempre deberia estar instalado
     genai = None
+    genai_errors = None
     types = None
 
 settings = get_settings()
@@ -58,6 +60,10 @@ class GeminiNoConfigurado(RuntimeError):
     """`GEMINI_API_KEY` no esta configurada o el paquete `google-genai` falta."""
 
 
+class ChatNoDisponible(RuntimeError):
+    """Gemini respondio con error (clave rechazada, sobrecarga, cuota...)."""
+
+
 def gemini_configurado() -> bool:
     return genai is not None and bool(settings.GEMINI_API_KEY)
 
@@ -72,12 +78,15 @@ def _client() -> "genai.Client":
 
 async def buscar_productos(
     session: AsyncSession,
+    id_tenant: int,
     query: str | None = None,
     tipo: str | None = None,
     color: str | None = None,
     talla: str | None = None,
 ) -> list[dict]:
-    filters = []
+    # Solo el catalogo de la organizacion del cliente: antes el asistente
+    # ofrecia prendas de otras empresas que no aparecen en su vitrina.
+    filters = [Producto.idTenant == id_tenant]
     if query:
         filters.append(Producto.nombre.ilike(f"%{query}%"))
     if tipo:
@@ -200,6 +209,7 @@ async def responder_chat(
     id_cliente: int,
     mensaje: str,
     historial: list[ChatMensaje],
+    id_tenant: int,
 ) -> tuple[str, list[ChatMensaje]]:
     """Orquesta un turno de chat, ejecutando herramientas manualmente hasta
     `MAX_TURNOS_HERRAMIENTAS` veces. `id_cliente` viene resuelto por el
@@ -210,7 +220,11 @@ async def responder_chat(
     # el modelo nunca los ve ni los controla.
     async def _ejecutar(nombre: str, args: dict) -> dict:
         if nombre == "buscar_productos":
-            return {"resultados": await buscar_productos(session, **args)}
+            # Solo los argumentos declarados: el modelo puede inventar claves
+            # extra ("id_tenant", "precio_max"...) que reventaban la llamada
+            # con TypeError (500) o pisaban el tenant cerrado por clausura.
+            permitidos = {k: v for k, v in args.items() if k in ("query", "tipo", "color", "talla")}
+            return {"resultados": await buscar_productos(session, id_tenant, **permitidos)}
         if nombre == "consultar_mis_ventas":
             return {"resultados": await consultar_mis_ventas(session, id_cliente)}
         if nombre == "consultar_mis_reservas":
@@ -228,11 +242,15 @@ async def responder_chat(
 
     texto_final = "No pude completar la consulta, intenta preguntar de forma mas simple."
     for _ in range(MAX_TURNOS_HERRAMIENTAS):
-        response = await client.aio.models.generate_content(
-            model=MODEL,
-            contents=contents,
-            config=config,
-        )
+        try:
+            response = await client.aio.models.generate_content(
+                model=MODEL,
+                contents=contents,
+                config=config,
+            )
+        except genai_errors.APIError as exc:
+            # Antes se escapaba como 500; el router lo traduce a 503.
+            raise ChatNoDisponible(f"Gemini respondio {exc.code}") from exc
         llamadas = response.function_calls or []
         if not llamadas:
             texto_final = response.text or ""

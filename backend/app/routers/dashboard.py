@@ -16,6 +16,7 @@ from app.schemas.dashboard import (
     VentasDiariasOut,
 )
 from app.security import require_permiso
+from app.services.tenancy import tenant_actual
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 
@@ -29,6 +30,18 @@ UMBRAL_STOCK_BAJO = 10
 # identico para todos los items de una venta multi-item -- doble conteo --
 # y las ventas confirmadas desde Reserva usan un motivo sin idVenta, canal
 # que quedaria omitido). Ver reports.py:184-190 para el detalle completo.
+#
+# Multitenencia: una linea de venta es de la organizacion duena del
+# producto (Producto.idTenant) y el stock, de la duena de la sucursal. Sin
+# estos filtros el dashboard de cualquier empresa sumaba las de todas.
+
+
+def _filtrar_fechas(stmt, fecha_desde: date | None, fecha_hasta: date | None):
+    if fecha_desde is not None:
+        stmt = stmt.where(Venta.fecha >= datetime.combine(fecha_desde, time.min))
+    if fecha_hasta is not None:
+        stmt = stmt.where(Venta.fecha <= datetime.combine(fecha_hasta, time.max))
+    return stmt
 
 
 @router.get("/kpis", response_model=KpisOut)
@@ -37,25 +50,38 @@ async def kpis(
     fecha_hasta: date | None = None,
     session: AsyncSession = Depends(get_db),
     _=Depends(require_permiso("reporte.ver")),
+    id_tenant: int = Depends(tenant_actual),
 ):
-    ventas_stmt = select(
-        func.coalesce(func.sum(DetalleVenta.cantidad * DetalleVenta.precio_unitario), 0),
-        func.coalesce(func.sum(DetalleVenta.cantidad), 0),
-    ).select_from(Venta).join(DetalleVenta, DetalleVenta.idVenta == Venta.idVenta)
-    if fecha_desde is not None:
-        ventas_stmt = ventas_stmt.where(Venta.fecha >= datetime.combine(fecha_desde, time.min))
-    if fecha_hasta is not None:
-        ventas_stmt = ventas_stmt.where(Venta.fecha <= datetime.combine(fecha_hasta, time.max))
+    ventas_stmt = (
+        select(
+            func.coalesce(func.sum(DetalleVenta.cantidad * DetalleVenta.precio_unitario), 0),
+            func.coalesce(func.sum(DetalleVenta.cantidad), 0),
+        )
+        .select_from(Venta)
+        .join(DetalleVenta, DetalleVenta.idVenta == Venta.idVenta)
+        .join(Producto, Producto.idProducto == DetalleVenta.idProducto)
+        .where(Producto.idTenant == id_tenant)
+    )
+    ventas_stmt = _filtrar_fechas(ventas_stmt, fecha_desde, fecha_hasta)
     total_monto, total_items = (await session.execute(ventas_stmt)).one()
 
     stock_total = (
-        await session.execute(select(func.coalesce(func.sum(Inventario.cantidad_actual), 0)))
+        await session.execute(
+            select(func.coalesce(func.sum(Inventario.cantidad_actual), 0))
+            .select_from(Inventario)
+            .join(Sucursal, Sucursal.codigoSucursal == Inventario.codigoSucursal)
+            .where(Sucursal.idTenant == id_tenant)
+        )
     ).scalar_one()
 
     productos_bajo_stock = (
         await session.execute(
-            select(func.count()).select_from(Inventario).where(
-                Inventario.cantidad_actual < UMBRAL_STOCK_BAJO
+            select(func.count())
+            .select_from(Inventario)
+            .join(Sucursal, Sucursal.codigoSucursal == Inventario.codigoSucursal)
+            .where(
+                Sucursal.idTenant == id_tenant,
+                Inventario.cantidad_actual < UMBRAL_STOCK_BAJO,
             )
         )
     ).scalar_one()
@@ -74,6 +100,7 @@ async def ventas_diarias(
     fecha_hasta: date | None = None,
     session: AsyncSession = Depends(get_db),
     _=Depends(require_permiso("reporte.ver")),
+    id_tenant: int = Depends(tenant_actual),
 ):
     dia = func.date(Venta.fecha).label("dia")
     stmt = (
@@ -84,13 +111,12 @@ async def ventas_diarias(
         )
         .select_from(Venta)
         .join(DetalleVenta, DetalleVenta.idVenta == Venta.idVenta)
+        .join(Producto, Producto.idProducto == DetalleVenta.idProducto)
+        .where(Producto.idTenant == id_tenant)
         .group_by(dia)
         .order_by(dia)
     )
-    if fecha_desde is not None:
-        stmt = stmt.where(Venta.fecha >= datetime.combine(fecha_desde, time.min))
-    if fecha_hasta is not None:
-        stmt = stmt.where(Venta.fecha <= datetime.combine(fecha_hasta, time.max))
+    stmt = _filtrar_fechas(stmt, fecha_desde, fecha_hasta)
 
     rows = (await session.execute(stmt)).all()
     return VentasDiariasOut(
@@ -108,6 +134,7 @@ async def top_productos(
     limit: int = Query(5, ge=1, le=20),
     session: AsyncSession = Depends(get_db),
     _=Depends(require_permiso("reporte.ver")),
+    id_tenant: int = Depends(tenant_actual),
 ):
     monto = func.sum(DetalleVenta.cantidad * DetalleVenta.precio_unitario).label("monto")
     stmt = (
@@ -120,14 +147,12 @@ async def top_productos(
         .select_from(Venta)
         .join(DetalleVenta, DetalleVenta.idVenta == Venta.idVenta)
         .join(Producto, Producto.idProducto == DetalleVenta.idProducto)
+        .where(Producto.idTenant == id_tenant)
         .group_by(Producto.idProducto, Producto.nombre)
         .order_by(monto.desc())
         .limit(limit)
     )
-    if fecha_desde is not None:
-        stmt = stmt.where(Venta.fecha >= datetime.combine(fecha_desde, time.min))
-    if fecha_hasta is not None:
-        stmt = stmt.where(Venta.fecha <= datetime.combine(fecha_hasta, time.max))
+    stmt = _filtrar_fechas(stmt, fecha_desde, fecha_hasta)
 
     rows = (await session.execute(stmt)).all()
     return TopProductosOut(
@@ -147,6 +172,7 @@ async def top_productos(
 async def stock_por_sucursal(
     session: AsyncSession = Depends(get_db),
     _=Depends(require_permiso("reporte.ver")),
+    id_tenant: int = Depends(tenant_actual),
 ):
     stmt = (
         select(
@@ -156,6 +182,7 @@ async def stock_por_sucursal(
         )
         .select_from(Sucursal)
         .outerjoin(Inventario, Inventario.codigoSucursal == Sucursal.codigoSucursal)
+        .where(Sucursal.idTenant == id_tenant)
         .group_by(Sucursal.codigoSucursal, Sucursal.nombre)
         .order_by(Sucursal.nombre)
     )

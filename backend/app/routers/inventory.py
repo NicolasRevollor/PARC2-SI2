@@ -10,7 +10,8 @@ from app.schemas.inventory import (
     StockIngresoIn,
     StockOut,
 )
-from app.security import require_permiso
+from app.security import get_optional_payload, require_permiso
+from app.services.tenancy import resolver_tenant_publico, tenant_actual
 
 router = APIRouter(prefix="/api/inventory", tags=["inventory"])
 
@@ -33,11 +34,26 @@ async def _serialize_stock(inv: Inventario, session: AsyncSession) -> StockOut:
     )
 
 
+async def _inventario_de_mi_tenant(session: AsyncSession, idInv: int, id_tenant: int) -> Inventario:
+    inv = await session.get(Inventario, idInv)
+    suc = await session.get(Sucursal, inv.codigoSucursal) if inv else None
+    if not inv or not suc or suc.idTenant != id_tenant:
+        raise HTTPException(status_code=404, detail="Registro de inventario no encontrado")
+    return inv
+
+
 @router.get("/locations", response_model=list[LocationOut])
-async def list_locations(session: AsyncSession = Depends(get_db)):
+async def list_locations(
+    idTenant: int | None = None,
+    session: AsyncSession = Depends(get_db),
+    sesion: dict | None = Depends(get_optional_payload),
+):
+    # Publico (reservas desde la vitrina/app). Antes listaba las sucursales de
+    # TODAS las empresas: el POS de la empresa 2 ofrecia sucursales de la 1.
     stmt = (
         select(Sucursal, Ciudad)
         .join(Ciudad, Ciudad.idCiudad == Sucursal.idCiudad)
+        .where(Sucursal.idTenant == resolver_tenant_publico(idTenant, sesion))
         .order_by(Sucursal.nombre)
     )
     rows = (await session.execute(stmt)).all()
@@ -50,11 +66,13 @@ async def list_stock(
     idProducto: int | None = None,
     session: AsyncSession = Depends(get_db),
     _=Depends(require_permiso("inventario.ver")),
+    id_tenant: int = Depends(tenant_actual),
 ):
     stmt = (
         select(Inventario, Sucursal, Producto)
         .join(Sucursal, Sucursal.codigoSucursal == Inventario.codigoSucursal)
         .join(Producto, Producto.idProducto == Inventario.idProducto)
+        .where(Sucursal.idTenant == id_tenant)
     )
     if codigoSucursal is not None:
         stmt = stmt.where(Inventario.codigoSucursal == codigoSucursal)
@@ -88,10 +106,9 @@ async def adjust_stock(
     payload: StockAdjustIn,
     session: AsyncSession = Depends(get_db),
     _=Depends(require_permiso("inventario.ajustar")),
+    id_tenant: int = Depends(tenant_actual),
 ):
-    inv = await session.get(Inventario, idInv)
-    if not inv:
-        raise HTTPException(status_code=404, detail="Registro de inventario no encontrado")
+    inv = await _inventario_de_mi_tenant(session, idInv, id_tenant)
 
     cantidad = payload.cantidad
     if cantidad < 0:
@@ -107,11 +124,22 @@ async def adjust_stock(
 
     if nuevo < 0:
         raise HTTPException(status_code=400, detail="La cantidad resultante no puede ser negativa")
+    if nuevo < inv.cantidad_reservada:
+        # La restriccion de la base solo exige >= 0; dejar menos stock que lo
+        # reservado haria imposible confirmar esas reservas.
+        raise HTTPException(
+            status_code=400,
+            detail=f"No se puede dejar menos stock que lo reservado ({inv.cantidad_reservada} unidad(es))",
+        )
 
+    # El movimiento guarda la DIFERENCIA con signo (como venta = -n, ingreso =
+    # +n). Antes guardaba el valor absoluto pedido: un "set 5" sobre 10
+    # unidades quedaba en el kardex como +5 en vez de -5.
+    delta = nuevo - inv.cantidad_actual
     inv.cantidad_actual = nuevo
     movimiento = Movimiento(
         tipo=payload.tipo,
-        cantidad=cantidad,
+        cantidad=delta,
         motivo=payload.motivo,
         idInv=inv.idInv,
     )
@@ -127,18 +155,23 @@ async def ingreso_lote(
     payload: StockIngresoIn,
     session: AsyncSession = Depends(get_db),
     _=Depends(require_permiso("inventario.ajustar")),
+    id_tenant: int = Depends(tenant_actual),
 ):
     # Unico camino para darle stock INICIAL a un producto: adjust_stock
     # requiere un idInv ya existente y dispatches.py requiere stock en la
     # sucursal origen para transferir. Sin este endpoint, un producto recien
     # creado en el catalogo nunca puede llegar a tener inventario (ver
     # odd/tasks/cu07-ingreso-lote.md).
-    if not await session.get(Producto, payload.idProducto):
+    producto = await session.get(Producto, payload.idProducto)
+    if not producto or producto.idTenant != id_tenant:
         raise HTTPException(status_code=404, detail="Producto no encontrado")
-    if not await session.get(Sucursal, payload.codigoSucursal):
+    sucursal = await session.get(Sucursal, payload.codigoSucursal)
+    if not sucursal or sucursal.idTenant != id_tenant:
         raise HTTPException(status_code=404, detail="Sucursal no encontrada")
-    if payload.idProveedor is not None and not await session.get(Proveedor, payload.idProveedor):
-        raise HTTPException(status_code=404, detail="Proveedor no encontrado")
+    if payload.idProveedor is not None:
+        proveedor = await session.get(Proveedor, payload.idProveedor)
+        if not proveedor or proveedor.idTenant != id_tenant:
+            raise HTTPException(status_code=404, detail="Proveedor no encontrado")
 
     inv = (
         await session.execute(

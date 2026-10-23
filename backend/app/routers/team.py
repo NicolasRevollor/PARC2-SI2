@@ -1,3 +1,5 @@
+from datetime import date
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -55,27 +57,26 @@ async def list_team(session: AsyncSession = Depends(get_db),
 @router.get("/audit-log", response_model=list[AuditLogOut])
 async def audit_log(
     idUser: int | None = None,
-    fecha: str | None = None,
+    fecha: date | None = None,
     limit: int = Query(50, ge=1, le=500),
     session: AsyncSession = Depends(get_db),
     _=Depends(require_permiso("equipo.ver")),
+    id_tenant: int = Depends(tenant_actual),
 ):
+    # Los filtros se COMBINAN. Antes "fecha" reconstruia la consulta desde
+    # cero y descartaba "idUser"; y como llegaba como str, asyncpg rechazaba
+    # el parametro contra la columna DATE (500). Ademas se listaban las
+    # acciones de usuarios de TODAS las empresas.
     stmt = (
         select(Bitacora, Usuario)
         .join(Usuario, Usuario.idUser == Bitacora.idUser)
-        .order_by(Bitacora.idBitacora.desc())
-        .limit(limit)
+        .where(Usuario.idTenant == id_tenant)
     )
     if idUser is not None:
-        stmt = stmt.where(Bitacora.idUser == idUser).order_by(Bitacora.idBitacora.desc()).limit(limit)
-    if fecha:
-        stmt = (
-            select(Bitacora, Usuario)
-            .join(Usuario, Usuario.idUser == Bitacora.idUser)
-            .where(Bitacora.fecha == fecha)
-            .order_by(Bitacora.idBitacora.desc())
-            .limit(limit)
-        )
+        stmt = stmt.where(Bitacora.idUser == idUser)
+    if fecha is not None:
+        stmt = stmt.where(Bitacora.fecha == fecha)
+    stmt = stmt.order_by(Bitacora.idBitacora.desc()).limit(limit)
 
     rows = (await session.execute(stmt)).all()
     return [
@@ -97,10 +98,11 @@ async def activate_account(
     idUser: int,
     request: Request,
     session: AsyncSession = Depends(get_db),
-    _=Depends(require_permiso("usuario.admin")),
+    current: dict = Depends(require_permiso("usuario.admin")),
+    id_tenant: int = Depends(tenant_actual),
 ):
     usuario = await session.get(Usuario, idUser)
-    if not usuario:
+    if not usuario or usuario.idTenant != id_tenant:
         raise HTTPException(status_code=404, detail="Usuario no encontrado")
 
     usuario.intentosFallidos = 0
@@ -108,7 +110,12 @@ async def activate_account(
     usuario.vecesBloqueado = 0
     usuario.requiereActivacion = False
     ip = request.client.host if request.client else "0.0.0.0"
-    await registrar_bitacora(session, "Cuenta reactivada por un administrador", usuario.idUser, ip)
+    await registrar_bitacora(
+        session,
+        f"Cuenta reactivada por el administrador {current['sub']}",
+        usuario.idUser,
+        ip,
+    )
     await session.commit()
     return ActivateAccountResponse(message="Cuenta reactivada correctamente")
 
@@ -123,8 +130,10 @@ async def create_staff_user(
 ):
     await exigir_cupo(session, ctx, "usuarios")
     existing = (
-        await session.execute(select(Usuario).where(Usuario.correo == payload.email))
-    ).scalar_one_or_none()
+        await session.execute(
+            select(Usuario.idUser).where(func.lower(Usuario.correo) == payload.email.lower())
+        )
+    ).first()
     if existing:
         raise HTTPException(status_code=409, detail="El correo ya esta registrado")
 
@@ -194,7 +203,9 @@ async def change_staff_role(
                 select(func.count())
                 .select_from(Usuario)
                 .join(Rol, Rol.codigoRol == Usuario.codigoRol)
-                .where(Rol.nombreRol == "Administrador")
+                # Por empresa: antes contaba los administradores de TODAS, y
+                # el ultimo admin de una empresa podia degradarse.
+                .where(Rol.nombreRol == "Administrador", Usuario.idTenant == id_tenant)
             )
         ).scalar_one()
         if total_admins <= 1:

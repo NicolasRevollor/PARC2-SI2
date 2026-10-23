@@ -10,6 +10,7 @@ import {
   ProductOut,
   TicketLine,
   Venta,
+  VentaIn,
 } from '../../core/models';
 import { SalesService } from '../../core/services/sales.service';
 import { PaymentsService } from '../../core/services/payments.service';

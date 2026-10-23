@@ -11,6 +11,7 @@ from decimal import ROUND_HALF_UP, Decimal
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -178,6 +179,13 @@ async def verify_payment_intent(
     except StripePagoError:
         raise HTTPException(status_code=502, detail="No se pudo verificar el intento de pago con Stripe")
 
+    # El intento lo creo un usuario concreto (metadata.idUser). Sin este
+    # chequeo, quien conociera el id de un intento ajeno podia verificarlo
+    # primero y quedarse con el MetodoPago (idUserPago = el que verifica).
+    metadata = intent.get("metadata") or {}
+    if metadata.get("idUser") != str(id_user):
+        raise HTTPException(status_code=404, detail="Intento de pago no encontrado")
+
     if intent["status"] != "succeeded":
         return PagoIntentVerificadoOut(
             paymentIntentId=intent["id"],
@@ -201,7 +209,6 @@ async def verify_payment_intent(
         )
 
     monto_recibido = Decimal(str(intent["amount_received"] or 0)) / Decimal(100)
-    metadata = intent.get("metadata") or {}
     metodo = MetodoPago(
         tipo="Tarjeta (Stripe)",
         estado="Activo",
@@ -215,8 +222,19 @@ async def verify_payment_intent(
         codigoSucursal=int(metadata["codigoSucursal"]) if "codigoSucursal" in metadata else None,
     )
     session.add(metodo)
-    await session.commit()
-    await session.refresh(metodo)
+    try:
+        await session.commit()
+    except IntegrityError:
+        # Doble verify concurrente (doble click / reintento): el otro request
+        # ya inserto la fila de este intento; se devuelve esa en vez de un 500.
+        await session.rollback()
+        metodo = (
+            await session.execute(
+                select(MetodoPago).where(MetodoPago.stripePaymentIntentId == intent["id"])
+            )
+        ).scalar_one()
+    else:
+        await session.refresh(metodo)
 
     return PagoIntentVerificadoOut(
         paymentIntentId=intent["id"],

@@ -3,10 +3,16 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.models import Colecciones, Temporada, TENANT_POR_DEFECTO
+from app.models import Colecciones, Temporada
 from app.schemas.fase2 import ColeccionIn, ColeccionOut, ColeccionUpdate
-from app.security import require_permiso
-from app.services.tenancy import ContextoTenant, contexto_actual, tenant_actual
+from app.security import get_optional_payload, require_permiso
+from app.services.tenancy import ContextoTenant, contexto_actual, resolver_tenant_publico, tenant_actual
+
+
+async def _temporada_de_mi_tenant(session: AsyncSession, idTemporada: int, id_tenant: int) -> None:
+    t = await session.get(Temporada, idTemporada)
+    if not t or t.idTenant != id_tenant:
+        raise HTTPException(status_code=400, detail="Temporada inexistente")
 
 router = APIRouter(prefix="/api/collections", tags=["collections"])
 
@@ -22,13 +28,17 @@ async def _serialize(c: Colecciones, session: AsyncSession) -> ColeccionOut:
 
 
 @router.get("", response_model=list[ColeccionOut])
-async def list_collections(idTenant: int | None = None, session: AsyncSession = Depends(get_db)):
-    # Endpoint publico (la vitrina lo consume sin token): el tenant llega
-    # por query o se asume el por defecto.
+async def list_collections(
+    idTenant: int | None = None,
+    session: AsyncSession = Depends(get_db),
+    sesion: dict | None = Depends(get_optional_payload),
+):
+    # Endpoint publico (la vitrina lo consume sin token): el tenant llega por
+    # query, o sale del JWT si hay sesion, o se asume el por defecto.
     rows = (
         await session.execute(
             select(Colecciones)
-            .where(Colecciones.idTenant == (idTenant or TENANT_POR_DEFECTO))
+            .where(Colecciones.idTenant == resolver_tenant_publico(idTenant, sesion))
             .order_by(Colecciones.nombre_coleccion)
         )
     ).scalars().all()
@@ -50,8 +60,7 @@ async def create_collection(
     _=Depends(require_permiso("producto.crear")),
     ctx: ContextoTenant = Depends(contexto_actual),
 ):
-    if not await session.get(Temporada, payload.idTemporada):
-        raise HTTPException(status_code=400, detail="Temporada inexistente")
+    await _temporada_de_mi_tenant(session, payload.idTemporada, ctx.tenant.idTenant)
     c = Colecciones(
         nombre_coleccion=payload.nombre_coleccion,
         idTemporada=payload.idTemporada,
@@ -75,8 +84,8 @@ async def update_collection(
     if not c or c.idTenant != id_tenant:
         raise HTTPException(status_code=404, detail="Coleccion no encontrada")
     data = payload.model_dump(exclude_unset=True)
-    if "idTemporada" in data and not await session.get(Temporada, data["idTemporada"]):
-        raise HTTPException(status_code=400, detail="Temporada inexistente")
+    if "idTemporada" in data:
+        await _temporada_de_mi_tenant(session, data["idTemporada"], id_tenant)
     for k, v in data.items():
         setattr(c, k, v)
     await session.commit()

@@ -99,14 +99,34 @@ class AuthService {
     if (token == null || token.isEmpty) return null;
 
     try {
+      // ApiClient ya renueva el access token vencido con el refresh token.
       final data = await _api.get('/api/auth/me') as Map<String, dynamic>;
       // `/me` devuelve el mismo shape que `UserSummary`
       // (idUser/nombre/correo/rol/permisos) — se re-guarda por si cambio
       // algo (ej. permisos) desde el ultimo login.
       await _storage.write(key: ApiConfig.userStorageKey, value: jsonEncode(data));
       return AuthUser.fromJson(data);
+    } on ApiException catch (e) {
+      // El backend rechazo la sesion de verdad (vencida sin refresh valido,
+      // cuenta bloqueada, empresa suspendida): se limpia.
+      if (e.statusCode == 401 || e.statusCode == 403 || e.statusCode == 423) {
+        await logout();
+        return null;
+      }
+      return _usuarioGuardado();
     } catch (_) {
-      await logout();
+      // Sin red al abrir la app: antes se cerraba la sesion. Se mantiene la
+      // ultima guardada y las llamadas se reintentan cuando vuelva la red.
+      return _usuarioGuardado();
+    }
+  }
+
+  Future<AuthUser?> _usuarioGuardado() async {
+    final guardado = await _storage.read(key: ApiConfig.userStorageKey);
+    if (guardado == null || guardado.isEmpty) return null;
+    try {
+      return AuthUser.fromJson(jsonDecode(guardado) as Map<String, dynamic>);
+    } catch (_) {
       return null;
     }
   }

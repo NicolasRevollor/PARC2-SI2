@@ -50,6 +50,16 @@ async def update_my_customer(
     return await _serialize(cliente, session)
 
 
+async def _exigir_usuario_libre(session: AsyncSession, idUser: int) -> None:
+    """Cliente.idUser es UNIQUE: sin este chequeo el INSERT/UPDATE fallaba con
+    IntegrityError y la API respondia 500 en vez de un 409 explicable."""
+    ocupado = (
+        await session.execute(select(Cliente.idCliente).where(Cliente.idUser == idUser))
+    ).first()
+    if ocupado:
+        raise HTTPException(status_code=409, detail="Ese usuario ya tiene un cliente asociado")
+
+
 async def _serialize(c: Cliente, session: AsyncSession) -> ClienteFull:
     u = await session.get(Usuario, c.idUser)
     return ClienteFull(
@@ -90,6 +100,7 @@ async def create_customer(
 ):
     if not await session.get(Usuario, payload.idUser):
         raise HTTPException(status_code=400, detail="Usuario inexistente")
+    await _exigir_usuario_libre(session, payload.idUser)
     c = Cliente(**payload.model_dump())
     session.add(c)
     await session.commit()
@@ -108,8 +119,10 @@ async def update_customer(
     if not c:
         raise HTTPException(status_code=404, detail="Cliente no encontrado")
     data = payload.model_dump(exclude_unset=True)
-    if "idUser" in data and not await session.get(Usuario, data["idUser"]):
-        raise HTTPException(status_code=400, detail="Usuario inexistente")
+    if "idUser" in data and data["idUser"] != c.idUser:
+        if not await session.get(Usuario, data["idUser"]):
+            raise HTTPException(status_code=400, detail="Usuario inexistente")
+        await _exigir_usuario_libre(session, data["idUser"])
     for k, v in data.items():
         setattr(c, k, v)
     await session.commit()

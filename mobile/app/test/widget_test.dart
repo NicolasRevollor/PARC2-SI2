@@ -1,30 +1,36 @@
-// This is a basic Flutter widget test.
+// Antes este archivo era la plantilla del "contador" de `flutter create`:
+// importaba `package:app/main.dart` y `MyApp`, que no existen en este paquete
+// (`aether_fashion`, clase `AetherApp`), y `flutter test` no compilaba.
 //
-// To perform an interaction with a widget in your test, use the WidgetTester
-// utility in the flutter_test package. For example, you can send tap and scroll
-// gestures. You can also use WidgetTester to find child widgets in the widget
-// tree, read text, and verify that the values of widget properties are correct.
+// Se prueban piezas puras (sin red ni Stripe) que la app usa al restaurar la
+// sesion y al mostrar errores del backend.
 
-import 'package:flutter/material.dart';
+import 'package:aether_fashion/services/api_client.dart';
+import 'package:aether_fashion/services/auth_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:app/main.dart';
-
 void main() {
-  testWidgets('Counter increments smoke test', (WidgetTester tester) async {
-    // Build our app and trigger a frame.
-    await tester.pumpWidget(const MyApp());
+  test('AuthUser se guarda y se restaura igual (sesion sin conexion)', () {
+    final original = AuthUser(
+      idUser: 7,
+      nombre: 'Ana',
+      correo: 'ana@mail.com',
+      rol: 'Cliente',
+      permisos: ['venta.crear', 'reserva.crear'],
+    );
 
-    // Verify that our counter starts at 0.
-    expect(find.text('0'), findsOneWidget);
-    expect(find.text('1'), findsNothing);
+    final restaurado = AuthUser.fromJson(original.toJson());
 
-    // Tap the '+' icon and trigger a frame.
-    await tester.tap(find.byIcon(Icons.add));
-    await tester.pump();
+    expect(restaurado.idUser, 7);
+    expect(restaurado.correo, 'ana@mail.com');
+    expect(restaurado.rol, 'Cliente');
+    expect(restaurado.permisos, ['venta.crear', 'reserva.crear']);
+  });
 
-    // Verify that our counter has incremented.
-    expect(find.text('0'), findsNothing);
-    expect(find.text('1'), findsOneWidget);
+  test('ApiException muestra el mensaje real del backend', () {
+    final error = ApiException(423, 'Cuenta bloqueada temporalmente');
+
+    expect(error.statusCode, 423);
+    expect(error.toString(), 'Cuenta bloqueada temporalmente');
   });
 }

@@ -115,8 +115,11 @@ export class ArchiveService {
       this.productsSignal.update(list => list.filter(p => p.idProducto !== id));
       this.notificationService.warning('Producto eliminado', `ID: ${id} removido del catálogo.`);
       return true;
-    }).catch(() => {
-      this.notificationService.error('Error', 'No se pudo eliminar el producto.');
+    }).catch((err) => {
+      // 409: el producto tiene ventas/inventario asociados (antes el backend
+      // respondía 500 y aquí solo se veía un mensaje genérico).
+      const msg = err.error?.detail || 'No se pudo eliminar el producto.';
+      this.notificationService.error('Error', msg);
       return false;
     });
   }

@@ -139,10 +139,14 @@ import { ReservationsService } from '../../core/services/reservations.service';
               name="metodoPago"
             >
               <option [ngValue]="null" disabled>Seleccioná un método de pago</option>
+              <option [ngValue]="NUEVO_COBRO_EFECTIVO">Efectivo — registrar el cobro del saldo ahora</option>
               <option *ngFor="let m of paymentMethods()" [ngValue]="m.idMetPago">
-                {{ m.tipo }} — {{ m.estado }}
+                #{{ m.idMetPago }} {{ m.tipo }} — Bs {{ m.monto }}
               </option>
             </select>
+            <p class="text-[10px] text-gray-400">
+              Cada pago se usa una sola vez: la lista muestra solo los que siguen disponibles.
+            </p>
           </div>
 
           <div class="flex items-center justify-end gap-2 pt-2">
@@ -166,6 +170,9 @@ import { ReservationsService } from '../../core/services/reservations.service';
   `
 })
 export class StaffReservationsComponent implements OnInit {
+  /** Valor centinela del selector: crear un cobro en efectivo nuevo al confirmar. */
+  readonly NUEVO_COBRO_EFECTIVO = -1;
+
   busyId = signal<number | null>(null);
   branchFilter = signal<number | null>(null);
   reservaAConfirmar = signal<Reserva | null>(null);
@@ -220,13 +227,24 @@ export class StaffReservationsComponent implements OnInit {
 
   async onConfirmarPago() {
     const reserva = this.reservaAConfirmar();
-    const idMetPago = this.selectedMetodoPago();
+    let idMetPago = this.selectedMetodoPago();
     if (!reserva || !idMetPago) {
       return;
     }
     this.confirmando.set(true);
+    if (idMetPago === this.NUEVO_COBRO_EFECTIVO) {
+      const nuevo = await this.reservationsService.registrarCobroEfectivoSaldo(reserva);
+      if (nuevo === null) {
+        this.confirmando.set(false);
+        return;
+      }
+      idMetPago = nuevo;
+    }
     const ok = await this.reservationsService.confirmReservation(reserva.codigoReserva, idMetPago);
     this.confirmando.set(false);
+    // La lista de pagos disponibles cambió (el usado ya no está, o hay uno
+    // nuevo si la confirmación falló después de cobrar).
+    this.reservationsService.loadPaymentMethods().then((methods) => this.paymentMethods.set(methods));
     if (ok) {
       this.onCerrarModal();
     }

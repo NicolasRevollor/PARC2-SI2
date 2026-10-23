@@ -138,7 +138,17 @@ class _ReservationFormScreenState extends State<ReservationFormScreen> {
       _errorMessage = null;
     });
 
-    final idProducto = int.parse(widget.product.id);
+    // Un producto de demostracion ("prod-1") no existe en el backend: antes
+    // int.parse lanzaba FormatException sin capturar y el formulario quedaba
+    // trabado en "cobrando".
+    final idProducto = int.tryParse(widget.product.id);
+    if (idProducto == null) {
+      setState(() {
+        _status = _ReservaStatus.error;
+        _errorMessage = 'Este producto es de demostracion y no se puede reservar. Recarga el catalogo con conexion.';
+      });
+      return;
+    }
     final fechaTexto = DateFormat('yyyy-MM-dd').format(fecha);
 
     try {

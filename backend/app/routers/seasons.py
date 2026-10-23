@@ -3,22 +3,26 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.models import Colecciones, Temporada, TENANT_POR_DEFECTO
+from app.models import Colecciones, Temporada
 from app.schemas.fase2 import TemporadaIn, TemporadaOut, TemporadaUpdate
-from app.security import require_permiso
-from app.services.tenancy import ContextoTenant, contexto_actual, tenant_actual
+from app.security import get_optional_payload, require_permiso
+from app.services.tenancy import ContextoTenant, contexto_actual, resolver_tenant_publico, tenant_actual
 
 router = APIRouter(prefix="/api/seasons", tags=["seasons"])
 
 
 @router.get("", response_model=list[TemporadaOut])
-async def list_seasons(idTenant: int | None = None, session: AsyncSession = Depends(get_db)):
-    # Endpoint publico (la vitrina lo consume sin token): el tenant no se
-    # puede derivar del JWT, llega por query o se asume el por defecto.
+async def list_seasons(
+    idTenant: int | None = None,
+    session: AsyncSession = Depends(get_db),
+    sesion: dict | None = Depends(get_optional_payload),
+):
+    # Endpoint publico (la vitrina lo consume sin token): el tenant llega por
+    # query, o sale del JWT si hay sesion, o se asume el por defecto.
     rows = (
         await session.execute(
             select(Temporada)
-            .where(Temporada.idTenant == (idTenant or TENANT_POR_DEFECTO))
+            .where(Temporada.idTenant == resolver_tenant_publico(idTenant, sesion))
             .order_by(Temporada.fecha_ini)
         )
     ).scalars().all()

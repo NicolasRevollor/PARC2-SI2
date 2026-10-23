@@ -4,7 +4,6 @@ import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../theme/aether_theme.dart';
 import '../providers/app_state.dart';
-import '../models/product_model.dart';
 
 class CollectionScreen extends StatefulWidget {
   const CollectionScreen({super.key});

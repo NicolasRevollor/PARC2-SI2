@@ -130,6 +130,15 @@ docker exec -i ropaDocker \
   -v ON_ERROR_STOP=1 \
   -f /dev/stdin \
   < database/migrations/018_respaldos_empresas.sql
+
+# 16) Migracion 019 (marca como consumidos los pagos ya usados antes de la 010)
+#     Sin esta, un metodo de pago historico ya usado por una venta podia
+#     volver a usarse. Solo actualiza datos; idempotente.
+docker exec -i ropaDocker \
+  psql -U yimysito -d ropaDB \
+  -v ON_ERROR_STOP=1 \
+  -f /dev/stdin \
+  < database/migrations/019_backfill_metodo_pago_consumido.sql
 ```
 
 > **Las migraciones 014 y 015 no son opcionales.** Los modelos SQLAlchemy ya

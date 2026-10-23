@@ -21,7 +21,15 @@ from sqlalchemy import delete, select
 
 from app.config import get_settings
 from app.database import AsyncSessionLocal
-from app.models import DetalleVenta, Producto, Recomendaciones, Venta
+from app.models import (
+    TENANT_POR_DEFECTO,
+    Cliente,
+    DetalleVenta,
+    Producto,
+    Recomendaciones,
+    Usuario,
+    Venta,
+)
 
 try:
     from google import genai
@@ -96,7 +104,19 @@ async def _generar(id_cliente: int) -> None:
         comprados = (await session.execute(comprados_stmt)).all()
         ids_comprados = {row.idProducto for row in comprados}
 
-        candidatos_stmt = select(Producto).order_by(Producto.idProducto.desc()).limit(MAX_CANDIDATOS)
+        # Candidatos solo del catalogo de la organizacion del cliente (la que
+        # ve en su vitrina): antes se mezclaban productos de todas las empresas.
+        id_tenant = await session.scalar(
+            select(Usuario.idTenant).join(Cliente, Cliente.idUser == Usuario.idUser).where(
+                Cliente.idCliente == id_cliente
+            )
+        )
+        candidatos_stmt = (
+            select(Producto)
+            .where(Producto.idTenant == (id_tenant or TENANT_POR_DEFECTO))
+            .order_by(Producto.idProducto.desc())
+            .limit(MAX_CANDIDATOS)
+        )
         if ids_comprados:
             candidatos_stmt = candidatos_stmt.where(Producto.idProducto.notin_(ids_comprados))
         candidatos = (await session.execute(candidatos_stmt)).scalars().all()

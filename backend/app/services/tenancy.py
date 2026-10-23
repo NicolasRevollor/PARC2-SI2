@@ -22,7 +22,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.models import Plan, Producto, Sucursal, Tenant, Usuario, TENANT_POR_DEFECTO
+from app.models import Plan, Producto, Rol, Sucursal, Tenant, Usuario, TENANT_POR_DEFECTO
 from app.security import get_current_payload
 
 # Valor centinela de los limites del plan: -1 == sin tope.
@@ -50,13 +50,31 @@ class ContextoTenant:
         return bool(getattr(self.plan, flag, False))
 
 
-def tenant_actual(payload: dict = Depends(get_current_payload)) -> int:
-    """idTenant del JWT. Cae al tenant 1 para tokens previos a la migracion 014."""
+def _tenant_de_payload(payload: dict) -> int:
     valor = payload.get("tenant")
     try:
         return int(valor) if valor is not None else TENANT_POR_DEFECTO
     except (TypeError, ValueError):
         return TENANT_POR_DEFECTO
+
+
+def tenant_actual(payload: dict = Depends(get_current_payload)) -> int:
+    """idTenant del JWT. Cae al tenant 1 para tokens previos a la migracion 014."""
+    return _tenant_de_payload(payload)
+
+
+def resolver_tenant_publico(id_tenant_query: int | None, payload: dict | None) -> int:
+    """Tenant de un endpoint publico (catalogo, sucursales, temporadas...).
+
+    Prioridad: el `idTenant` explicito del query (la vitrina de una empresa),
+    luego el tenant del JWT si hay sesion (asi el staff de la empresa 2 ve SU
+    catalogo y no el de la empresa 1), y por ultimo el tenant por defecto.
+    """
+    if id_tenant_query is not None:
+        return id_tenant_query
+    if payload is not None:
+        return _tenant_de_payload(payload)
+    return TENANT_POR_DEFECTO
 
 
 async def cargar_contexto(session: AsyncSession, id_tenant: int) -> ContextoTenant:
@@ -112,9 +130,13 @@ def require_feature(flag: str):
 
 async def contar_recurso(session: AsyncSession, recurso: str, id_tenant: int) -> int:
     _, modelo = RECURSOS_CON_CUPO[recurso]
-    total = await session.scalar(
-        select(func.count()).select_from(modelo).where(modelo.idTenant == id_tenant)
-    )
+    stmt = select(func.count()).select_from(modelo).where(modelo.idTenant == id_tenant)
+    if recurso == "usuarios":
+        # El cupo de usuarios del plan es de PERSONAL: los clientes que se
+        # registran en la vitrina no consumen licencias (sin esto, unas pocas
+        # altas de clientes bloqueaban crear cajeros o bajar de plan).
+        stmt = stmt.join(Rol, Rol.codigoRol == Usuario.codigoRol).where(Rol.nombreRol != "Cliente")
+    total = await session.scalar(stmt)
     return int(total or 0)
 
 

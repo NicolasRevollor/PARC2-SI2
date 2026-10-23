@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -6,6 +6,7 @@ from app.database import get_db
 from app.models import Cliente, DetalleVenta, Historial, Producto, Venta
 from app.schemas.fase2 import PurchaseHistoryItem
 from app.security import get_current_payload
+from app.services.tenancy import tenant_actual
 
 router = APIRouter(prefix="/api/purchase-history", tags=["purchase-history"])
 
@@ -19,8 +20,15 @@ async def purchase_history(
     user_id = int(payload["sub"])
 
     if "venta.ver" in permisos:
+        # Staff: el historial de los productos de SU organizacion (antes
+        # devolvia el de todas las empresas).
         historial = (
-            await session.execute(select(Historial).order_by(Historial.fecha.desc()))
+            await session.execute(
+                select(Historial)
+                .join(Producto, Producto.idProducto == Historial.idProducto)
+                .where(Producto.idTenant == tenant_actual(payload))
+                .order_by(Historial.fecha.desc())
+            )
         ).scalars().all()
     else:
         cliente = (
@@ -40,14 +48,19 @@ async def purchase_history(
     for h in historial:
         venta = await session.get(Venta, h.idVenta)
         producto = await session.get(Producto, h.idProducto)
+        # first(), no scalar_one_or_none(): si la misma prenda vino en dos
+        # lineas de la misma venta, habia dos filas y el endpoint caia en 500
+        # (MultipleResultsFound).
         detalle = (
             await session.execute(
-                select(DetalleVenta).where(
+                select(DetalleVenta)
+                .where(
                     DetalleVenta.idVenta == h.idVenta,
                     DetalleVenta.idProducto == h.idProducto,
                 )
+                .order_by(DetalleVenta.codigoVenta)
             )
-        ).scalar_one_or_none()
+        ).scalars().first()
         resultado.append(
             PurchaseHistoryItem(
                 idVenta=h.idVenta,

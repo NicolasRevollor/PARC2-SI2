@@ -9,6 +9,7 @@ import { TenantService } from './tenant.service';
 import { environment } from '../../../environments/environment';
 
 const API_URL = environment.apiUrl;
+const CLAVE_USUARIO = 'auth_user';
 
 export interface RegisterResult {
   ok: boolean;
@@ -36,6 +37,7 @@ export class AuthService {
   private currentUserSignal = signal<AuthUser | null>(null);
   private isAuthenticatedSignal = signal<boolean>(false);
   private accessTokenSignal = signal<string | null>(null);
+  private refreshEnCurso: Promise<string | null> | null = null;
 
   public currentUser = this.currentUserSignal.asReadonly();
   public isAuthenticated = this.isAuthenticatedSignal.asReadonly();
@@ -65,8 +67,70 @@ export class AuthService {
     if (token) {
       this.accessTokenSignal.set(token);
       this.isAuthenticatedSignal.set(true);
+      // Usuario de la última sesión: permite abrir la app SIN conexión (modo
+      // offline, CU30) mientras /me no responde.
+      const guardado = localStorage.getItem(CLAVE_USUARIO);
+      if (guardado) {
+        try {
+          this.currentUserSignal.set(JSON.parse(guardado) as AuthUser);
+        } catch {
+          localStorage.removeItem(CLAVE_USUARIO);
+        }
+      }
       this.fetchCurrentUser();
     }
+  }
+
+  private guardarSesion(res: LoginBackendResponse): void {
+    this.accessTokenSignal.set(res.access_token);
+    localStorage.setItem('access_token', res.access_token);
+    localStorage.setItem('refresh_token', res.refresh_token);
+    this.establecerUsuario(this.mapBackendUser(res.user));
+    this.isAuthenticatedSignal.set(true);
+  }
+
+  private establecerUsuario(usuario: AuthUser): void {
+    this.currentUserSignal.set(usuario);
+    localStorage.setItem(CLAVE_USUARIO, JSON.stringify(usuario));
+  }
+
+  /**
+   * Canjea el refresh token por un access token nuevo (el access dura 30 min).
+   * Antes el refresh token se guardaba pero nunca se usaba: a la media hora
+   * toda llamada daba 401 y la sesión se perdía. Una sola renovación a la vez
+   * aunque fallen varias peticiones juntas. Devuelve el token nuevo o null.
+   */
+  refrescarSesion(): Promise<string | null> {
+    if (this.refreshEnCurso) {
+      return this.refreshEnCurso;
+    }
+    const refreshToken = localStorage.getItem('refresh_token');
+    if (!refreshToken) {
+      return Promise.resolve(null);
+    }
+    this.refreshEnCurso = firstValueFrom(
+      this.http
+        .post<LoginBackendResponse>(`${API_URL}/api/auth/refresh`, { refresh_token: refreshToken })
+        .pipe(timeout(15000))
+    ).then((res) => {
+      this.guardarSesion(res);
+      return res.access_token;
+    }).catch((err) => {
+      // Refresh vencido, cuenta bloqueada o empresa suspendida: la sesión
+      // terminó de verdad. Un error de red NO cierra la sesión (modo offline).
+      if (this.esRechazoDeSesion(err)) {
+        this.logout();
+      }
+      return null;
+    }).finally(() => {
+      this.refreshEnCurso = null;
+    });
+    return this.refreshEnCurso;
+  }
+
+  private esRechazoDeSesion(err: unknown): boolean {
+    const status = (err as { status?: number })?.status;
+    return status === 401 || status === 403 || status === 423;
   }
 
   private mapBackendUser(u: LoginBackendResponse['user']): AuthUser {
@@ -83,11 +147,7 @@ export class AuthService {
     return firstValueFrom(
       this.http.post<LoginBackendResponse>(`${API_URL}/api/auth/login`, { email, password })
     ).then((res) => {
-      this.accessTokenSignal.set(res.access_token);
-      localStorage.setItem('access_token', res.access_token);
-      localStorage.setItem('refresh_token', res.refresh_token);
-      this.currentUserSignal.set(this.mapBackendUser(res.user));
-      this.isAuthenticatedSignal.set(true);
+      this.guardarSesion(res);
       void this.iniciarSesionLocal();
       this.notificationService.success('Acceso concedido', `Bienvenido, ${res.user.nombre}`);
       return true;
@@ -108,11 +168,7 @@ export class AuthService {
         })
         .pipe(timeout(15000))
     ).then((res) => {
-      this.accessTokenSignal.set(res.access_token);
-      localStorage.setItem('access_token', res.access_token);
-      localStorage.setItem('refresh_token', res.refresh_token);
-      this.currentUserSignal.set(this.mapBackendUser(res.user));
-      this.isAuthenticatedSignal.set(true);
+      this.guardarSesion(res);
       void this.iniciarSesionLocal();
       this.notificationService.success('Registro exitoso', `Bienvenido, ${res.user.nombre}`);
       return { ok: true } as RegisterResult;
@@ -175,7 +231,7 @@ export class AuthService {
         .get<{ idUser: string; nombre: string; correo: string; rol: string; permisos: string[] }>(`${API_URL}/api/auth/me`)
         .pipe(timeout(10000))
     ).then((u) => {
-      this.currentUserSignal.set({
+      this.establecerUsuario({
         id: u.idUser,
         nombre: u.nombre,
         email: u.correo,
@@ -184,7 +240,19 @@ export class AuthService {
       });
       this.isAuthenticatedSignal.set(true);
       void this.iniciarSesionLocal();
-    }).catch(() => {
+    }).catch((err) => {
+      // Sin red (o timeout) NO es una sesión inválida: antes se hacía logout
+      // y eso borraba la cola offline de ventas pendientes. Se sigue con el
+      // usuario guardado y el modo sin conexión.
+      if (!this.esRechazoDeSesion(err) && this.currentUserSignal() !== null) {
+        this.notificationService.warning('Sin conexión', 'Usando tu última sesión guardada en este dispositivo.');
+        void this.iniciarSesionLocal();
+        return;
+      }
+      if (!this.isAuthenticatedSignal()) {
+        // El refresh ya cerró la sesión (y avisó).
+        return;
+      }
       this.notificationService.error('Sesión no válida', 'No pudimos validar tu sesión. Volvé a iniciar sesión.');
       this.logout();
     });
@@ -243,14 +311,17 @@ export class AuthService {
     });
   }
 
-  requestAccess(email: string, fullName: string, department: string, justification: string): void {
-    firstValueFrom(
-      this.http.post(`${API_URL}/api/auth/request-access`, { email, nombre: fullName, department, justification })
-    ).then(() => {
-      this.notificationService.success('Solicitud enviada', `Solicitud de acceso para ${email} registrada.`);
-    }).catch(() => {
-      this.notificationService.success('Solicitud enviada', `Solicitud de acceso para ${email} registrada.`);
-    });
+  /**
+   * El backend no tiene un endpoint de solicitudes de acceso: antes se hacía
+   * POST a /api/auth/request-access (inexistente, 404) y se mostraba "Solicitud
+   * enviada" igual, aunque nadie la recibía. Las cuentas de personal las crea
+   * el Administrador de la organización desde "Equipo".
+   */
+  requestAccess(email: string, _fullName: string, _department: string, _justification: string): void {
+    this.notificationService.info(
+      'Pedí el acceso a tu administrador',
+      `Las cuentas del personal las crea el Administrador de tu organización desde el módulo Equipo. Indicale el correo ${email}.`,
+    );
   }
 
   logout(): void {
@@ -259,6 +330,7 @@ export class AuthService {
     this.accessTokenSignal.set(null);
     localStorage.removeItem('access_token');
     localStorage.removeItem('refresh_token');
+    localStorage.removeItem(CLAVE_USUARIO);
     // El snapshot local, la cola pendiente y las respuestas de API cacheadas
     // son del usuario que se va: en un dispositivo compartido no pueden
     // quedar disponibles para el siguiente.

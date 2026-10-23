@@ -1,7 +1,7 @@
 from datetime import date, datetime, time
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -13,6 +13,7 @@ from app.models import (
     Inventario,
     Movimiento,
     Producto,
+    Sucursal,
     Venta,
 )
 from app.schemas.fase2 import DetalleVentaOut, VentaIn, VentaOut
@@ -20,6 +21,7 @@ from app.security import get_current_payload, require_permiso
 from app.services.disponibilidad import resolver_inventario
 from app.services.recomendaciones_gemini import generar_recomendaciones_post_venta
 from app.services.metodo_pago_guard import exigir_metodo_pago_consumible
+from app.services.tenancy import tenant_actual
 
 router = APIRouter(prefix="/api/sales", tags=["sales"])
 
@@ -56,6 +58,28 @@ async def _cliente_del_caller(session: AsyncSession, auth: dict) -> Cliente | No
     ).scalar_one_or_none()
 
 
+def _ventas_del_tenant(id_tenant: int):
+    """ids de las ventas de una organizacion. La Venta no tiene "idTenant": es
+    de la empresa duena de los productos vendidos (el Cliente se registra en
+    la vitrina y no pertenece a ninguna empresa en particular)."""
+    return (
+        select(DetalleVenta.idVenta)
+        .join(Producto, Producto.idProducto == DetalleVenta.idProducto)
+        .where(Producto.idTenant == id_tenant)
+    )
+
+
+async def venta_es_del_tenant(session: AsyncSession, idVenta: int, id_tenant: int) -> bool:
+    return bool(
+        await session.scalar(
+            select(func.count())
+            .select_from(DetalleVenta)
+            .join(Producto, Producto.idProducto == DetalleVenta.idProducto)
+            .where(DetalleVenta.idVenta == idVenta, Producto.idTenant == id_tenant)
+        )
+    )
+
+
 async def _serialize_venta(v: Venta, session: AsyncSession, detalles: list[DetalleVenta]) -> VentaOut:
     return VentaOut(
         idVenta=v.idVenta,
@@ -76,7 +100,11 @@ async def list_sales(
     permisos = payload.get("permisos", [])
 
     if "venta.ver" in permisos:
-        stmt = select(Venta).order_by(Venta.fecha.desc())
+        stmt = (
+            select(Venta)
+            .where(Venta.idVenta.in_(_ventas_del_tenant(tenant_actual(payload))))
+            .order_by(Venta.fecha.desc())
+        )
         if idCliente is not None:
             stmt = stmt.where(Venta.idCliente == idCliente)
         ventas = (await session.execute(stmt)).scalars().all()
@@ -106,9 +134,10 @@ async def list_sales(
 
 @router.get("/{idVenta}", response_model=VentaOut)
 async def get_sale(idVenta: int, session: AsyncSession = Depends(get_db),
-                   _=Depends(require_permiso("venta.ver"))):
+                   _=Depends(require_permiso("venta.ver")),
+                   id_tenant: int = Depends(tenant_actual)):
     v = await session.get(Venta, idVenta)
-    if not v:
+    if not v or not await venta_es_del_tenant(session, idVenta, id_tenant):
         raise HTTPException(status_code=404, detail="Venta no encontrada")
     detalles = (
         await session.execute(select(DetalleVenta).where(DetalleVenta.idVenta == idVenta))
@@ -150,7 +179,21 @@ async def create_sale(
     # ademas rechaza un idMetPago ya consumido por CUALQUIER Venta O Reserva
     # (antes solo se miraba Venta). exigir_tarjeta == es_autocompra: mismo
     # criterio previo ("venta.ver" not in permisos), sin cambio de semantica.
-    await exigir_metodo_pago_consumible(session, payload.idMetPago, int(auth["sub"]), es_autocompra)
+    metodo = await exigir_metodo_pago_consumible(
+        session, payload.idMetPago, int(auth["sub"]), es_autocompra
+    )
+    if es_autocompra and metodo.idProducto is not None:
+        # Un anticipo de reserva (ligado a un producto/sucursal) no paga una compra.
+        raise HTTPException(status_code=403, detail="Ese pago corresponde al anticipo de una reserva")
+
+    # Organizacion de la venta: la del staff que la registra, o (compra en
+    # linea) la del primer producto. Todo el ticket debe ser de esa empresa.
+    id_tenant_venta = None if es_autocompra else tenant_actual(auth)
+    if payload.codigoSucursal is not None:
+        sucursal = await session.get(Sucursal, payload.codigoSucursal)
+        if sucursal is None or (id_tenant_venta is not None and sucursal.idTenant != id_tenant_venta):
+            raise HTTPException(status_code=400, detail="Sucursal inexistente")
+        id_tenant_venta = sucursal.idTenant
 
     total = 0.0
     venta = Venta(total=0.0, idCliente=id_cliente, idMetPago=payload.idMetPago)
@@ -161,8 +204,9 @@ async def create_sale(
         if item.cantidad <= 0:
             raise HTTPException(status_code=400, detail="cantidad debe ser > 0")
         producto = await session.get(Producto, item.idProducto)
-        if not producto:
+        if not producto or (id_tenant_venta is not None and producto.idTenant != id_tenant_venta):
             raise HTTPException(status_code=400, detail=f"Producto {item.idProducto} inexistente")
+        id_tenant_venta = producto.idTenant
 
         if payload.codigoSucursal is not None:
             inv = (
@@ -235,6 +279,20 @@ async def create_sale(
             )
         )
         await session.flush()
+
+    # Compra en linea: el cobro con tarjeta tiene que cubrir el total que se
+    # calcula aca. Sin esto se podia pagar un intento de Bs 10 y usar ese
+    # idMetPago para llevarse un carrito de Bs 1000 (el intento y la venta
+    # reciben los items por separado). El POS (staff) registra efectivo con un
+    # monto indicativo, por eso no aplica ahi.
+    if es_autocompra and round(total, 2) > round(float(metodo.monto), 2):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"El pago verificado (Bs {float(metodo.monto):.2f}) no cubre el total "
+                f"de la compra (Bs {total:.2f})"
+            ),
+        )
 
     venta.total = total
     await _registrar_bitacora(session, f"Venta {venta.idVenta} creada", int(auth["sub"]), request.client.host if request.client else "0.0.0.0")

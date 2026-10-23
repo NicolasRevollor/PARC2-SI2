@@ -173,7 +173,8 @@ async def items_elegibles(
     tenga que adivinar que venta sigue siendo elegible.
     """
     filtro_cliente = idCliente
-    if "devolucion.ver" not in auth.get("permisos", []):
+    es_staff = "devolucion.ver" in auth.get("permisos", [])
+    if not es_staff:
         propio = await _cliente_del_caller(session, auth)
         if propio is None:
             return []
@@ -203,6 +204,9 @@ async def items_elegibles(
     )
     if filtro_cliente is not None:
         stmt = stmt.where(Venta.idCliente == filtro_cliente)
+    if es_staff:
+        # El staff solo ve (y puede cambiar) prendas de SU organizacion.
+        stmt = stmt.where(Producto.idTenant == tenant_actual(auth))
 
     resultado: list[ItemElegibleOut] = []
     for fila in (await session.execute(stmt)).all():
@@ -244,6 +248,10 @@ async def registrar_devolucion(
     if venta is None:
         raise HTTPException(status_code=404, detail="La venta no existe")
 
+    # Dos devoluciones simultaneas de la misma linea podian pasar ambas el
+    # chequeo de "unidades disponibles": se serializan bloqueando la venta.
+    await session.execute(select(Venta.idVenta).where(Venta.idVenta == payload.idVenta).with_for_update())
+
     ahora = datetime.now(timezone.utc)
     if not dentro_de_ventana(venta.fecha, ahora):
         vencio_hace = abs(horas_restantes(venta.fecha, ahora))
@@ -278,8 +286,14 @@ async def registrar_devolucion(
         )
 
     producto = await session.get(Producto, payload.idProducto)
-    if producto is None:
+    if producto is None or producto.idTenant != id_tenant:
+        # Una venta de otra organizacion se responde igual que una inexistente.
         raise HTTPException(status_code=400, detail="El producto no existe")
+
+    if payload.codigoSucursal is not None:
+        sucursal_pedida = await session.get(Sucursal, payload.codigoSucursal)
+        if sucursal_pedida is None or sucursal_pedida.idTenant != id_tenant:
+            raise HTTPException(status_code=400, detail="Sucursal inexistente")
 
     producto_nuevo = None
     if payload.tipo == "cambio_talla":
@@ -288,32 +302,38 @@ async def registrar_devolucion(
         if payload.idProductoNuevo == payload.idProducto:
             raise HTTPException(status_code=400, detail="La talla nueva debe ser una prenda distinta")
         producto_nuevo = await session.get(Producto, payload.idProductoNuevo)
-        if producto_nuevo is None:
+        if producto_nuevo is None or producto_nuevo.idTenant != id_tenant:
             raise HTTPException(status_code=400, detail="La prenda de reemplazo no existe")
 
-    # 1) Devolver al inventario la prenda original.
-    inv_original = (
-        await session.execute(
-            select(Inventario)
-            .where(
-                Inventario.idProducto == payload.idProducto,
-                *(
-                    [Inventario.codigoSucursal == payload.codigoSucursal]
-                    if payload.codigoSucursal is not None
-                    else []
-                ),
+    # 1) Devolver al inventario la prenda original. Un cambio de medida es un
+    # ajuste de confeccion sobre la misma prenda: no mueve stock, asi que no
+    # necesita fila de inventario (antes se rechazaba si no habia ninguna).
+    inv_original = None
+    if payload.tipo != "cambio_medida":
+        inv_original = (
+            await session.execute(
+                select(Inventario)
+                .join(Sucursal, Sucursal.codigoSucursal == Inventario.codigoSucursal)
+                .where(
+                    Inventario.idProducto == payload.idProducto,
+                    Sucursal.idTenant == id_tenant,
+                    *(
+                        [Inventario.codigoSucursal == payload.codigoSucursal]
+                        if payload.codigoSucursal is not None
+                        else []
+                    ),
+                )
+                .order_by(Inventario.idInv)
             )
-            .order_by(Inventario.idInv)
-        )
-    ).scalars().first()
-    if inv_original is None:
-        raise HTTPException(
-            status_code=400,
-            detail="No hay una fila de inventario donde reingresar la prenda devuelta",
-        )
+        ).scalars().first()
+        if inv_original is None:
+            raise HTTPException(
+                status_code=400,
+                detail="No hay una fila de inventario donde reingresar la prenda devuelta",
+            )
 
     monto_devuelto = 0.0
-    if payload.tipo != "cambio_medida":
+    if inv_original is not None:
         inv_original.cantidad_actual += payload.cantidad
         session.add(
             Movimiento(
@@ -366,7 +386,7 @@ async def registrar_devolucion(
         idProducto=payload.idProducto,
         idProductoNuevo=payload.idProductoNuevo,
         idCliente=venta.idCliente,
-        codigoSucursal=payload.codigoSucursal or inv_original.codigoSucursal,
+        codigoSucursal=payload.codigoSucursal or (inv_original.codigoSucursal if inv_original else None),
         idUsuario=int(auth["sub"]),
         idTenant=id_tenant,
     )

@@ -4,6 +4,7 @@ import traceback
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import IntegrityError
 
 from app.config import get_settings
 from app.routers import (
@@ -51,6 +52,23 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.exception_handler(IntegrityError)
+async def integrity_error_handler(request: Request, exc: IntegrityError):
+    # Borrar una sucursal con inventario, un producto con ventas, una ciudad
+    # con sucursales, etc. viola una FK. Antes salia como 500 generico; es un
+    # conflicto con datos existentes y el usuario tiene que poder entenderlo.
+    logger.warning("IntegrityError en %s %s: %s", request.method, request.url.path, exc.orig)
+    return JSONResponse(
+        status_code=409,
+        content={
+            "detail": (
+                "La operacion entra en conflicto con datos existentes "
+                "(por ejemplo, el registro esta en uso por otros registros o ya existe)."
+            )
+        },
+    )
 
 
 @app.exception_handler(Exception)

@@ -1,3 +1,4 @@
+import hashlib
 import re
 from datetime import datetime, timedelta, timezone
 
@@ -62,7 +63,7 @@ def create_token(subject: str, claims: dict, expires_delta: timedelta) -> str:
 def create_access_token(user_id: int, extra_claims: dict) -> str:
     return create_token(
         subject=str(user_id),
-        claims=extra_claims,
+        claims={**extra_claims, "type": "access"},
         expires_delta=timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
     )
 
@@ -70,18 +71,39 @@ def create_access_token(user_id: int, extra_claims: dict) -> str:
 def create_refresh_token(user_id: int) -> str:
     return create_token(
         subject=str(user_id),
-        claims={},
+        claims={"type": "refresh"},
         expires_delta=timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS),
     )
 
 
-def create_pwd_reset_token(user_id: int) -> str:
+def huella_contrasena(hash_actual: str) -> str:
+    """Huella corta del hash de contrasena vigente. Viaja dentro del token de
+    recuperacion: en cuanto la contrasena cambia, la huella deja de coincidir
+    y el enlace ya usado (o cualquier otro emitido antes) queda invalido."""
+    return hashlib.sha256(hash_actual.encode("utf-8")).hexdigest()[:16]
+
+
+def create_pwd_reset_token(user_id: int, hash_actual: str) -> str:
     """Crea un JWT de corta duracion para recuperacion de contrasena (stateless)."""
     return create_token(
         subject=str(user_id),
-        claims={"purpose": "pwd_reset"},
+        claims={"purpose": "pwd_reset", "pwh": huella_contrasena(hash_actual)},
         expires_delta=timedelta(minutes=PWD_RESET_TOKEN_EXPIRE_MINUTES),
     )
+
+
+def es_refresh_token(payload: dict) -> bool:
+    """Los refresh emitidos antes de agregar el claim "type" solo traian
+    sub/iat/exp: se reconocen por no tener "permisos" ni "purpose"."""
+    if "type" in payload:
+        return payload["type"] == "refresh"
+    return "permisos" not in payload and "purpose" not in payload
+
+
+def es_access_token(payload: dict) -> bool:
+    if "type" in payload:
+        return payload["type"] == "access"
+    return "permisos" in payload and "purpose" not in payload
 
 
 def decode_token(token: str) -> dict:
@@ -102,7 +124,30 @@ def get_current_payload(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="No se proporciono token de autenticacion",
         )
-    return decode_token(credentials.credentials)
+    payload = decode_token(credentials.credentials)
+    # Un refresh token (7 dias) o un enlace de recuperacion no pueden usarse
+    # como token de acceso.
+    if not es_access_token(payload):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token invalido o expirado",
+        )
+    return payload
+
+
+def get_optional_payload(
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+) -> dict | None:
+    """Para endpoints publicos que cambian de alcance si hay sesion (ej. el
+    catalogo: con un token de staff se lista el de SU organizacion).
+
+    Sin token -> None (visitante). Con un token vencido o invalido -> 401, no
+    None: si se tratara como visitante, el staff de otra empresa recibiria un
+    200 con el catalogo de la empresa por defecto y el cliente nunca se
+    enteraria de que tiene que renovar la sesion."""
+    if not credentials:
+        return None
+    return get_current_payload(credentials)
 
 
 def require_permiso(permiso: str):

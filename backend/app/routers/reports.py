@@ -13,7 +13,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.models import DetalleVenta, Inventario, Producto, Sucursal, Venta
+from app.models import Inventario, Producto, Sucursal
 from app.schemas.reports import (
     AnalisisSucursalesOut,
     ConsolidadoSucursalesOut,
@@ -181,42 +181,40 @@ def _inventory_rows_to_pdf_bytes(filas: list[dict], filtros: dict) -> bytes:
 
 # --- Queries (tocan la DB, sin test de integracion por falta de DB viva) -
 
+SIN_SUCURSAL = "Sin sucursal registrada"
+
+
 async def _consultar_ventas(
     session: AsyncSession,
+    id_tenant: int,
     fecha_desde: date | None,
     fecha_hasta: date | None,
     codigoSucursal: int | None,
     idProducto: int | None,
 ) -> list[dict]:
-    # Join Venta -> DetalleVenta -> Producto -> Inventario (en vez del mas
-    # preciso Movimiento.motivo == f"Venta {idVenta}"): ese motivo es
-    # IDENTICO para todos los items de una misma venta multi-item (fan-out/
-    # doble conteo al unirlo con DetalleVenta) y ademas las ventas
-    # confirmadas desde una Reserva usan tipo="venta_reserva" con un motivo
-    # distinto ("Confirmacion reserva {codigoReserva}", sin idVenta), asi
-    # que un join por motivo omitiria ese canal de ventas por completo.
+    # Cada linea de venta se atribuye a la sucursal que REALMENTE la surtio
+    # (ver reportes_ia.lineas_venta_con_sucursal). Antes se unia por
+    # Inventario.idProducto y cada venta se contaba una vez por cada sucursal
+    # que tuviera ese producto en stock: los totales salian inflados.
+    lineas = reportes_ia.lineas_venta_con_sucursal()
     stmt = (
         select(
             Producto.idProducto,
             Producto.nombre.label("producto_nombre"),
-            Inventario.codigoSucursal,
-            Sucursal.nombre.label("sucursal_nombre"),
-            func.sum(DetalleVenta.cantidad).label("cantidad_vendida"),
-            func.sum(DetalleVenta.cantidad * DetalleVenta.precio_unitario).label("monto"),
+            func.coalesce(lineas.c.codigoSucursal, 0).label("codigoSucursal"),
+            func.coalesce(Sucursal.nombre, SIN_SUCURSAL).label("sucursal_nombre"),
+            func.sum(lineas.c.cantidad).label("cantidad_vendida"),
+            func.sum(lineas.c.monto).label("monto"),
         )
-        .select_from(Venta)
-        .join(DetalleVenta, DetalleVenta.idVenta == Venta.idVenta)
-        .join(Producto, Producto.idProducto == DetalleVenta.idProducto)
-        .join(Inventario, Inventario.idProducto == Producto.idProducto)
-        .join(Sucursal, Sucursal.codigoSucursal == Inventario.codigoSucursal)
-        .group_by(Producto.idProducto, Producto.nombre, Inventario.codigoSucursal, Sucursal.nombre)
+        .select_from(lineas)
+        .join(Producto, Producto.idProducto == lineas.c.idProducto)
+        .outerjoin(Sucursal, Sucursal.codigoSucursal == lineas.c.codigoSucursal)
+        .where(Producto.idTenant == id_tenant)
+        .group_by(Producto.idProducto, Producto.nombre, lineas.c.codigoSucursal, Sucursal.nombre)
     )
-    if fecha_desde is not None:
-        stmt = stmt.where(Venta.fecha >= datetime.combine(fecha_desde, time.min))
-    if fecha_hasta is not None:
-        stmt = stmt.where(Venta.fecha <= datetime.combine(fecha_hasta, time.max))
+    stmt = reportes_ia.filtrar_lineas_por_fecha(stmt, lineas, fecha_desde, fecha_hasta)
     if codigoSucursal is not None:
-        stmt = stmt.where(Inventario.codigoSucursal == codigoSucursal)
+        stmt = stmt.where(lineas.c.codigoSucursal == codigoSucursal)
     if idProducto is not None:
         stmt = stmt.where(Producto.idProducto == idProducto)
 
@@ -226,6 +224,7 @@ async def _consultar_ventas(
 
 async def _consultar_inventario(
     session: AsyncSession,
+    id_tenant: int,
     codigoSucursal: int | None,
     idProducto: int | None,
 ) -> list[dict]:
@@ -241,6 +240,7 @@ async def _consultar_inventario(
         .select_from(Inventario)
         .join(Producto, Producto.idProducto == Inventario.idProducto)
         .join(Sucursal, Sucursal.codigoSucursal == Inventario.codigoSucursal)
+        .where(Sucursal.idTenant == id_tenant)
     )
     if codigoSucursal is not None:
         stmt = stmt.where(Inventario.codigoSucursal == codigoSucursal)
@@ -276,8 +276,9 @@ async def sales_report(
     idProducto: int | None = None,
     session: AsyncSession = Depends(get_db),
     _=Depends(require_permiso("reporte.ver")),
+    id_tenant: int = Depends(tenant_actual),
 ):
-    filas = await _consultar_ventas(session, fecha_desde, fecha_hasta, codigoSucursal, idProducto)
+    filas = await _consultar_ventas(session, id_tenant, fecha_desde, fecha_hasta, codigoSucursal, idProducto)
     total_monto, total_items = _sales_totals(filas)
     return VentaReporteOut(
         filas=[VentaReporteFila(**f) for f in filas],
@@ -295,8 +296,9 @@ async def sales_report_csv(
     idProducto: int | None = None,
     session: AsyncSession = Depends(get_db),
     _=Depends(require_permiso("reporte.ver")),
+    id_tenant: int = Depends(tenant_actual),
 ):
-    filas = await _consultar_ventas(session, fecha_desde, fecha_hasta, codigoSucursal, idProducto)
+    filas = await _consultar_ventas(session, id_tenant, fecha_desde, fecha_hasta, codigoSucursal, idProducto)
     csv_text = _sales_rows_to_csv(filas)
     return StreamingResponse(
         iter([csv_text]),
@@ -313,8 +315,9 @@ async def sales_report_pdf(
     idProducto: int | None = None,
     session: AsyncSession = Depends(get_db),
     _=Depends(require_permiso("reporte.ver")),
+    id_tenant: int = Depends(tenant_actual),
 ):
-    filas = await _consultar_ventas(session, fecha_desde, fecha_hasta, codigoSucursal, idProducto)
+    filas = await _consultar_ventas(session, id_tenant, fecha_desde, fecha_hasta, codigoSucursal, idProducto)
     filtros = _filtros_sales_dict(fecha_desde, fecha_hasta, codigoSucursal, idProducto)
     pdf_bytes = _sales_rows_to_pdf_bytes(filas, filtros)
     return StreamingResponse(
@@ -330,8 +333,9 @@ async def inventory_report(
     idProducto: int | None = None,
     session: AsyncSession = Depends(get_db),
     _=Depends(require_permiso("reporte.ver")),
+    id_tenant: int = Depends(tenant_actual),
 ):
-    filas = await _consultar_inventario(session, codigoSucursal, idProducto)
+    filas = await _consultar_inventario(session, id_tenant, codigoSucursal, idProducto)
     return InventarioReporteOut(
         filas=[InventarioReporteFila(**f) for f in filas],
         filtros=ReportFiltrosOut(**_filtros_inventory_dict(codigoSucursal, idProducto)),
@@ -344,8 +348,9 @@ async def inventory_report_csv(
     idProducto: int | None = None,
     session: AsyncSession = Depends(get_db),
     _=Depends(require_permiso("reporte.ver")),
+    id_tenant: int = Depends(tenant_actual),
 ):
-    filas = await _consultar_inventario(session, codigoSucursal, idProducto)
+    filas = await _consultar_inventario(session, id_tenant, codigoSucursal, idProducto)
     csv_text = _inventory_rows_to_csv(filas)
     return StreamingResponse(
         iter([csv_text]),
@@ -360,8 +365,9 @@ async def inventory_report_pdf(
     idProducto: int | None = None,
     session: AsyncSession = Depends(get_db),
     _=Depends(require_permiso("reporte.ver")),
+    id_tenant: int = Depends(tenant_actual),
 ):
-    filas = await _consultar_inventario(session, codigoSucursal, idProducto)
+    filas = await _consultar_inventario(session, id_tenant, codigoSucursal, idProducto)
     filtros = _filtros_inventory_dict(codigoSucursal, idProducto)
     pdf_bytes = _inventory_rows_to_pdf_bytes(filas, filtros)
     return StreamingResponse(

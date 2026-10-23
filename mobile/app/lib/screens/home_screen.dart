@@ -4,7 +4,6 @@ import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../theme/aether_theme.dart';
 import '../providers/app_state.dart';
-import '../models/product_model.dart';
 import '../models/recomendacion_model.dart';
 import '../services/api_client.dart';
 import '../services/recommendations_service.dart';

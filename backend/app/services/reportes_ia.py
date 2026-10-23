@@ -26,7 +26,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
-from app.models import DetalleVenta, Inventario, Producto, Sucursal, Venta
+from app.models import DetalleVenta, Inventario, Movimiento, Producto, Reserva, Sucursal, Venta
 
 try:
     from google import genai
@@ -106,6 +106,60 @@ def _client() -> "genai.Client":
 
 # --- Metricas (SQL, sin IA) ---------------------------------------------
 
+def lineas_venta_con_sucursal():
+    """Subquery con UNA fila por linea de venta y la sucursal que la surtio.
+
+    `DetalleVenta` no guarda la sucursal. Antes se unia por
+    `Inventario.idProducto`, lo que repetia cada linea en TODAS las sucursales
+    con stock de ese producto (una venta de 1 unidad aparecia como 3 si el
+    producto estaba en 3 sucursales). La sucursal real sale de:
+      - la reserva confirmada (`DetalleVenta.codigoReserva` -> Reserva), o
+      - el movimiento de stock que genero la venta ("Venta {idVenta}").
+    Una linea sin ninguno de los dos (datos historicos) queda con sucursal NULL.
+    """
+    sucursal_reserva = (
+        select(Reserva.codigoSucursal)
+        .where(Reserva.codigoReserva == DetalleVenta.codigoReserva)
+        .correlate(DetalleVenta)
+        .scalar_subquery()
+    )
+    sucursal_movimiento = (
+        select(Inventario.codigoSucursal)
+        .select_from(Movimiento)
+        .join(Inventario, Inventario.idInv == Movimiento.idInv)
+        .where(
+            Movimiento.tipo == "venta",
+            Movimiento.motivo == func.concat("Venta ", DetalleVenta.idVenta),
+            Inventario.idProducto == DetalleVenta.idProducto,
+        )
+        .order_by(Movimiento.idMov)
+        .limit(1)
+        .correlate(DetalleVenta)
+        .scalar_subquery()
+    )
+    return (
+        select(
+            DetalleVenta.idVenta.label("idVenta"),
+            DetalleVenta.idProducto.label("idProducto"),
+            DetalleVenta.cantidad.label("cantidad"),
+            (DetalleVenta.cantidad * DetalleVenta.precio_unitario).label("monto"),
+            func.coalesce(sucursal_reserva, sucursal_movimiento).label("codigoSucursal"),
+            Venta.fecha.label("fecha"),
+        )
+        .select_from(DetalleVenta)
+        .join(Venta, Venta.idVenta == DetalleVenta.idVenta)
+        .subquery("lineas_venta")
+    )
+
+
+def filtrar_lineas_por_fecha(stmt, lineas, fecha_desde: date | None, fecha_hasta: date | None):
+    if fecha_desde is not None:
+        stmt = stmt.where(lineas.c.fecha >= datetime.combine(fecha_desde, time.min))
+    if fecha_hasta is not None:
+        stmt = stmt.where(lineas.c.fecha <= datetime.combine(fecha_hasta, time.max))
+    return stmt
+
+
 async def metricas_por_sucursal(
     session: AsyncSession,
     id_tenant: int,
@@ -113,23 +167,19 @@ async def metricas_por_sucursal(
     fecha_hasta: date | None = None,
 ) -> list[dict]:
     """Una fila por sucursal del tenant con sus totales de venta y stock."""
+    lineas = lineas_venta_con_sucursal()
     ventas_stmt = (
         select(
-            Inventario.codigoSucursal.label("codigoSucursal"),
-            func.sum(DetalleVenta.cantidad).label("unidades"),
-            func.sum(DetalleVenta.cantidad * DetalleVenta.precio_unitario).label("monto"),
+            lineas.c.codigoSucursal.label("codigoSucursal"),
+            func.sum(lineas.c.cantidad).label("unidades"),
+            func.sum(lineas.c.monto).label("monto"),
         )
-        .select_from(Venta)
-        .join(DetalleVenta, DetalleVenta.idVenta == Venta.idVenta)
-        .join(Inventario, Inventario.idProducto == DetalleVenta.idProducto)
-        .join(Sucursal, Sucursal.codigoSucursal == Inventario.codigoSucursal)
+        .select_from(lineas)
+        .join(Sucursal, Sucursal.codigoSucursal == lineas.c.codigoSucursal)
         .where(Sucursal.idTenant == id_tenant)
-        .group_by(Inventario.codigoSucursal)
+        .group_by(lineas.c.codigoSucursal)
     )
-    if fecha_desde is not None:
-        ventas_stmt = ventas_stmt.where(Venta.fecha >= datetime.combine(fecha_desde, time.min))
-    if fecha_hasta is not None:
-        ventas_stmt = ventas_stmt.where(Venta.fecha <= datetime.combine(fecha_hasta, time.max))
+    ventas_stmt = filtrar_lineas_por_fecha(ventas_stmt, lineas, fecha_desde, fecha_hasta)
 
     ventas_por_sucursal = {
         fila.codigoSucursal: (int(fila.unidades or 0), Decimal(str(fila.monto or 0)))

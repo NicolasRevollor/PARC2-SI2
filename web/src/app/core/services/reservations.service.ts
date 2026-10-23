@@ -122,6 +122,30 @@ export class ReservationsService {
     });
   }
 
+  /**
+   * Registra el cobro en efectivo del SALDO de una reserva (precio menos el
+   * anticipo) y devuelve el `idMetPago` nuevo para confirmarla. Cada método
+   * de pago es de un solo uso, así que confirmar necesita uno recién creado.
+   */
+  registrarCobroEfectivoSaldo(reserva: Reserva): Promise<number | null> {
+    return firstValueFrom(
+      this.http.get<{ venta: number }>(`${API_URL}/api/products/${reserva.idProducto}`)
+    ).then((producto) => {
+      const saldo = Math.max(producto.venta - (reserva.montoDeposito ?? 0), 0);
+      return firstValueFrom(
+        this.http.post<MetodoPago>(`${API_URL}/api/payment-methods`, {
+          tipo: 'Efectivo',
+          estado: 'Activo',
+          monto: Math.round(saldo * 100) / 100,
+        })
+      );
+    }).then((metodo) => metodo.idMetPago).catch((err) => {
+      const msg = err.error?.detail || 'No se pudo registrar el cobro en efectivo.';
+      this.notificationService.error('Error', msg);
+      return null;
+    });
+  }
+
   loadPaymentMethods(): Promise<MetodoPago[]> {
     return firstValueFrom(
       this.http.get<MetodoPago[]>(`${API_URL}/api/payment-methods`)

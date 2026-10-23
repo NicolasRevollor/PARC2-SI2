@@ -12,6 +12,7 @@ from app.schemas.dispatches import (
     MovimientoOut,
 )
 from app.security import require_permiso
+from app.services.tenancy import tenant_actual
 
 router = APIRouter(prefix="/api/dispatches", tags=["dispatches"])
 
@@ -42,6 +43,7 @@ async def create_dispatch(
     payload: DispatchIn,
     session: AsyncSession = Depends(get_db),
     _=Depends(require_permiso("inventario.traspasar")),
+    id_tenant: int = Depends(tenant_actual),
 ):
     if payload.origen == payload.destino:
         raise HTTPException(status_code=400, detail="Origen y destino deben ser distintos")
@@ -50,7 +52,12 @@ async def create_dispatch(
 
     origen = await session.get(Sucursal, payload.origen)
     destino = await session.get(Sucursal, payload.destino)
-    if not origen or not destino:
+    if (
+        not origen
+        or not destino
+        or origen.idTenant != id_tenant
+        or destino.idTenant != id_tenant
+    ):
         raise HTTPException(status_code=404, detail="Sucursal origen o destino inexistente")
 
     referencia = _generar_referencia()
@@ -82,7 +89,9 @@ async def create_dispatch(
                 status_code=404,
                 detail=f"Sin inventario del producto {item.idProducto} en sucursal origen",
             )
-        if inv_origen.cantidad_actual < item.cantidad:
+        # Lo reservado no se puede trasladar: esas unidades ya estan
+        # comprometidas con una reserva de ESTA sucursal.
+        if inv_origen.cantidad_actual - inv_origen.cantidad_reservada < item.cantidad:
             raise HTTPException(
                 status_code=400,
                 detail=f"Stock insuficiente del producto {item.idProducto} en origen",
@@ -132,10 +141,20 @@ async def create_dispatch(
 
 @router.get("", response_model=list[DispatchOut])
 async def list_dispatches(session: AsyncSession = Depends(get_db),
-                          _=Depends(require_permiso("inventario.ver"))):
+                          _=Depends(require_permiso("inventario.ver")),
+                          id_tenant: int = Depends(tenant_actual)):
+    # Solo traspasos ("DSP-..."): "referencia" tambien la usan los ingresos de
+    # lote ("Proveedor N"), devoluciones ("DEV-N") y cambios ("CAM-N"), que
+    # antes aparecian aca agrupados como si fueran despachos.
     stmt = (
         select(Movimiento)
-        .where(Movimiento.referencia.is_not(None))
+        .join(Inventario, Inventario.idInv == Movimiento.idInv)
+        .join(Sucursal, Sucursal.codigoSucursal == Inventario.codigoSucursal)
+        .where(
+            Movimiento.referencia.like("DSP-%"),
+            Movimiento.tipo.in_(("salida_traspaso", "entrada_traspaso")),
+            Sucursal.idTenant == id_tenant,
+        )
         .order_by(Movimiento.fecha.desc())
     )
     movimientos = (await session.execute(stmt)).scalars().all()

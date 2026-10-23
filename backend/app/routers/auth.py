@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.concurrency import run_in_threadpool
 from jose import JWTError, jwt
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
@@ -30,8 +30,10 @@ from app.security import (
     create_pwd_reset_token,
     create_refresh_token,
     decode_token,
+    es_refresh_token,
     get_current_payload,
     hash_password,
+    huella_contrasena,
     verify_password,
 )
 from app.services.usuarios import build_user_claims
@@ -53,8 +55,12 @@ MENSAJE_REQUIERE_ACTIVACION = (
 
 
 async def _find_usuario_by_email(session: AsyncSession, email: str) -> Usuario | None:
-    result = await session.execute(select(Usuario).where(Usuario.correo == email))
-    return result.scalar_one_or_none()
+    # Sin distinguir mayusculas: "Ana@Mail.com" y "ana@mail.com" son el mismo
+    # buzon, y la unicidad de la columna es sensible a mayusculas.
+    result = await session.execute(
+        select(Usuario).where(func.lower(Usuario.correo) == email.strip().lower()).order_by(Usuario.idUser)
+    )
+    return result.scalars().first()
 
 
 def _ahora_naive() -> datetime:
@@ -241,6 +247,10 @@ async def register(payload: RegisterRequest, request: Request, session: AsyncSes
 @router.post("/refresh", response_model=TokenResponse)
 async def refresh(payload: RefreshRequest, session: AsyncSession = Depends(get_db)):
     decoded = decode_token(payload.refresh_token)
+    # Solo un refresh token sirve aca: un access token o un enlace de
+    # recuperacion de contrasena no pueden canjearse por una sesion nueva.
+    if not es_refresh_token(decoded):
+        raise HTTPException(status_code=401, detail="Refresh token invalido")
     try:
         user_id = int(decoded["sub"])
     except (KeyError, ValueError):
@@ -249,6 +259,20 @@ async def refresh(payload: RefreshRequest, session: AsyncSession = Depends(get_d
     usuario = await session.get(Usuario, user_id)
     if not usuario:
         raise HTTPException(status_code=401, detail="Usuario no existe")
+
+    # Mismas puertas que el login: sin esto, una cuenta bloqueada por un
+    # administrador o una empresa suspendida seguian operando hasta 7 dias
+    # renovando el token.
+    if usuario.requiereActivacion:
+        raise HTTPException(status_code=status.HTTP_423_LOCKED, detail=MENSAJE_REQUIERE_ACTIVACION)
+    estado_tenant = await session.scalar(
+        select(Tenant.estado).where(Tenant.idTenant == usuario.idTenant)
+    )
+    if estado_tenant is not None and estado_tenant != "Activo":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="La suscripcion de tu organizacion esta suspendida. Contacta al administrador de la plataforma.",
+        )
 
     claims = await build_user_claims(session, usuario)
     access_token = create_access_token(usuario.idUser, claims)
@@ -312,15 +336,17 @@ async def forgot_password(payload: ForgotPasswordRequest, session: AsyncSession 
     if usuario is None:
         return ForgotPasswordResponse(message=mensaje, reset_token_dev=None)
 
-    reset_token = create_pwd_reset_token(usuario.idUser)
+    reset_token = create_pwd_reset_token(usuario.idUser, usuario.contraseña)
     reset_link = f"{settings.FRONTEND_URL}/?reset_token={reset_token}"
 
     enviado = await run_in_threadpool(send_reset_email, usuario.correo, reset_link)
-    if enviado:
+    if enviado or not settings.DEBUG:
         return ForgotPasswordResponse(message=mensaje, reset_token_dev=None)
 
-    # SMTP no configurado o fallo el envio: modo desarrollo, se devuelve el
-    # token directamente para poder probar el flujo sin correo real.
+    # Solo con DEBUG=true (desarrollo): el correo no salio, se devuelve el
+    # token para probar el flujo sin correo real. En produccion NUNCA: con
+    # Brevo caido cualquiera podria pedir el token de una cuenta ajena y
+    # cambiarle la contrasena.
     return ForgotPasswordResponse(message=mensaje, reset_token_dev=reset_token)
 
 
@@ -353,7 +379,9 @@ async def reset_password(payload: ResetPasswordRequest, request: Request, sessio
         )
 
     usuario = await session.get(Usuario, user_id)
-    if not usuario:
+    # La huella del hash vigente hace el enlace de un solo uso: tras el
+    # primer cambio de contrasena ya no coincide.
+    if not usuario or decoded.get("pwh") != huella_contrasena(usuario.contraseña):
         raise HTTPException(
             status_code=400,
             detail="El enlace de recuperacion es invalido o expiro",

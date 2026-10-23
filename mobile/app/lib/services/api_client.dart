@@ -64,35 +64,84 @@ class ApiClient {
     throw ApiException(response.statusCode, message);
   }
 
-  Future<dynamic> get(String path, {Map<String, dynamic>? query, bool auth = true}) async {
-    final response = await http.get(_uri(path, query), headers: await _headers(auth: auth));
+  // Una sola renovacion a la vez aunque fallen varias llamadas juntas.
+  static Future<bool>? _renovacionEnCurso;
+
+  /// Canjea el refresh token guardado por un access token nuevo. El access
+  /// token dura 30 min: antes el refresh token se guardaba pero nunca se
+  /// usaba, y a la media hora todo daba 401 (y al reabrir la app se cerraba
+  /// la sesion).
+  Future<bool> _renovarSesion() {
+    return _renovacionEnCurso ??= () async {
+      try {
+        final refreshToken = await _storage.read(key: ApiConfig.refreshTokenStorageKey);
+        if (refreshToken == null || refreshToken.isEmpty) return false;
+        final response = await http.post(
+          _uri('/api/auth/refresh'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'refresh_token': refreshToken}),
+        );
+        if (response.statusCode < 200 || response.statusCode >= 300) return false;
+        final data = jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
+        await _storage.write(key: ApiConfig.tokenStorageKey, value: data['access_token'] as String);
+        await _storage.write(key: ApiConfig.refreshTokenStorageKey, value: data['refresh_token'] as String);
+        await _storage.write(key: ApiConfig.userStorageKey, value: jsonEncode(data['user']));
+        return true;
+      } catch (_) {
+        return false;
+      } finally {
+        _renovacionEnCurso = null;
+      }
+    }();
+  }
+
+  /// Ejecuta la llamada y, si el backend responde 401 con una sesion
+  /// autenticada, renueva el token y la reintenta UNA vez.
+  Future<dynamic> _enviar(
+    Future<http.Response> Function(Map<String, String> headers) llamada, {
+    required bool auth,
+  }) async {
+    var response = await llamada(await _headers(auth: auth));
+    if (auth && response.statusCode == 401 && await _renovarSesion()) {
+      response = await llamada(await _headers(auth: auth));
+    }
     return _decode(response);
   }
 
-  Future<dynamic> post(String path, {Object? body, bool auth = true}) async {
-    final response = await http.post(
-      _uri(path),
-      headers: await _headers(auth: auth),
-      body: body == null ? null : jsonEncode(body),
-    );
-    return _decode(response);
+  Future<dynamic> get(String path, {Map<String, dynamic>? query, bool auth = true}) {
+    return _enviar((headers) => http.get(_uri(path, query), headers: headers), auth: auth);
   }
 
-  Future<dynamic> patch(String path, {Object? body, bool auth = true}) async {
-    final response = await http.patch(
-      _uri(path),
-      headers: await _headers(auth: auth),
-      body: body == null ? null : jsonEncode(body),
+  Future<dynamic> post(String path, {Object? body, bool auth = true}) {
+    return _enviar(
+      (headers) => http.post(
+        _uri(path),
+        headers: headers,
+        body: body == null ? null : jsonEncode(body),
+      ),
+      auth: auth,
     );
-    return _decode(response);
   }
 
-  Future<dynamic> put(String path, {Object? body, bool auth = true}) async {
-    final response = await http.put(
-      _uri(path),
-      headers: await _headers(auth: auth),
-      body: body == null ? null : jsonEncode(body),
+  Future<dynamic> patch(String path, {Object? body, bool auth = true}) {
+    return _enviar(
+      (headers) => http.patch(
+        _uri(path),
+        headers: headers,
+        body: body == null ? null : jsonEncode(body),
+      ),
+      auth: auth,
     );
-    return _decode(response);
+  }
+
+  Future<dynamic> put(String path, {Object? body, bool auth = true}) {
+    return _enviar(
+      (headers) => http.put(
+        _uri(path),
+        headers: headers,
+        body: body == null ? null : jsonEncode(body),
+      ),
+      auth: auth,
+    );
   }
 }

@@ -24,25 +24,51 @@ PERMISOS = [
     "bitacora.ver",
     "recomendacion.gestionar",
     "cliente.ver",
+    "reporte.ver",
+    "tenant.ver",
+    "tenant.admin",
+    "devolucion.ver",
+    "devolucion.crear",
 ]
 
+# Mismos nombres de rol y asignaciones que base.sql + migraciones 005, 007,
+# 011, 014 y 015. Antes este seed creaba "Admin"/"Vendedor", roles que el
+# codigo no reconoce (team.py::ROLES_STAFF, platform.py buscan
+# "Administrador"), y el admin sembrado quedaba sin reportes ni devoluciones.
 ROLES_PERMISOS = {
-    "Admin": PERMISOS,
-    "Vendedor": [
+    "Administrador": PERMISOS,
+    "Encargado de Sucursal": [
         "producto.listar",
+        "producto.crear",
+        "producto.editar",
         "inventario.ver",
         "inventario.ajustar",
         "inventario.traspasar",
-        "venta.crear",
         "venta.ver",
-        "reserva.crear",
         "reserva.gestionar",
         "equipo.ver",
         "cliente.ver",
+        "bitacora.ver",
+        "recomendacion.gestionar",
+        "tenant.ver",
+        "devolucion.ver",
+        "devolucion.crear",
+    ],
+    "Cajero": [
+        "producto.listar",
+        "inventario.ver",
+        "venta.crear",
+        "venta.ver",
+        "reserva.crear",
+        "cliente.ver",
+        "tenant.ver",
+        "devolucion.ver",
+        "devolucion.crear",
     ],
     "Cliente": [
         "producto.listar",
         "reserva.crear",
+        "venta.crear",
     ],
 }
 
@@ -95,11 +121,13 @@ async def seed(session: AsyncSession):
         )
     ).scalar_one_or_none()
     if admin is None:
+        # 10+ caracteres: la politica de security.py::validate_password_strength
+        # ("Admin123!" tenia 9 y no se podia volver a fijar desde la app).
         admin = Usuario(
             nombre="Administrador",
             correo="admin@ropa.com",
-            contraseña=hash_password("Admin123!"),
-            codigoRol=roles_map["Admin"].codigoRol,
+            contraseña=hash_password("Admin12345!"),
+            codigoRol=roles_map["Administrador"].codigoRol,
         )
         session.add(admin)
 

@@ -34,7 +34,7 @@ from app.schemas.tenancy import (
 )
 from app.security import hash_password, require_permiso
 from app.services.bitacora import registrar_bitacora
-from app.services.tenancy import excesos_para_plan, uso_actual
+from app.services.tenancy import excesos_para_plan, tenant_actual, uso_actual
 
 router = APIRouter(prefix="/api/platform", tags=["platform"])
 
@@ -135,7 +135,9 @@ async def crear_empresa(
 
     if await session.scalar(select(func.count()).select_from(Tenant).where(Tenant.slug == payload.slug)):
         raise HTTPException(status_code=409, detail=f"Ya existe una empresa con el identificador '{payload.slug}'")
-    if await session.scalar(select(func.count()).select_from(Usuario).where(Usuario.correo == payload.adminCorreo)):
+    if await session.scalar(
+        select(func.count()).select_from(Usuario).where(func.lower(Usuario.correo) == payload.adminCorreo.lower())
+    ):
         raise HTTPException(status_code=409, detail="El correo del administrador ya esta registrado")
 
     rol_admin = await session.scalar(select(Rol.codigoRol).where(Rol.nombreRol == "Administrador"))
@@ -312,7 +314,7 @@ async def cambiar_estado_empresa(
 
     # El tenant del operador no se puede suspender: el superadmin quedaria
     # bloqueado fuera de la plataforma sin nadie que pueda reactivarlo.
-    if payload.estado == "Suspendido" and id_tenant in (TENANT_POR_DEFECTO, auth.get("tenant")):
+    if payload.estado == "Suspendido" and id_tenant in (TENANT_POR_DEFECTO, tenant_actual(auth)):
         raise HTTPException(status_code=409, detail="No se puede suspender la empresa operadora de la plataforma")
 
     anterior = tenant.estado

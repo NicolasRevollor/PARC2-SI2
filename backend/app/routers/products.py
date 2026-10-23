@@ -5,7 +5,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.models import Colecciones, Producto, Proveedor, Temporada, TENANT_POR_DEFECTO
+from app.models import Colecciones, Producto, Proveedor
 from app.schemas.products import (
     ImagenUploadOut,
     PaginatedProductos,
@@ -13,8 +13,14 @@ from app.schemas.products import (
     ProductoOut,
     ProductoUpdate,
 )
-from app.security import require_permiso
-from app.services.tenancy import ContextoTenant, contexto_actual, exigir_cupo, tenant_actual
+from app.security import get_optional_payload, require_permiso
+from app.services.tenancy import (
+    ContextoTenant,
+    contexto_actual,
+    exigir_cupo,
+    resolver_tenant_publico,
+    tenant_actual,
+)
 from app.services.storage_supabase import (
     SupabaseNoConfigurado,
     SupabaseStorageError,
@@ -49,6 +55,19 @@ async def _serialize(producto: Producto, session: AsyncSession) -> ProductoOut:
     )
 
 
+async def _validar_referencias(session: AsyncSession, data: dict, id_tenant: int) -> None:
+    """Proveedor y coleccion deben existir Y ser de la misma organizacion: sin
+    esto un producto de la empresa 2 podia colgar de la coleccion de la 1."""
+    if "idProveedor" in data:
+        proveedor = await session.get(Proveedor, data["idProveedor"])
+        if not proveedor or proveedor.idTenant != id_tenant:
+            raise HTTPException(status_code=400, detail="Proveedor inexistente")
+    if "idColeccion" in data:
+        coleccion = await session.get(Colecciones, data["idColeccion"])
+        if not coleccion or coleccion.idTenant != id_tenant:
+            raise HTTPException(status_code=400, detail="Coleccion inexistente")
+
+
 @router.get("", response_model=PaginatedProductos)
 async def list_products(
     page: int = Query(1, ge=1),
@@ -63,14 +82,14 @@ async def list_products(
         None,
         description=(
             "Organizacion cuyo catalogo se consulta. El endpoint es publico (la "
-            "vitrina del cliente no manda token), asi que el tenant no se puede "
-            "derivar del JWT: sin este parametro se devuelve el catalogo del "
-            "tenant por defecto."
+            "vitrina del cliente no manda token): sin este parametro se usa el "
+            "tenant del JWT si hay sesion, o el tenant por defecto."
         ),
     ),
     session: AsyncSession = Depends(get_db),
+    sesion: dict | None = Depends(get_optional_payload),
 ):
-    filters = [Producto.idTenant == (idTenant or TENANT_POR_DEFECTO)]
+    filters = [Producto.idTenant == resolver_tenant_publico(idTenant, sesion)]
     if tipo:
         filters.append(Producto.tipo.ilike(f"%{tipo}%"))
     if talla:
@@ -154,10 +173,7 @@ async def create_product(
     ctx: ContextoTenant = Depends(contexto_actual),
 ):
     await exigir_cupo(session, ctx, "productos")
-    if not await session.get(Proveedor, payload.idProveedor):
-        raise HTTPException(status_code=400, detail="Proveedor inexistente")
-    if not await session.get(Colecciones, payload.idColeccion):
-        raise HTTPException(status_code=400, detail="Coleccion inexistente")
+    await _validar_referencias(session, payload.model_dump(), ctx.tenant.idTenant)
 
     producto = Producto(**payload.model_dump(), idTenant=ctx.tenant.idTenant)
     session.add(producto)
@@ -179,10 +195,7 @@ async def update_product(
         raise HTTPException(status_code=404, detail="Producto no encontrado")
 
     data = payload.model_dump(exclude_unset=True)
-    if "idProveedor" in data and not await session.get(Proveedor, data["idProveedor"]):
-        raise HTTPException(status_code=400, detail="Proveedor inexistente")
-    if "idColeccion" in data and not await session.get(Colecciones, data["idColeccion"]):
-        raise HTTPException(status_code=400, detail="Coleccion inexistente")
+    await _validar_referencias(session, data, id_tenant)
 
     for key, value in data.items():
         setattr(producto, key, value)

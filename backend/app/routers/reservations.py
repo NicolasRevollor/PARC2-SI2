@@ -1,4 +1,4 @@
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
@@ -25,6 +25,7 @@ from app.schemas.fase2 import (
 )
 from app.security import get_current_payload, require_permiso
 from app.services.metodo_pago_guard import exigir_metodo_pago_consumible
+from app.services.tenancy import tenant_actual
 
 router = APIRouter(prefix="/api/reservations", tags=["reservations"])
 
@@ -33,8 +34,21 @@ def _parse_hora(valor) -> time:
     if isinstance(valor, time):
         return valor
     if isinstance(valor, str):
-        return time.fromisoformat(valor)
+        try:
+            return time.fromisoformat(valor)
+        except ValueError:
+            # "25:00" o "abc" antes tiraban ValueError sin capturar (500).
+            pass
     raise HTTPException(status_code=400, detail="horario invalido")
+
+
+async def _reserva_de_mi_tenant(session: AsyncSession, codigoReserva: int, id_tenant: int) -> Reserva:
+    """La Reserva es de la organizacion duena de su sucursal."""
+    reserva = await session.get(Reserva, codigoReserva)
+    sucursal = await session.get(Sucursal, reserva.codigoSucursal) if reserva else None
+    if not reserva or not sucursal or sucursal.idTenant != id_tenant:
+        raise HTTPException(status_code=404, detail="Reserva no encontrada")
+    return reserva
 
 
 async def _serialize_reserva(r: Reserva, session: AsyncSession) -> ReservaOut:
@@ -80,6 +94,9 @@ async def list_reservations(
     if estado is not None:
         stmt = stmt.where(Reserva.estado == estado)
     if "reserva.gestionar" in permisos:
+        stmt = stmt.join(Sucursal, Sucursal.codigoSucursal == Reserva.codigoSucursal).where(
+            Sucursal.idTenant == tenant_actual(payload)
+        )
         if idCliente is not None:
             stmt = stmt.where(Reserva.idCliente == idCliente)
     else:
@@ -112,10 +129,17 @@ async def create_reservation(
 
     if id_cliente is None or not await session.get(Cliente, id_cliente):
         raise HTTPException(status_code=400, detail="Cliente inexistente")
-    if not await session.get(Sucursal, payload.codigoSucursal):
+    sucursal = await session.get(Sucursal, payload.codigoSucursal)
+    es_staff = "reserva.gestionar" in auth.get("permisos", [])
+    if not sucursal or (es_staff and sucursal.idTenant != tenant_actual(auth)):
         raise HTTPException(status_code=400, detail="Sucursal inexistente")
-    if not await session.get(Producto, payload.idProducto):
+    producto = await session.get(Producto, payload.idProducto)
+    if not producto or producto.idTenant != sucursal.idTenant:
         raise HTTPException(status_code=400, detail="Producto inexistente")
+    # Margen de un dia: el servidor corre en UTC y en Bolivia (UTC-4) "hoy"
+    # puede ser "ayer" en UTC durante la noche.
+    if payload.fecha < date.today() - timedelta(days=1):
+        raise HTTPException(status_code=400, detail="La fecha de la reserva no puede ser pasada")
 
     # Anticipo obligatorio (Mandatory Server-Computed Deposit / Card-Only
     # Deposit With Ownership Guard): un caller sin reserva.gestionar SOLO
@@ -131,7 +155,14 @@ async def create_reservation(
         id_producto=payload.idProducto,
         codigo_sucursal=payload.codigoSucursal,
     )
-
+    if exigir_tarjeta and metodo.idProducto is None:
+        # El guard solo compara la ligadura si el pago la tiene. Un cobro de
+        # COMPRA (sin ligadura) de Bs 1 servia como "anticipo" de cualquier
+        # prenda: el cliente debe pagar el anticipo de ESTA reserva.
+        raise HTTPException(
+            status_code=403,
+            detail="El pago no es un anticipo de reserva: inicia el pago desde el formulario de reserva",
+        )
 
     inv = (
         await session.execute(
@@ -171,9 +202,7 @@ async def prepare_reservation(
     session: AsyncSession = Depends(get_db),
     auth: dict = Depends(require_permiso("reserva.gestionar")),
 ):
-    reserva = await session.get(Reserva, codigoReserva)
-    if not reserva:
-        raise HTTPException(status_code=404, detail="Reserva no encontrada")
+    reserva = await _reserva_de_mi_tenant(session, codigoReserva, tenant_actual(auth))
     if reserva.estado != "Pendiente":
         raise HTTPException(
             status_code=400,
@@ -200,9 +229,7 @@ async def confirm_reservation(
     session: AsyncSession = Depends(get_db),
     auth: dict = Depends(require_permiso("reserva.gestionar")),
 ):
-    reserva = await session.get(Reserva, codigoReserva)
-    if not reserva:
-        raise HTTPException(status_code=404, detail="Reserva no encontrada")
+    reserva = await _reserva_de_mi_tenant(session, codigoReserva, tenant_actual(auth))
     if reserva.estado != "Preparada en Sucursal":
         if reserva.estado == "Pendiente":
             raise HTTPException(
@@ -233,6 +260,8 @@ async def confirm_reservation(
         raise HTTPException(status_code=400, detail="La reserva no tiene stock reservado")
 
     producto = await session.get(Producto, reserva.idProducto)
+    if producto is None:
+        raise HTTPException(status_code=400, detail="El producto de la reserva ya no existe")
 
     inv.cantidad_reservada -= 1
     inv.cantidad_actual -= 1
@@ -295,10 +324,13 @@ async def cancel_reservation(
     session: AsyncSession = Depends(get_db),
     auth: dict = Depends(get_current_payload),
 ):
-    reserva = await session.get(Reserva, codigoReserva)
-    if not reserva:
-        raise HTTPException(status_code=404, detail="Reserva no encontrada")
     es_staff = "reserva.gestionar" in auth.get("permisos", [])
+    if es_staff:
+        reserva = await _reserva_de_mi_tenant(session, codigoReserva, tenant_actual(auth))
+    else:
+        reserva = await session.get(Reserva, codigoReserva)
+        if not reserva:
+            raise HTTPException(status_code=404, detail="Reserva no encontrada")
     if not es_staff:
         cliente = await _cliente_del_caller(session, auth)
         if cliente is None or reserva.idCliente != cliente.idCliente:
