@@ -22,6 +22,13 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database import Base
 
 
+def _ahora_utc() -> datetime:
+    # Con zona: asyncpg convierte un datetime naive a UTC asumiendo la hora
+    # local de la maquina, y en una PC en Bolivia (UTC-4) cada fecha quedaba
+    # guardada 4 h en el futuro.
+    return datetime.now(timezone.utc)
+
+
 # Migracion 014 — multitenencia por columna discriminante. Las entidades raiz
 # llevan "idTenant" con DEFAULT 1 (el tenant de la operacion ya existente), de
 # modo que todo INSERT previo que no lo setee sigue siendo valido.
@@ -56,7 +63,7 @@ class Tenant(Base):
     nombre: Mapped[str] = mapped_column(String(120), nullable=False)
     slug: Mapped[str] = mapped_column(String(60), unique=True, nullable=False)
     estado: Mapped[str] = mapped_column(String(20), default="Activo", nullable=False)
-    fechaAlta: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=datetime.utcnow, nullable=False)
+    fechaAlta: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=_ahora_utc, nullable=False)
     idPlan: Mapped[int] = mapped_column(ForeignKey("plan.idPlan", onupdate="CASCADE"), nullable=False)
 
     plan: Mapped["Plan"] = relationship()
@@ -92,7 +99,7 @@ class AsignacionPermiso(Base):
     __table_args__ = (UniqueConstraint("codigoRol", "idPermiso", name="uq_rol_permiso"),)
 
     idRolPermiso: Mapped[int] = mapped_column(Integer, primary_key=True)
-    fechaAsignacion: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=datetime.utcnow, nullable=False)
+    fechaAsignacion: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=_ahora_utc, nullable=False)
     estado: Mapped[str] = mapped_column(String(20), default="Activo", nullable=False)
     codigoRol: Mapped[int] = mapped_column(ForeignKey("rol.codigoRol", ondelete="CASCADE", onupdate="CASCADE"), nullable=False)
     idPermiso: Mapped[int] = mapped_column(ForeignKey("permiso.idPermiso", ondelete="CASCADE", onupdate="CASCADE"), nullable=False)
@@ -251,7 +258,7 @@ class Movimiento(Base):
     idMov: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     tipo: Mapped[str] = mapped_column(String(50), nullable=False)
     cantidad: Mapped[int] = mapped_column(Integer, nullable=False)
-    fecha: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=datetime.utcnow, nullable=False)
+    fecha: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=_ahora_utc, nullable=False)
     motivo: Mapped[str | None] = mapped_column(String(255))
     idInv: Mapped[int] = mapped_column(ForeignKey("Inventario.idInv", onupdate="CASCADE"), nullable=False)
     referencia: Mapped[str | None] = mapped_column(String(50))
@@ -265,7 +272,7 @@ class MetodoPago(Base):
     idMetPago: Mapped[int] = mapped_column(Integer, primary_key=True)
     tipo: Mapped[str] = mapped_column(String(50), nullable=False)
     estado: Mapped[str] = mapped_column(String(30), default="Activo", nullable=False)
-    fecha: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=datetime.utcnow, nullable=False)
+    fecha: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=_ahora_utc, nullable=False)
     monto: Mapped[float] = mapped_column(Numeric(12, 2), default=0.00, nullable=False)
     stripePaymentIntentId: Mapped[str | None] = mapped_column(String(255))
     moneda: Mapped[str | None] = mapped_column(String(3))
@@ -311,7 +318,7 @@ class Venta(Base):
     )
 
     idVenta: Mapped[int] = mapped_column(Integer, primary_key=True)
-    fecha: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=datetime.utcnow, nullable=False)
+    fecha: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=_ahora_utc, nullable=False)
     total: Mapped[float] = mapped_column(Numeric(12, 2), default=0.00, nullable=False)
     idCliente: Mapped[int] = mapped_column(ForeignKey("Cliente.idCliente", onupdate="CASCADE"), nullable=False)
     idMetPago: Mapped[int] = mapped_column(ForeignKey("metodo_pago.idMetPago", onupdate="CASCADE"), nullable=False)
@@ -363,7 +370,7 @@ class Historial(Base):
     __table_args__ = (Index("idx_historial_busqueda", "idCliente", "idProducto"),)
 
     codigoHistorial: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    fecha: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=datetime.utcnow, nullable=False)
+    fecha: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=_ahora_utc, nullable=False)
     idProducto: Mapped[int] = mapped_column(ForeignKey("producto.idProducto", onupdate="CASCADE"), nullable=False)
     idCliente: Mapped[int] = mapped_column(ForeignKey("Cliente.idCliente", onupdate="CASCADE"), nullable=False)
     idVenta: Mapped[int] = mapped_column(ForeignKey("Venta.idVenta", ondelete="CASCADE", onupdate="CASCADE"), nullable=False)
@@ -422,7 +429,7 @@ class Devolucion(Base):
     cantidad: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     motivo: Mapped[str | None] = mapped_column(String(255))
     estado: Mapped[str] = mapped_column(String(20), default="Completada", nullable=False)
-    fecha: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=datetime.utcnow, nullable=False)
+    fecha: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=_ahora_utc, nullable=False)
     fechaVenta: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
     tallaOriginal: Mapped[str | None] = mapped_column(String(20))
     tallaNueva: Mapped[str | None] = mapped_column(String(20))

@@ -10,7 +10,15 @@ import { BitacoraEntrada, FiltrosBitacora, Paginado } from '../../core/models';
   standalone: true,
   imports: [CommonModule, FormsModule],
   template: `
-    <div class="space-y-4">
+    <div class="p-6 md:p-8 space-y-6 max-w-[1400px] mx-auto animate-in fade-in duration-200">
+      <div>
+        <span class="text-[10px] font-bold uppercase tracking-widest text-indigo-600">Superadministrador</span>
+        <h1 class="text-xl font-bold text-gray-900 mt-0.5">Bitácora de la plataforma</h1>
+        <p class="text-xs text-gray-500 mt-1">
+          Actividad de todos los usuarios de todas las empresas suscritas: inicios de sesión, ventas, cambios y operaciones de la consola.
+        </p>
+      </div>
+
       <!-- Filtros -->
       <div class="flex flex-wrap items-end gap-3 bg-[#18191d] p-3.5 rounded-xl border border-gray-200 shadow-xs">
         <div class="flex flex-col gap-1">
@@ -126,6 +134,9 @@ export class PlatformAuditComponent implements OnInit {
 
   ngOnInit(): void {
     void this.cargar();
+    // El filtro por empresa usa el listado de la consola: si se entra directo
+    // a la bitácora (sin pasar por "Empresas suscritas") hay que pedirlo.
+    if (this.platformService.empresas().length === 0) void this.platformService.cargar();
   }
 
   private async cargar(): Promise<void> {

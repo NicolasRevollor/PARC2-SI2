@@ -9,6 +9,7 @@ const RUTAS_SIN_RENOVACION = [
   '/api/auth/login',
   '/api/auth/register',
   '/api/auth/refresh',
+  '/api/auth/logout',
   '/api/auth/forgot-password',
   '/api/auth/reset-password',
 ];

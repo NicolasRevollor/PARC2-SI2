@@ -1,8 +1,13 @@
 from datetime import date
 from decimal import Decimal
-from typing import Optional
+from typing import Annotated, Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, PlainSerializer
+
+# Monto en bolivianos: Decimal en Python (CSV/PDF sin error de redondeo) pero
+# numero en el JSON. Pydantic serializa Decimal como texto, y la web lo sumaba
+# como string ("071520.00108360.00 Bs") o fallaba al formatearlo.
+Monto = Annotated[Decimal, PlainSerializer(float, return_type=float, when_used="json")]
 
 
 class ORMModel(BaseModel):
@@ -25,12 +30,12 @@ class VentaReporteFila(BaseModel):
     codigoSucursal: int
     sucursal_nombre: str
     cantidad_vendida: int
-    monto: Decimal
+    monto: Monto
 
 
 class VentaReporteOut(BaseModel):
     filas: list[VentaReporteFila]
-    total_monto: Decimal
+    total_monto: Monto
     total_items: int
     filtros: ReportFiltrosOut
 
@@ -55,7 +60,7 @@ class SucursalMetricaOut(BaseModel):
     codigoSucursal: int
     sucursal: str
     unidades_vendidas: int
-    monto_vendido: Decimal
+    monto_vendido: Monto
     stock_total: int
     stock_reservado: int
     skus: int
@@ -65,7 +70,7 @@ class SucursalMetricaOut(BaseModel):
 class ConsolidadoSucursalesOut(BaseModel):
     sucursales: list[SucursalMetricaOut]
     total_unidades: int
-    total_monto: Decimal
+    total_monto: Monto
     filtros: ReportFiltrosOut
 
 
@@ -95,4 +100,8 @@ class AnalisisSucursalesOut(BaseModel):
     alertas: list[str]
     sucursales: list[SucursalMetricaOut]
     generado_por: str
+    # False cuando Gemini no estuvo disponible y el analisis salio del motor
+    # de reglas; `aviso` explica por que (para mostrarlo tal cual).
+    con_ia: bool = True
+    aviso: Optional[str] = None
     filtros: ReportFiltrosOut

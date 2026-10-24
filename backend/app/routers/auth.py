@@ -307,6 +307,19 @@ async def me(payload: dict = Depends(get_current_payload), session: AsyncSession
     )
 
 
+@router.post("/logout", status_code=204)
+async def logout(
+    request: Request,
+    current: dict = Depends(get_current_payload),
+    session: AsyncSession = Depends(get_db),
+):
+    """Deja constancia del cierre de sesion en la bitacora. Los JWT son
+    stateless: el cliente igual descarta sus tokens; esto es solo auditoria."""
+    ip = request.client.host if request.client else "0.0.0.0"
+    await registrar_bitacora(session, "Cierre de sesion", int(current["sub"]), ip)
+    await session.commit()
+
+
 @router.patch("/password", response_model=PasswordUpdatedResponse)
 async def change_password(
     payload: PasswordUpdate,

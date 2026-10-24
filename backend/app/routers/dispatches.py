@@ -13,6 +13,7 @@ from app.schemas.dispatches import (
 )
 from app.security import require_permiso
 from app.services.tenancy import tenant_actual
+from app.services.bitacora import Actor, actor_actual, auditar
 
 router = APIRouter(prefix="/api/dispatches", tags=["dispatches"])
 
@@ -42,6 +43,7 @@ async def _serialize_movimiento(mov: Movimiento, session: AsyncSession) -> Movim
 async def create_dispatch(
     payload: DispatchIn,
     session: AsyncSession = Depends(get_db),
+    actor: Actor = Depends(actor_actual),
     _=Depends(require_permiso("inventario.traspasar")),
     id_tenant: int = Depends(tenant_actual),
 ):
@@ -128,6 +130,7 @@ async def create_dispatch(
         movimientos_creados.append(mov_salida)
         movimientos_creados.append(mov_entrada)
 
+    await auditar(session, actor, f"Traspaso {referencia}: {sum(i.cantidad for i in payload.items)} unidad(es) de {origen.nombre} a {destino.nombre}")
     await session.commit()
 
     movs_out = [await _serialize_movimiento(m, session) for m in movimientos_creados]

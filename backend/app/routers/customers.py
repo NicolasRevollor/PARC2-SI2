@@ -6,6 +6,7 @@ from app.database import get_db
 from app.models import Cliente, Usuario
 from app.schemas.fase2 import ClienteCreate, ClienteFull, ClienteMeUpdate, ClienteUpdate
 from app.security import get_current_payload, require_permiso
+from app.services.bitacora import Actor, actor_actual, auditar
 
 router = APIRouter(prefix="/api/customers", tags=["customers"])
 
@@ -37,6 +38,7 @@ async def get_my_customer(
 async def update_my_customer(
     update: ClienteMeUpdate,
     session: AsyncSession = Depends(get_db),
+    actor: Actor = Depends(actor_actual),
     payload: dict = Depends(get_current_payload),
 ):
     cliente = await _cliente_del_caller(session, payload)
@@ -45,6 +47,7 @@ async def update_my_customer(
     data = update.model_dump(exclude_unset=True)
     for k, v in data.items():
         setattr(cliente, k, v)
+    await auditar(session, actor, "Perfil de cliente actualizado")
     await session.commit()
     await session.refresh(cliente)
     return await _serialize(cliente, session)
@@ -96,6 +99,7 @@ async def get_customer(idCliente: int, session: AsyncSession = Depends(get_db),
 async def create_customer(
     payload: ClienteCreate,
     session: AsyncSession = Depends(get_db),
+    actor: Actor = Depends(actor_actual),
     _=Depends(require_permiso("usuario.admin")),
 ):
     if not await session.get(Usuario, payload.idUser):
@@ -103,6 +107,7 @@ async def create_customer(
     await _exigir_usuario_libre(session, payload.idUser)
     c = Cliente(**payload.model_dump())
     session.add(c)
+    await auditar(session, actor, f"Cliente creado: {c.nombre}")
     await session.commit()
     await session.refresh(c)
     return await _serialize(c, session)
@@ -113,6 +118,7 @@ async def update_customer(
     idCliente: int,
     payload: ClienteUpdate,
     session: AsyncSession = Depends(get_db),
+    actor: Actor = Depends(actor_actual),
     _=Depends(require_permiso("cliente.ver")),
 ):
     c = await session.get(Cliente, idCliente)
@@ -125,6 +131,7 @@ async def update_customer(
         await _exigir_usuario_libre(session, data["idUser"])
     for k, v in data.items():
         setattr(c, k, v)
+    await auditar(session, actor, f"Cliente actualizado: {c.nombre}")
     await session.commit()
     await session.refresh(c)
     return await _serialize(c, session)
@@ -134,10 +141,12 @@ async def update_customer(
 async def delete_customer(
     idCliente: int,
     session: AsyncSession = Depends(get_db),
+    actor: Actor = Depends(actor_actual),
     _=Depends(require_permiso("usuario.admin")),
 ):
     c = await session.get(Cliente, idCliente)
     if not c:
         raise HTTPException(status_code=404, detail="Cliente no encontrado")
     await session.delete(c)
+    await auditar(session, actor, f"Cliente eliminado: {c.nombre}")
     await session.commit()

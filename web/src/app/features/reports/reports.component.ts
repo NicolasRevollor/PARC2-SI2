@@ -310,9 +310,11 @@ type ReportsTab = 'ventas' | 'inventario' | 'sucursales';
         <!-- Lectura con IA -->
         <div *ngIf="analisis() as ia" class="bg-[#18191d] rounded-xl border border-indigo-200 shadow-xs overflow-hidden">
           <div class="px-5 py-4 bg-indigo-50 border-b border-indigo-200 flex items-center gap-2">
-            <span class="material-symbols-outlined text-[18px] text-indigo-700">auto_awesome</span>
+            <span class="material-symbols-outlined text-[18px] text-indigo-700">{{ ia.con_ia === false ? 'rule' : 'auto_awesome' }}</span>
             <div>
-              <h2 class="text-base font-bold text-gray-900">Lectura asistida por IA</h2>
+              <h2 class="text-base font-bold text-gray-900">
+                {{ ia.con_ia === false ? 'Lectura automática por reglas' : 'Lectura asistida por IA' }}
+              </h2>
               <p class="text-[11px] text-gray-500">
                 Generado con {{ ia.generado_por }} sobre las metricas de arriba &mdash; siempre verifica contra la tabla.
               </p>
@@ -320,6 +322,12 @@ type ReportsTab = 'ventas' | 'inventario' | 'sucursales';
           </div>
 
           <div class="p-5 space-y-5">
+            <!-- La IA no respondió: el análisis es del motor de reglas y se dice por qué. -->
+            <div *ngIf="ia.aviso" class="flex items-start gap-2 p-3 rounded-lg border border-amber-200 bg-amber-50 text-xs text-amber-800">
+              <span class="material-symbols-outlined text-[16px] shrink-0">info</span>
+              <span>{{ ia.aviso }} Mientras tanto se muestra el análisis calculado con reglas sobre los mismos datos.</span>
+            </div>
+
             <p class="text-sm text-gray-700 leading-relaxed">{{ ia.resumen }}</p>
 
             <div *ngIf="ia.hallazgos.length > 0">

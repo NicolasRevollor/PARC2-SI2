@@ -12,6 +12,7 @@ from app.schemas.inventory import (
 )
 from app.security import get_optional_payload, require_permiso
 from app.services.tenancy import resolver_tenant_publico, tenant_actual
+from app.services.bitacora import Actor, actor_actual, auditar
 
 router = APIRouter(prefix="/api/inventory", tags=["inventory"])
 
@@ -105,6 +106,7 @@ async def adjust_stock(
     idInv: int,
     payload: StockAdjustIn,
     session: AsyncSession = Depends(get_db),
+    actor: Actor = Depends(actor_actual),
     _=Depends(require_permiso("inventario.ajustar")),
     id_tenant: int = Depends(tenant_actual),
 ):
@@ -144,6 +146,7 @@ async def adjust_stock(
         idInv=inv.idInv,
     )
     session.add(movimiento)
+    await auditar(session, actor, f"Ajuste de stock del inventario #{inv.idInv}: {nuevo - delta} -> {nuevo} unidades ({payload.motivo or 'sin motivo'})")
     await session.commit()
     await session.refresh(inv)
 
@@ -154,6 +157,7 @@ async def adjust_stock(
 async def ingreso_lote(
     payload: StockIngresoIn,
     session: AsyncSession = Depends(get_db),
+    actor: Actor = Depends(actor_actual),
     _=Depends(require_permiso("inventario.ajustar")),
     id_tenant: int = Depends(tenant_actual),
 ):
@@ -200,6 +204,7 @@ async def ingreso_lote(
         referencia=f"Proveedor {payload.idProveedor}" if payload.idProveedor else None,
     )
     session.add(movimiento)
+    await auditar(session, actor, f"Ingreso de lote: +{payload.cantidad} de {producto.nombre} talla {producto.talla} en {sucursal.nombre}")
     await session.commit()
     await session.refresh(inv)
 

@@ -7,6 +7,7 @@ from app.models import Colecciones, Temporada
 from app.schemas.fase2 import TemporadaIn, TemporadaOut, TemporadaUpdate
 from app.security import get_optional_payload, require_permiso
 from app.services.tenancy import ContextoTenant, contexto_actual, resolver_tenant_publico, tenant_actual
+from app.services.bitacora import Actor, actor_actual, auditar
 
 router = APIRouter(prefix="/api/seasons", tags=["seasons"])
 
@@ -41,6 +42,7 @@ async def get_season(idTemporada: int, session: AsyncSession = Depends(get_db)):
 async def create_season(
     payload: TemporadaIn,
     session: AsyncSession = Depends(get_db),
+    actor: Actor = Depends(actor_actual),
     _=Depends(require_permiso("producto.crear")),
     ctx: ContextoTenant = Depends(contexto_actual),
 ):
@@ -48,6 +50,7 @@ async def create_season(
         raise HTTPException(status_code=400, detail="fecha_fin no puede ser anterior a fecha_ini")
     t = Temporada(**payload.model_dump(), idTenant=ctx.tenant.idTenant)
     session.add(t)
+    await auditar(session, actor, f"Temporada creada: {t.nombreTemporada}")
     await session.commit()
     await session.refresh(t)
     return t
@@ -58,6 +61,7 @@ async def update_season(
     idTemporada: int,
     payload: TemporadaUpdate,
     session: AsyncSession = Depends(get_db),
+    actor: Actor = Depends(actor_actual),
     _=Depends(require_permiso("producto.editar")),
     id_tenant: int = Depends(tenant_actual),
 ):
@@ -71,6 +75,7 @@ async def update_season(
         raise HTTPException(status_code=400, detail="fecha_fin no puede ser anterior a fecha_ini")
     for k, v in data.items():
         setattr(t, k, v)
+    await auditar(session, actor, f"Temporada actualizada: {t.nombreTemporada}")
     await session.commit()
     await session.refresh(t)
     return t
@@ -80,6 +85,7 @@ async def update_season(
 async def delete_season(
     idTemporada: int,
     session: AsyncSession = Depends(get_db),
+    actor: Actor = Depends(actor_actual),
     _=Depends(require_permiso("producto.eliminar")),
     id_tenant: int = Depends(tenant_actual),
 ):
@@ -97,4 +103,5 @@ async def delete_season(
             detail=f"No se puede eliminar: la temporada tiene {count} colección(es) asociada(s)",
         )
     await session.delete(t)
+    await auditar(session, actor, f"Temporada eliminada: {t.nombreTemporada}")
     await session.commit()

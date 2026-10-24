@@ -28,6 +28,7 @@ from app.services.storage_supabase import (
     subir_imagen_producto,
     supabase_configurado,
 )
+from app.services.bitacora import Actor, actor_actual, auditar
 
 router = APIRouter(prefix="/api/products", tags=["products"])
 
@@ -177,6 +178,7 @@ async def get_product(idProducto: int, session: AsyncSession = Depends(get_db)):
 async def create_product(
     payload: ProductoIn,
     session: AsyncSession = Depends(get_db),
+    actor: Actor = Depends(actor_actual),
     _=Depends(require_permiso("producto.crear")),
     ctx: ContextoTenant = Depends(contexto_actual),
 ):
@@ -186,6 +188,7 @@ async def create_product(
 
     producto = Producto(**payload.model_dump(), idTenant=ctx.tenant.idTenant)
     session.add(producto)
+    await auditar(session, actor, f"Producto creado: {producto.nombre} talla {producto.talla}")
     await session.commit()
     await session.refresh(producto)
     return await _serialize(producto, session)
@@ -196,6 +199,7 @@ async def update_product(
     idProducto: int,
     payload: ProductoUpdate,
     session: AsyncSession = Depends(get_db),
+    actor: Actor = Depends(actor_actual),
     _=Depends(require_permiso("producto.editar")),
     id_tenant: int = Depends(tenant_actual),
 ):
@@ -217,6 +221,7 @@ async def update_product(
     for key, value in data.items():
         setattr(producto, key, value)
 
+    await auditar(session, actor, f"Producto actualizado: {producto.nombre} talla {producto.talla} (#{idProducto})")
     await session.commit()
     await session.refresh(producto)
     return await _serialize(producto, session)
@@ -226,6 +231,7 @@ async def update_product(
 async def delete_product(
     idProducto: int,
     session: AsyncSession = Depends(get_db),
+    actor: Actor = Depends(actor_actual),
     _=Depends(require_permiso("producto.eliminar")),
     id_tenant: int = Depends(tenant_actual),
 ):
@@ -233,4 +239,5 @@ async def delete_product(
     if not producto or producto.idTenant != id_tenant:
         raise HTTPException(status_code=404, detail="Producto no encontrado")
     await session.delete(producto)
+    await auditar(session, actor, f"Producto eliminado: {producto.nombre} talla {producto.talla} (#{idProducto})")
     await session.commit()

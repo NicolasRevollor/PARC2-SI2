@@ -1,4 +1,4 @@
-from datetime import date, datetime, time
+from datetime import date
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import func, select
@@ -16,6 +16,7 @@ from app.schemas.dashboard import (
     VentasDiariasOut,
 )
 from app.security import require_permiso
+from app.services.horario import ZONA_BOLIVIA_SQL, fin_del_dia, inicio_del_dia
 from app.services.tenancy import tenant_actual
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
@@ -38,9 +39,9 @@ UMBRAL_STOCK_BAJO = 10
 
 def _filtrar_fechas(stmt, fecha_desde: date | None, fecha_hasta: date | None):
     if fecha_desde is not None:
-        stmt = stmt.where(Venta.fecha >= datetime.combine(fecha_desde, time.min))
+        stmt = stmt.where(Venta.fecha >= inicio_del_dia(fecha_desde))
     if fecha_hasta is not None:
-        stmt = stmt.where(Venta.fecha <= datetime.combine(fecha_hasta, time.max))
+        stmt = stmt.where(Venta.fecha <= fin_del_dia(fecha_hasta))
     return stmt
 
 
@@ -102,7 +103,7 @@ async def ventas_diarias(
     _=Depends(require_permiso("reporte.ver")),
     id_tenant: int = Depends(tenant_actual),
 ):
-    dia = func.date(Venta.fecha).label("dia")
+    dia = func.date(func.timezone(ZONA_BOLIVIA_SQL, Venta.fecha)).label("dia")
     stmt = (
         select(
             dia,

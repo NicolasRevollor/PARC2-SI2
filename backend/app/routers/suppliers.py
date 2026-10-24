@@ -7,6 +7,7 @@ from app.models import Proveedor
 from app.schemas.fase2 import ProveedorIn, ProveedorOut, ProveedorUpdate
 from app.security import require_permiso
 from app.services.tenancy import ContextoTenant, contexto_actual, tenant_actual
+from app.services.bitacora import Actor, actor_actual, auditar
 
 router = APIRouter(prefix="/api/suppliers", tags=["suppliers"])
 
@@ -41,11 +42,13 @@ async def get_supplier(idProveedor: int, session: AsyncSession = Depends(get_db)
 async def create_supplier(
     payload: ProveedorIn,
     session: AsyncSession = Depends(get_db),
+    actor: Actor = Depends(actor_actual),
     _=Depends(require_permiso("producto.crear")),
     ctx: ContextoTenant = Depends(contexto_actual),
 ):
     p = Proveedor(**payload.model_dump(), idTenant=ctx.tenant.idTenant)
     session.add(p)
+    await auditar(session, actor, f"Proveedor creado: {p.nombre}")
     await session.commit()
     await session.refresh(p)
     return p
@@ -56,12 +59,14 @@ async def update_supplier(
     idProveedor: int,
     payload: ProveedorUpdate,
     session: AsyncSession = Depends(get_db),
+    actor: Actor = Depends(actor_actual),
     _=Depends(require_permiso("producto.editar")),
     id_tenant: int = Depends(tenant_actual),
 ):
     p = await _get_de_mi_tenant(session, idProveedor, id_tenant)
     for k, v in payload.model_dump(exclude_unset=True).items():
         setattr(p, k, v)
+    await auditar(session, actor, f"Proveedor actualizado: {p.nombre}")
     await session.commit()
     await session.refresh(p)
     return p
@@ -71,9 +76,11 @@ async def update_supplier(
 async def delete_supplier(
     idProveedor: int,
     session: AsyncSession = Depends(get_db),
+    actor: Actor = Depends(actor_actual),
     _=Depends(require_permiso("producto.eliminar")),
     id_tenant: int = Depends(tenant_actual),
 ):
     p = await _get_de_mi_tenant(session, idProveedor, id_tenant)
     await session.delete(p)
+    await auditar(session, actor, f"Proveedor eliminado: {p.nombre}")
     await session.commit()

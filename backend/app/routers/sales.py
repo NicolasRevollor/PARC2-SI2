@@ -1,12 +1,9 @@
-from datetime import date, datetime, time
-
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models import (
-    Bitacora,
     Cliente,
     DetalleVenta,
     Historial,
@@ -21,21 +18,10 @@ from app.security import get_current_payload, require_permiso
 from app.services.disponibilidad import resolver_inventario
 from app.services.recomendaciones_gemini import generar_recomendaciones_post_venta
 from app.services.metodo_pago_guard import exigir_metodo_pago_consumible
+from app.services.bitacora import registrar_bitacora
 from app.services.tenancy import tenant_actual
 
 router = APIRouter(prefix="/api/sales", tags=["sales"])
-
-
-async def _registrar_bitacora(session: AsyncSession, accion: str, idUser: int, ip: str):
-    now = datetime.now()
-    b = Bitacora(
-        accion=accion,
-        hora=now.time(),
-        fecha=now.date(),
-        ip=ip,
-        idUser=idUser,
-    )
-    session.add(b)
 
 
 async def _serialize_detalle(d: DetalleVenta, session: AsyncSession) -> DetalleVentaOut:
@@ -295,7 +281,7 @@ async def create_sale(
         )
 
     venta.total = total
-    await _registrar_bitacora(session, f"Venta {venta.idVenta} creada", int(auth["sub"]), request.client.host if request.client else "0.0.0.0")
+    await registrar_bitacora(session, f"Venta {venta.idVenta} creada", int(auth["sub"]), request.client.host if request.client else "0.0.0.0")
     await session.commit()
     await session.refresh(venta)
 

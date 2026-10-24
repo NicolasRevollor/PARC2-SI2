@@ -46,8 +46,8 @@ VENTANA_DEVOLUCION_HORAS = 24
 # --- Helpers puros (sin DB, testeables sin Postgres) ---------------------
 
 def _como_utc(valor: datetime) -> datetime:
-    """Normaliza a UTC con tz. `Venta.fecha` se escribe con `datetime.utcnow()`
-    (naive) pero la columna es TIMESTAMPTZ, asi que al releerla puede volver
+    """Normaliza a UTC con tz. Las ventas viejas se escribieron con `datetime.utcnow()`
+    (naive) aunque la columna es TIMESTAMPTZ, asi que al releerla puede volver
     con o sin tzinfo segun el driver. Comparar naive contra aware explota con
     TypeError, de ahi esta normalizacion en un solo lugar."""
     return valor.replace(tzinfo=timezone.utc) if valor.tzinfo is None else valor.astimezone(timezone.utc)

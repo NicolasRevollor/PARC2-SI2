@@ -4,7 +4,7 @@ import { AuthService } from './core/services/auth.service';
 import { LoginComponent } from './features/auth/login.component';
 import { RegisterComponent } from './features/auth/register.component';
 import { HeaderComponent } from './shared/components/header.component';
-import { SidebarComponent, AppView } from './shared/components/sidebar.component';
+import { SidebarComponent, AppView, PlatformView, VISTAS_PLATAFORMA } from './shared/components/sidebar.component';
 import { ToastContainerComponent } from './shared/components/toast-container.component';
 import { SplashScreenComponent } from './shared/components/splash-screen.component';
 import { LandingComponent } from './features/landing/landing.component';
@@ -25,6 +25,9 @@ import { ReturnsComponent } from './features/returns/returns.component';
 import { SubscriptionComponent } from './features/subscription/subscription.component';
 import { PwaService } from './core/services/pwa.service';
 import { PlatformComponent } from './features/platform/platform.component';
+import { PlatformAuditComponent } from './features/platform/platform-audit.component';
+import { PlatformBackupsComponent } from './features/platform/platform-backups.component';
+import { BitacoraComponent } from './features/bitacora/bitacora.component';
 import { PERMISO_PLATAFORMA } from './core/services/platform.service';
 
 @Component({
@@ -54,7 +57,10 @@ import { PERMISO_PLATAFORMA } from './core/services/platform.service';
     IndicadoresComponent,
     ReturnsComponent,
     SubscriptionComponent,
-    PlatformComponent
+    BitacoraComponent,
+    PlatformComponent,
+    PlatformAuditComponent,
+    PlatformBackupsComponent
   ],
   template: `
     <!-- Branded loader overlay: shown briefly when moving from the landing page
@@ -199,9 +205,21 @@ import { PERMISO_PLATAFORMA } from './core/services/platform.service';
               *ngIf="activeView() === 'subscription'"
             ></app-subscription>
 
+            <app-bitacora
+              *ngIf="activeView() === 'bitacora'"
+            ></app-bitacora>
+
             <app-platform
               *ngIf="activeView() === 'platform'"
             ></app-platform>
+
+            <app-platform-audit
+              *ngIf="activeView() === 'platform-bitacora'"
+            ></app-platform-audit>
+
+            <app-platform-backups
+              *ngIf="activeView() === 'platform-respaldos'"
+            ></app-platform-backups>
           </main>
         </div>
       </div>
@@ -230,12 +248,12 @@ export class AppComponent {
     private pwaService: PwaService,
   ) {
     this.showLanding.set(!authService.isAuthenticated());
-    // El superadministrador solo tiene la consola de plataforma: no importa
-    // como llegue (login, recarga con sesion guardada, enlace), se lo deja en
-    // ella. Sin esto, al recargar arrancaria en el dashboard de una empresa y
-    // todas sus llamadas responderian 403.
+    // El superadministrador solo tiene la consola de plataforma (empresas,
+    // bitacora y respaldos): no importa como llegue (login, recarga con sesion
+    // guardada, enlace), se lo deja en ella. Sin esto, al recargar arrancaria
+    // en el dashboard de una empresa y todas sus llamadas responderian 403.
     effect(() => {
-      if (this.esSuperadmin() && this.activeView() !== 'platform') {
+      if (this.esSuperadmin() && !VISTAS_PLATAFORMA.includes(this.activeView() as PlatformView)) {
         this.activeView.set('platform');
       }
     });
@@ -315,8 +333,14 @@ export class AppComponent {
         return 'Devoluciones y Cambios de Talla';
       case 'subscription':
         return 'Suscripción y Operación Local';
+      case 'bitacora':
+        return 'Bitácora de Actividad';
       case 'platform':
         return 'Consola de Plataforma';
+      case 'platform-bitacora':
+        return 'Bitácora de la Plataforma';
+      case 'platform-respaldos':
+        return 'Respaldos de las Empresas';
       default:
         return 'Operaciones';
     }

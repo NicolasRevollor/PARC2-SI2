@@ -6,6 +6,7 @@ from app.database import get_db
 from app.models import Cliente, Producto, Recomendaciones
 from app.schemas.fase2 import RecomendacionIn, RecomendacionOut, RecomendacionUpdate
 from app.security import get_current_payload, require_permiso
+from app.services.bitacora import Actor, actor_actual, auditar
 
 router = APIRouter(prefix="/api/recommendations", tags=["recommendations"])
 
@@ -60,6 +61,7 @@ async def get_recommendation(idRecomendacion: int, session: AsyncSession = Depen
 async def create_recommendation(
     payload: RecomendacionIn,
     session: AsyncSession = Depends(get_db),
+    actor: Actor = Depends(actor_actual),
     _=Depends(require_permiso("recomendacion.gestionar")),
 ):
     if not await session.get(Cliente, payload.idCliente):
@@ -68,6 +70,7 @@ async def create_recommendation(
         raise HTTPException(status_code=400, detail="Producto inexistente")
     r = Recomendaciones(**payload.model_dump())
     session.add(r)
+    await auditar(session, actor, f"Recomendación creada: {r.nombre}")
     await session.commit()
     await session.refresh(r)
     return await _serialize(r, session)
@@ -78,6 +81,7 @@ async def update_recommendation(
     idRecomendacion: int,
     payload: RecomendacionUpdate,
     session: AsyncSession = Depends(get_db),
+    actor: Actor = Depends(actor_actual),
     _=Depends(require_permiso("recomendacion.gestionar")),
 ):
     r = await session.get(Recomendaciones, idRecomendacion)
@@ -90,6 +94,7 @@ async def update_recommendation(
         raise HTTPException(status_code=400, detail="Producto inexistente")
     for k, v in data.items():
         setattr(r, k, v)
+    await auditar(session, actor, f"Recomendación actualizada: {r.nombre}")
     await session.commit()
     await session.refresh(r)
     return await _serialize(r, session)
@@ -99,10 +104,12 @@ async def update_recommendation(
 async def delete_recommendation(
     idRecomendacion: int,
     session: AsyncSession = Depends(get_db),
+    actor: Actor = Depends(actor_actual),
     _=Depends(require_permiso("recomendacion.gestionar")),
 ):
     r = await session.get(Recomendaciones, idRecomendacion)
     if not r:
         raise HTTPException(status_code=404, detail="Recomendacion no encontrada")
     await session.delete(r)
+    await auditar(session, actor, f"Recomendación eliminada: {r.nombre}")
     await session.commit()

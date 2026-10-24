@@ -150,6 +150,19 @@ docker exec -i ropaDocker \
   -v ON_ERROR_STOP=1 \
   -f /dev/stdin \
   < database/migrations/020_catalogo_oversize_y_empresas.sql
+
+# 18) Migracion 021 (historia de operacion de las 19 empresas)
+#     Requiere la 020. Agrega ~5 meses de ventas con tendencia y estacionalidad
+#     semanal, reposiciones mensuales (el kardex sigue cuadrando con el stock),
+#     quiebres reales en la sucursal que mas vende y excesos en otras (para
+#     el analisis con IA), traspasos, devoluciones, cambios de talla, una
+#     merma y la bitacora de todos los usuarios. Re-ejecutable: una empresa
+#     que ya tiene esta historia se salta.
+docker exec -i ropaDocker \
+  psql -U yimysito -d ropaDB \
+  -v ON_ERROR_STOP=1 \
+  -f /dev/stdin \
+  < database/migrations/021_operacion_historica.sql
 ```
 
 > **Las migraciones 014 y 015 no son opcionales.** Los modelos SQLAlchemy ya

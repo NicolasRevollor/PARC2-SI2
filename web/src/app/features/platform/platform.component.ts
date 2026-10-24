@@ -4,20 +4,17 @@ import { FormsModule } from '@angular/forms';
 import { PlatformService } from '../../core/services/platform.service';
 import { TenantService } from '../../core/services/tenant.service';
 import { EmpresaIn, EmpresaOut } from '../../core/models';
-import { PlatformAuditComponent } from './platform-audit.component';
-import { PlatformBackupsComponent } from './platform-backups.component';
-
-type PestanaPlataforma = 'empresas' | 'bitacora' | 'respaldos';
 
 /**
  * Consola de plataforma del superadministrador (migración 016): ve y gestiona
  * todas las empresas suscritas al SaaS. Cada administrador de empresa sigue
- * viendo solo la suya desde "Suscripción y Plan".
+ * viendo solo la suya desde "Suscripción y Plan". La bitácora y los respaldos
+ * de la plataforma tienen su propia entrada en el menú.
  */
 @Component({
   selector: 'app-platform',
   standalone: true,
-  imports: [CommonModule, FormsModule, PlatformAuditComponent, PlatformBackupsComponent],
+  imports: [CommonModule, FormsModule],
   template: `
     <div class="p-6 md:p-8 space-y-6 max-w-[1400px] mx-auto animate-in fade-in duration-200">
 
@@ -29,27 +26,13 @@ type PestanaPlataforma = 'empresas' | 'bitacora' | 'respaldos';
             Todas las organizaciones que operan sobre la plataforma: plan, consumo y estado de la suscripción.
           </p>
         </div>
-        <button *ngIf="pestana() === 'empresas'" (click)="abrirAlta()"
+        <button (click)="abrirAlta()"
                 class="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold uppercase tracking-wide transition-colors shadow-xs flex items-center gap-2 cursor-pointer">
           <span class="material-symbols-outlined text-[18px]">add_business</span>
           <span>Nueva empresa</span>
         </button>
       </div>
 
-      <!-- Pestanas de la consola -->
-      <div class="flex items-center gap-1 border-b border-gray-200">
-        <button *ngFor="let t of pestanas" (click)="pestana.set(t.id)"
-                class="px-4 py-2.5 text-xs font-bold uppercase tracking-wide border-b-2 transition-colors cursor-pointer flex items-center gap-1.5 bg-transparent"
-                [ngClass]="pestana() === t.id ? 'text-indigo-600 border-indigo-600' : 'text-gray-500 border-transparent hover:text-gray-900'">
-          <span class="material-symbols-outlined text-[16px]">{{ t.icono }}</span>
-          {{ t.etiqueta }}
-        </button>
-      </div>
-
-      <app-platform-audit *ngIf="pestana() === 'bitacora'"></app-platform-audit>
-      <app-platform-backups *ngIf="pestana() === 'respaldos'"></app-platform-backups>
-
-      <ng-container *ngIf="pestana() === 'empresas'">
       <!-- Indicadores de la plataforma -->
       <div *ngIf="platformService.resumen() as r" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <div class="bg-[#18191d] p-5 rounded-xl border border-gray-200 shadow-2xs">
@@ -158,7 +141,6 @@ type PestanaPlataforma = 'empresas' | 'bitacora' | 'respaldos';
           </table>
         </div>
       </div>
-      </ng-container>
     </div>
 
     <!-- Modal: alta de empresa -->
@@ -222,13 +204,6 @@ type PestanaPlataforma = 'empresas' | 'bitacora' | 'respaldos';
   `
 })
 export class PlatformComponent implements OnInit {
-  readonly pestanas: { id: PestanaPlataforma; etiqueta: string; icono: string }[] = [
-    { id: 'empresas', etiqueta: 'Empresas', icono: 'domain' },
-    { id: 'bitacora', etiqueta: 'Bitácora', icono: 'history' },
-    { id: 'respaldos', etiqueta: 'Respaldos', icono: 'backup' },
-  ];
-  readonly pestana = signal<PestanaPlataforma>('empresas');
-
   /** idTenant de la empresa cuyo nombre se está editando (null: ninguna). */
   readonly editandoNombre = signal<number | null>(null);
   nombreEditado = '';

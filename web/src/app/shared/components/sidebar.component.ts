@@ -5,7 +5,11 @@ import { OfflineSyncService } from '../../core/services/offline-sync.service';
 import { TenantService } from '../../core/services/tenant.service';
 import { PERMISO_PLATAFORMA } from '../../core/services/platform.service';
 
-export type AppView = 'dashboard' | 'archive' | 'inventory' | 'logistics' | 'suppliers' | 'seasons' | 'team' | 'reservations' | 'pos' | 'locations' | 'reports' | 'indicadores' | 'returns' | 'subscription' | 'platform';
+export type AppView = 'dashboard' | 'archive' | 'inventory' | 'logistics' | 'suppliers' | 'seasons' | 'team' | 'reservations' | 'pos' | 'locations' | 'reports' | 'indicadores' | 'returns' | 'subscription' | 'bitacora' | PlatformView;
+
+/** Vistas de la consola de plataforma: las únicas del Superadministrador. */
+export type PlatformView = 'platform' | 'platform-bitacora' | 'platform-respaldos';
+export const VISTAS_PLATAFORMA: readonly PlatformView[] = ['platform', 'platform-bitacora', 'platform-respaldos'];
 
 @Component({
   selector: 'app-sidebar',
@@ -41,23 +45,24 @@ export type AppView = 'dashboard' | 'archive' | 'inventory' | 'logistics' | 'sup
               Plataforma
             </div>
             <button
-              (click)="selectView('platform')"
-              [class.bg-indigo-50]="currentView === 'platform'"
-              [class.text-indigo-700]="currentView === 'platform'"
-              [class.font-semibold]="currentView === 'platform'"
-              [class.text-gray-600]="currentView !== 'platform'"
-              class="w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left text-sm transition-colors hover:bg-gray-50 hover:text-gray-900 cursor-pointer group mb-3"
+              *ngFor="let item of itemsPlataforma"
+              (click)="selectView(item.vista)"
+              [class.bg-indigo-50]="currentView === item.vista"
+              [class.text-indigo-700]="currentView === item.vista"
+              [class.font-semibold]="currentView === item.vista"
+              [class.text-gray-600]="currentView !== item.vista"
+              class="w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left text-sm transition-colors hover:bg-gray-50 hover:text-gray-900 cursor-pointer group"
             >
               <div
-                [class.bg-indigo-600]="currentView === 'platform'"
-                [class.text-white]="currentView === 'platform'"
-                [class.bg-gray-100]="currentView !== 'platform'"
-                [class.text-gray-500]="currentView !== 'platform'"
+                [class.bg-indigo-600]="currentView === item.vista"
+                [class.text-white]="currentView === item.vista"
+                [class.bg-gray-100]="currentView !== item.vista"
+                [class.text-gray-500]="currentView !== item.vista"
                 class="w-7 h-7 rounded-md flex items-center justify-center shrink-0 transition-colors"
               >
-                <span class="material-symbols-outlined text-[18px]">domain</span>
+                <span class="material-symbols-outlined text-[18px]">{{ item.icono }}</span>
               </div>
-              <span class="font-medium tracking-tight">Empresas suscritas</span>
+              <span class="font-medium tracking-tight">{{ item.etiqueta }}</span>
             </button>
           </ng-container>
 
@@ -286,6 +291,28 @@ export type AppView = 'dashboard' | 'archive' | 'inventory' | 'logistics' | 'sup
             <span class="font-medium tracking-tight">Personal y Nodos</span>
           </button>
 
+          <!-- Bitácora — todo el personal: el backend decide si ve la empresa
+               entera (bitacora.ver) o solo su propia actividad. -->
+          <button
+            (click)="selectView('bitacora')"
+            [class.bg-indigo-50]="currentView === 'bitacora'"
+            [class.text-indigo-700]="currentView === 'bitacora'"
+            [class.font-semibold]="currentView === 'bitacora'"
+            [class.text-gray-600]="currentView !== 'bitacora'"
+            class="w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left text-sm transition-colors hover:bg-gray-50 hover:text-gray-900 cursor-pointer group"
+          >
+            <div
+              [class.bg-indigo-600]="currentView === 'bitacora'"
+              [class.text-white]="currentView === 'bitacora'"
+              [class.bg-gray-100]="currentView !== 'bitacora'"
+              [class.text-gray-500]="currentView !== 'bitacora'"
+              class="w-7 h-7 rounded-md flex items-center justify-center shrink-0 transition-colors"
+            >
+              <span class="material-symbols-outlined text-[18px]">history</span>
+            </div>
+            <span class="font-medium tracking-tight">Bitácora</span>
+          </button>
+
           <!-- Ciudades y Sucursales -->
           <button
             (click)="selectView('locations')"
@@ -412,6 +439,12 @@ export class SidebarComponent {
   @Input() currentView: AppView = 'dashboard';
   @Output() viewChange = new EventEmitter<AppView>();
   @Output() viewAuthScreen = new EventEmitter<void>();
+
+  readonly itemsPlataforma: { vista: PlatformView; etiqueta: string; icono: string }[] = [
+    { vista: 'platform', etiqueta: 'Empresas suscritas', icono: 'domain' },
+    { vista: 'platform-bitacora', etiqueta: 'Bitácora', icono: 'history' },
+    { vista: 'platform-respaldos', etiqueta: 'Respaldos', icono: 'backup' },
+  ];
 
   constructor(
     private authService: AuthService,

@@ -269,6 +269,26 @@ class LogOut(BaseModel):
     ip: str
     idUser: int
     usuario_nombre: Optional[str] = None
+    usuario_correo: Optional[str] = None
+    rol: Optional[str] = None
+
+
+class LogPaginadoOut(BaseModel):
+    items: list[LogOut]
+    total: int
+    page: int
+    size: int
+    pages: int
+    # "empresa": toda la actividad de la organizacion (permiso bitacora.ver).
+    # "propia": solo las acciones del usuario autenticado.
+    alcance: Literal["empresa", "propia"]
+
+
+class UsuarioBitacoraOut(BaseModel):
+    idUser: int
+    nombre: str
+    correo: str
+    rol: str
 
 
 class DetallePagoItem(BaseModel):

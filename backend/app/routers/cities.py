@@ -6,6 +6,7 @@ from app.database import get_db
 from app.models import Ciudad
 from app.schemas.fase2 import CiudadIn, CiudadOut, CiudadUpdate
 from app.security import require_permiso
+from app.services.bitacora import Actor, actor_actual, auditar
 
 router = APIRouter(prefix="/api/cities", tags=["cities"])
 
@@ -20,10 +21,12 @@ async def list_cities(session: AsyncSession = Depends(get_db)):
 async def create_city(
     payload: CiudadIn,
     session: AsyncSession = Depends(get_db),
+    actor: Actor = Depends(actor_actual),
     _=Depends(require_permiso("usuario.admin")),
 ):
     ciudad = Ciudad(nombCiudad=payload.nombCiudad)
     session.add(ciudad)
+    await auditar(session, actor, f"Ciudad creada: {ciudad.nombCiudad}")
     await session.commit()
     await session.refresh(ciudad)
     return ciudad
@@ -34,6 +37,7 @@ async def update_city(
     idCiudad: int,
     payload: CiudadUpdate,
     session: AsyncSession = Depends(get_db),
+    actor: Actor = Depends(actor_actual),
     _=Depends(require_permiso("usuario.admin")),
 ):
     ciudad = await session.get(Ciudad, idCiudad)
@@ -42,6 +46,7 @@ async def update_city(
     data = payload.model_dump(exclude_unset=True)
     for k, v in data.items():
         setattr(ciudad, k, v)
+    await auditar(session, actor, f"Ciudad actualizada: {ciudad.nombCiudad}")
     await session.commit()
     await session.refresh(ciudad)
     return ciudad
@@ -51,10 +56,12 @@ async def update_city(
 async def delete_city(
     idCiudad: int,
     session: AsyncSession = Depends(get_db),
+    actor: Actor = Depends(actor_actual),
     _=Depends(require_permiso("usuario.admin")),
 ):
     ciudad = await session.get(Ciudad, idCiudad)
     if not ciudad:
         raise HTTPException(status_code=404, detail="Ciudad no encontrada")
     await session.delete(ciudad)
+    await auditar(session, actor, f"Ciudad eliminada: {ciudad.nombCiudad}")
     await session.commit()

@@ -109,11 +109,12 @@ async def activate_account(
     usuario.bloqueadoHasta = None
     usuario.vecesBloqueado = 0
     usuario.requiereActivacion = False
+    # A nombre de QUIEN reactiva (el administrador), con el afectado en el texto.
     ip = request.client.host if request.client else "0.0.0.0"
     await registrar_bitacora(
         session,
-        f"Cuenta reactivada por el administrador {current['sub']}",
-        usuario.idUser,
+        f"Cuenta reactivada: {usuario.correo}",
+        int(current["sub"]),
         ip,
     )
     await session.commit()
@@ -125,7 +126,7 @@ async def create_staff_user(
     payload: StaffUserIn,
     request: Request,
     session: AsyncSession = Depends(get_db),
-    _=Depends(require_permiso("usuario.admin")),
+    current: dict = Depends(require_permiso("usuario.admin")),
     ctx: ContextoTenant = Depends(contexto_actual),
 ):
     await exigir_cupo(session, ctx, "usuarios")
@@ -156,7 +157,9 @@ async def create_staff_user(
     await session.flush()
 
     ip = request.client.host if request.client else "0.0.0.0"
-    await registrar_bitacora(session, "Usuario de personal creado", nuevo.idUser, ip)
+    await registrar_bitacora(
+        session, f"Usuario de personal creado: {nuevo.correo} ({rol.nombreRol})", int(current["sub"]), ip
+    )
     await session.commit()
     await session.refresh(nuevo)
 
@@ -213,7 +216,12 @@ async def change_staff_role(
 
     usuario.codigoRol = rol.codigoRol
     ip = request.client.host if request.client else "0.0.0.0"
-    await registrar_bitacora(session, "Rol de usuario modificado", usuario.idUser, ip)
+    await registrar_bitacora(
+        session,
+        f"Rol de {usuario.correo} cambiado: {rol_actual.nombreRol if rol_actual else '?'} -> {rol.nombreRol}",
+        int(current["sub"]),
+        ip,
+    )
     await session.commit()
     await session.refresh(usuario)
 

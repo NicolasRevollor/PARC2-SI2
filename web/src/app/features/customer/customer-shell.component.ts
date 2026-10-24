@@ -142,7 +142,7 @@ export class CustomerShellComponent {
   ) {}
 
   onLogout() {
-    this.authService.logout();
+    this.authService.cerrarSesion();
     this.logout.emit();
   }
 

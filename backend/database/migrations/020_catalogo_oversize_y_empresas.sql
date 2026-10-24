@@ -384,11 +384,11 @@ BEGIN
 
             FOR s IN SELECT "codigoSucursal", "nombre" FROM "Sucursal" WHERE "idTenant" = t."idTenant" ORDER BY "codigoSucursal" LOOP
                 FOR v_k IN 1..v_ventas_por_sucursal LOOP
-                    v_fecha := date_trunc('day', now() - make_interval(days => (floor(random() * 30))::INT))
+                    v_fecha := (((now() AT TIME ZONE 'America/La_Paz')::DATE - (floor(random() * 30))::INT)
                                + make_interval(hours => 9 + (floor(random() * 10))::INT,
-                                               mins => (floor(random() * 60))::INT);
+                                               mins => (floor(random() * 60))::INT))::TIMESTAMP AT TIME ZONE 'America/La_Paz';
                     IF v_fecha > now() THEN
-                        v_fecha := now() - INTERVAL '1 hour';
+                        v_fecha := v_fecha - INTERVAL '1 day';
                     END IF;
                     v_cliente := v_clientes[1 + floor(random() * array_length(v_clientes, 1))::INT];
 
@@ -446,7 +446,7 @@ BEGIN
                         UPDATE "metodo_pago" SET "monto" = v_total WHERE "idMetPago" = v_pago;
                         IF v_cajero IS NOT NULL THEN
                             INSERT INTO "Bitacora" ("accion", "hora", "fecha", "ip", "idUser")
-                            VALUES ('Venta ' || v_venta || ' creada', v_fecha::TIME, v_fecha::DATE,
+                            VALUES ('Venta ' || v_venta || ' creada', (v_fecha AT TIME ZONE 'America/La_Paz')::TIME, (v_fecha AT TIME ZONE 'America/La_Paz')::DATE,
                                     ('10.0.' || (t."idTenant" % 250) || '.' || (s."codigoSucursal" % 250))::INET, v_cajero);
                         END IF;
                     END IF;

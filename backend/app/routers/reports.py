@@ -184,6 +184,11 @@ def _inventory_rows_to_pdf_bytes(filas: list[dict], filtros: dict) -> bytes:
 SIN_SUCURSAL = "Sin sucursal registrada"
 
 
+# Cada talla es un producto distinto con el mismo nombre ("Jeans Blanco"):
+# sin la talla, el reporte parecia tener filas repetidas.
+_NOMBRE_CON_TALLA = func.concat_ws(" talla ", Producto.nombre, Producto.talla)
+
+
 async def _consultar_ventas(
     session: AsyncSession,
     id_tenant: int,
@@ -200,7 +205,7 @@ async def _consultar_ventas(
     stmt = (
         select(
             Producto.idProducto,
-            Producto.nombre.label("producto_nombre"),
+            _NOMBRE_CON_TALLA.label("producto_nombre"),
             func.coalesce(lineas.c.codigoSucursal, 0).label("codigoSucursal"),
             func.coalesce(Sucursal.nombre, SIN_SUCURSAL).label("sucursal_nombre"),
             func.sum(lineas.c.cantidad).label("cantidad_vendida"),
@@ -210,7 +215,7 @@ async def _consultar_ventas(
         .join(Producto, Producto.idProducto == lineas.c.idProducto)
         .outerjoin(Sucursal, Sucursal.codigoSucursal == lineas.c.codigoSucursal)
         .where(Producto.idTenant == id_tenant)
-        .group_by(Producto.idProducto, Producto.nombre, lineas.c.codigoSucursal, Sucursal.nombre)
+        .group_by(Producto.idProducto, Producto.nombre, Producto.talla, lineas.c.codigoSucursal, Sucursal.nombre)
     )
     stmt = reportes_ia.filtrar_lineas_por_fecha(stmt, lineas, fecha_desde, fecha_hasta)
     if codigoSucursal is not None:
@@ -231,7 +236,7 @@ async def _consultar_inventario(
     stmt = (
         select(
             Producto.idProducto,
-            Producto.nombre.label("producto_nombre"),
+            _NOMBRE_CON_TALLA.label("producto_nombre"),
             Inventario.codigoSucursal,
             Sucursal.nombre.label("sucursal_nombre"),
             Inventario.cantidad_actual,
@@ -427,24 +432,10 @@ async def branches_ai_insights(
     detalle = await reportes_ia.detalle_producto_sucursal(session, id_tenant)
     periodo = _describe_filtros({"fecha_desde": fecha_desde, "fecha_hasta": fecha_hasta})
 
-    try:
-        analisis = await reportes_ia.analizar_sucursales(metricas, detalle, periodo)
-    except reportes_ia.GeminiNoConfigurado:
-        raise HTTPException(
-            status_code=503,
-            detail="El analisis con IA no esta configurado en este servidor (falta GEMINI_API_KEY)",
-        )
-    except reportes_ia.GeminiCredencialInvalida:
-        raise HTTPException(
-            status_code=503,
-            detail=(
-                "Google rechazo la clave de Gemini configurada en el servidor. "
-                "Genera una API key en aistudio.google.com/apikey (empieza con 'AIza') "
-                "y reemplaza GEMINI_API_KEY."
-            ),
-        )
-    except reportes_ia.AnalisisNoDisponible:
-        raise HTTPException(status_code=503, detail="El modelo no devolvio un analisis utilizable")
+    # Con Gemini si se puede; si no (sin clave, clave rechazada, caida o
+    # demora de Google) el analisis por reglas sobre las mismas metricas. Antes
+    # cualquiera de esos casos dejaba al usuario sin analisis (503).
+    analisis, generado_por, aviso = await reportes_ia.analizar_con_respaldo(metricas, detalle, periodo)
 
     return AnalisisSucursalesOut(
         resumen=analisis.resumen,
@@ -452,6 +443,8 @@ async def branches_ai_insights(
         transferencias=[TransferenciaSugeridaOut(**t.model_dump()) for t in analisis.transferencias],
         alertas=analisis.alertas,
         sucursales=[_a_metrica_out(m) for m in metricas],
-        generado_por=reportes_ia.MODEL,
+        generado_por=generado_por,
+        con_ia=aviso is None,
+        aviso=aviso,
         filtros=ReportFiltrosOut(fecha_desde=fecha_desde, fecha_hasta=fecha_hasta),
     )

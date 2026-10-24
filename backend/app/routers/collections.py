@@ -7,6 +7,7 @@ from app.models import Colecciones, Temporada
 from app.schemas.fase2 import ColeccionIn, ColeccionOut, ColeccionUpdate
 from app.security import get_optional_payload, require_permiso
 from app.services.tenancy import ContextoTenant, contexto_actual, resolver_tenant_publico, tenant_actual
+from app.services.bitacora import Actor, actor_actual, auditar
 
 
 async def _temporada_de_mi_tenant(session: AsyncSession, idTemporada: int, id_tenant: int) -> None:
@@ -57,6 +58,7 @@ async def get_collection(idColeccion: int, session: AsyncSession = Depends(get_d
 async def create_collection(
     payload: ColeccionIn,
     session: AsyncSession = Depends(get_db),
+    actor: Actor = Depends(actor_actual),
     _=Depends(require_permiso("producto.crear")),
     ctx: ContextoTenant = Depends(contexto_actual),
 ):
@@ -67,6 +69,7 @@ async def create_collection(
         idTenant=ctx.tenant.idTenant,
     )
     session.add(c)
+    await auditar(session, actor, f"Colección creada: {c.nombre_coleccion}")
     await session.commit()
     await session.refresh(c)
     return await _serialize(c, session)
@@ -77,6 +80,7 @@ async def update_collection(
     idColeccion: int,
     payload: ColeccionUpdate,
     session: AsyncSession = Depends(get_db),
+    actor: Actor = Depends(actor_actual),
     _=Depends(require_permiso("producto.editar")),
     id_tenant: int = Depends(tenant_actual),
 ):
@@ -88,6 +92,7 @@ async def update_collection(
         await _temporada_de_mi_tenant(session, data["idTemporada"], id_tenant)
     for k, v in data.items():
         setattr(c, k, v)
+    await auditar(session, actor, f"Colección actualizada: {c.nombre_coleccion}")
     await session.commit()
     await session.refresh(c)
     return await _serialize(c, session)
@@ -97,6 +102,7 @@ async def update_collection(
 async def delete_collection(
     idColeccion: int,
     session: AsyncSession = Depends(get_db),
+    actor: Actor = Depends(actor_actual),
     _=Depends(require_permiso("producto.eliminar")),
     id_tenant: int = Depends(tenant_actual),
 ):
@@ -104,4 +110,5 @@ async def delete_collection(
     if not c or c.idTenant != id_tenant:
         raise HTTPException(status_code=404, detail="Coleccion no encontrada")
     await session.delete(c)
+    await auditar(session, actor, f"Colección eliminada: {c.nombre_coleccion}")
     await session.commit()

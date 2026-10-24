@@ -1,11 +1,12 @@
 from datetime import date
-from decimal import Decimal
 
 from pydantic import BaseModel
 
+from app.schemas.reports import Monto
+
 
 class KpisOut(BaseModel):
-    total_ventas_monto: Decimal
+    total_ventas_monto: Monto
     total_ventas_items: int
     stock_total: int
     productos_bajo_stock: int
@@ -13,7 +14,7 @@ class KpisOut(BaseModel):
 
 class VentaDiariaFila(BaseModel):
     fecha: date
-    monto: Decimal
+    monto: Monto
     cantidad: int
 
 
@@ -24,7 +25,7 @@ class VentasDiariasOut(BaseModel):
 class TopProductoFila(BaseModel):
     idProducto: int
     producto_nombre: str
-    monto: Decimal
+    monto: Monto
     cantidad: int
 
 

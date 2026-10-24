@@ -1,4 +1,4 @@
-from datetime import date, datetime, time, timedelta
+from datetime import date, time, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
@@ -6,7 +6,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models import (
-    Bitacora,
     Cliente,
     DetalleVenta,
     Historial,
@@ -26,6 +25,7 @@ from app.schemas.fase2 import (
 from app.security import get_current_payload, require_permiso
 from app.services.metodo_pago_guard import exigir_metodo_pago_consumible
 from app.services.tenancy import tenant_actual
+from app.services.bitacora import Actor, actor_actual, auditar, registrar_bitacora
 
 router = APIRouter(prefix="/api/reservations", tags=["reservations"])
 
@@ -69,12 +69,6 @@ async def _serialize_reserva(r: Reserva, session: AsyncSession) -> ReservaOut:
     )
 
 
-async def _registrar_bitacora(session: AsyncSession, accion: str, idUser: int, ip: str):
-    now = datetime.now()
-    b = Bitacora(accion=accion, hora=now.time(), fecha=now.date(), ip=ip, idUser=idUser)
-    session.add(b)
-
-
 async def _cliente_del_caller(session: AsyncSession, auth: dict) -> Cliente | None:
     """Resuelve el `Cliente` propio del usuario autenticado (mismo patron que list_reservations)."""
     return (
@@ -115,6 +109,7 @@ async def list_reservations(
 async def create_reservation(
     payload: ReservaIn,
     session: AsyncSession = Depends(get_db),
+    actor: Actor = Depends(actor_actual),
     auth: dict = Depends(require_permiso("reserva.crear")),
 ):
     if "reserva.gestionar" not in auth.get("permisos", []):
@@ -190,6 +185,7 @@ async def create_reservation(
         montoDeposito=metodo.monto,
     )
     session.add(reserva)
+    await auditar(session, actor, f"Reserva creada: {producto.nombre} talla {producto.talla} en {sucursal.nombre} para el {payload.fecha}")
     await session.commit()
     await session.refresh(reserva)
     return await _serialize_reserva(reserva, session)
@@ -210,7 +206,7 @@ async def prepare_reservation(
         )
 
     reserva.estado = "Preparada en Sucursal"
-    await _registrar_bitacora(
+    await registrar_bitacora(
         session,
         f"Reserva {codigoReserva} preparada en sucursal",
         int(auth["sub"]),
@@ -305,7 +301,7 @@ async def confirm_reservation(
     )
 
     reserva.estado = "Confirmada"
-    await _registrar_bitacora(session, f"Reserva {codigoReserva} confirmada", int(auth["sub"]), request.client.host if request.client else "0.0.0.0")
+    await registrar_bitacora(session, f"Reserva {codigoReserva} confirmada", int(auth["sub"]), request.client.host if request.client else "0.0.0.0")
     await session.commit()
     await session.refresh(venta)
     return VentaOut(
@@ -322,6 +318,7 @@ async def confirm_reservation(
 async def cancel_reservation(
     codigoReserva: int,
     session: AsyncSession = Depends(get_db),
+    actor: Actor = Depends(actor_actual),
     auth: dict = Depends(get_current_payload),
 ):
     es_staff = "reserva.gestionar" in auth.get("permisos", [])
@@ -358,6 +355,7 @@ async def cancel_reservation(
         inv.cantidad_reservada -= 1
 
     reserva.estado = "Cancelada"
+    await auditar(session, actor, f"Reserva #{codigoReserva} cancelada")
     await session.commit()
     await session.refresh(reserva)
     return await _serialize_reserva(reserva, session)

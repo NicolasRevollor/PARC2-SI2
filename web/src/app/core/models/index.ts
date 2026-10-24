@@ -599,6 +599,40 @@ export interface FiltrosBitacora {
   fecha_hasta?: string;
 }
 
+// Bitácora de la empresa (GET /api/logs): todo el personal tiene la suya.
+export interface BitacoraEmpresaEntrada {
+  idBitacora: number;
+  accion: string;
+  hora: string;
+  fecha: string;
+  ip: string;
+  idUser: number;
+  usuario_nombre: string | null;
+  usuario_correo: string | null;
+  rol: string | null;
+}
+
+export interface BitacoraEmpresaPagina extends Paginado<BitacoraEmpresaEntrada> {
+  /** "empresa": toda la organización (bitacora.ver); "propia": solo el usuario. */
+  alcance: 'empresa' | 'propia';
+}
+
+export interface UsuarioBitacora {
+  idUser: number;
+  nombre: string;
+  correo: string;
+  rol: string;
+}
+
+export interface FiltrosBitacoraEmpresa {
+  page: number;
+  size: number;
+  idUser: number | null;
+  q: string;
+  fecha_desde: string;
+  fecha_hasta: string;
+}
+
 // Respaldos por empresa (migración 018)
 export interface Respaldo {
   idRespaldo: number;
@@ -724,6 +758,10 @@ export interface AnalisisSucursales {
   alertas: string[];
   sucursales: SucursalMetrica[];
   generado_por: string;
+  /** false: Gemini no estuvo disponible y el análisis salió del motor de reglas. */
+  con_ia: boolean;
+  /** Por qué no se usó la IA (null si se usó). */
+  aviso: string | null;
   filtros: { fecha_desde: string | null; fecha_hasta: string | null };
 }
 

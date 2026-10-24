@@ -10,7 +10,14 @@ import { Paginado, Respaldo, RespaldoConfig } from '../../core/models';
   standalone: true,
   imports: [CommonModule, FormsModule],
   template: `
-    <div class="space-y-4">
+    <div class="p-6 md:p-8 space-y-6 max-w-[1400px] mx-auto animate-in fade-in duration-200">
+      <div>
+        <span class="text-[10px] font-bold uppercase tracking-widest text-indigo-600">Superadministrador</span>
+        <h1 class="text-xl font-bold text-gray-900 mt-0.5">Respaldos</h1>
+        <p class="text-xs text-gray-500 mt-1">
+          Copias de seguridad por empresa: manuales desde esta pantalla y automáticas con el cron diario.
+        </p>
+      </div>
 
       <!-- Estado de la configuración -->
       <div *ngIf="config() as cfg" class="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -149,6 +156,9 @@ export class PlatformBackupsComponent implements OnInit {
   constructor(public platformService: PlatformService) {}
 
   async ngOnInit(): Promise<void> {
+    // El selector de empresa usa el listado de la consola: si se entra directo
+    // a respaldos (sin pasar por "Empresas suscritas") hay que pedirlo.
+    if (this.platformService.empresas().length === 0) void this.platformService.cargar();
     this.config.set(await this.platformService.configRespaldos());
     await this.cargar();
   }

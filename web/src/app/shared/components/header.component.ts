@@ -261,7 +261,7 @@ export class HeaderComponent {
 
   onLogout() {
     this.showUserDropdown.set(false);
-    this.authService.logout();
+    this.authService.cerrarSesion();
     this.logout.emit();
   }
 }

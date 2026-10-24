@@ -332,6 +332,23 @@ export class AuthService {
     );
   }
 
+  /**
+   * Cierre de sesión pedido por el usuario: avisa al backend para que quede
+   * en la bitácora y después limpia la sesión local. No espera la respuesta
+   * (sin red la sesión se cierra igual).
+   */
+  cerrarSesion(): void {
+    const token = this.accessTokenSignal();
+    if (token) {
+      // El token va explícito: logout() lo borra antes de que el interceptor
+      // llegue a leerlo si la petición se encola.
+      firstValueFrom(
+        this.http.post(`${API_URL}/api/auth/logout`, {}, { headers: { Authorization: `Bearer ${token}` } })
+      ).catch(() => undefined);
+    }
+    this.logout();
+  }
+
   logout(): void {
     this.currentUserSignal.set(null);
     this.isAuthenticatedSignal.set(false);

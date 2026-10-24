@@ -6,6 +6,7 @@ from app.database import get_db
 from app.models import MetodoPago
 from app.schemas.fase2 import MetodoPagoIn, MetodoPagoOut, MetodoPagoUpdate
 from app.security import get_current_payload, require_permiso
+from app.services.bitacora import Actor, actor_actual, auditar
 
 router = APIRouter(prefix="/api/payment-methods", tags=["payment-methods"])
 
@@ -63,6 +64,7 @@ async def update_payment_method(
     idMetPago: int,
     payload: MetodoPagoUpdate,
     session: AsyncSession = Depends(get_db),
+    actor: Actor = Depends(actor_actual),
     _=Depends(_solo_staff),
 ):
     m = await session.get(MetodoPago, idMetPago)
@@ -77,6 +79,7 @@ async def update_payment_method(
         raise HTTPException(status_code=400, detail="monto no puede ser negativo")
     for k, v in data.items():
         setattr(m, k, v)
+    await auditar(session, actor, f"Método de pago #{idMetPago} modificado")
     await session.commit()
     await session.refresh(m)
     return m
@@ -86,6 +89,7 @@ async def update_payment_method(
 async def delete_payment_method(
     idMetPago: int,
     session: AsyncSession = Depends(get_db),
+    actor: Actor = Depends(actor_actual),
     _=Depends(require_permiso("usuario.admin")),
 ):
     m = await session.get(MetodoPago, idMetPago)
@@ -95,4 +99,5 @@ async def delete_payment_method(
         # Lo referencia una Venta/Reserva: borrarlo violaba la FK (500).
         raise HTTPException(status_code=409, detail="El metodo de pago ya fue utilizado y no se puede eliminar")
     await session.delete(m)
+    await auditar(session, actor, f"Método de pago #{idMetPago} eliminado")
     await session.commit()
