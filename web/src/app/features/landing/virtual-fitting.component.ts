@@ -11,16 +11,19 @@ import {
 import { UpperCasePipe } from '@angular/common';
 import * as THREE from 'three';
 
+/** Variante de la prenda en el probador: la polera sola o con un jean. */
 export interface SilhouetteOption {
   id: string;
   name: string;
-  atelier: string;
+  linea: string;
   description: string;
-  defaultFabric: string;
-  tension: string;
-  allowance: string;
-  fluidity: string;
-  vault: string;
+  tela: string;
+  gramaje: string;
+  hombro: string;
+  largo: string;
+  combinaCon: string;
+  /** Jean que acompaña a la polera en el maniquí (null = solo la polera). */
+  jean: 'negro' | 'blanco' | null;
 }
 
 export interface ColorOption {
@@ -39,6 +42,13 @@ export interface SizeOption {
   scaleZ: number;
 }
 
+type CameraMode = 'general' | 'cuello' | 'hombro' | 'ruedo';
+
+const COLOR_JEAN: Record<'negro' | 'blanco', string> = {
+  negro: '#2a2a2f',
+  blanco: '#ece9e2',
+};
+
 @Component({
   selector: 'app-virtual-fitting',
   standalone: true,
@@ -55,11 +65,11 @@ export interface SizeOption {
         <div class="w-[420px] h-[420px] border border-white/5 rounded-full"></div>
       </div>
 
-      <!-- Floating Macro Lens Pill Top-Left -->
+      <!-- Prenda y color activos (arriba a la izquierda) -->
       <div class="absolute top-5 left-5 z-20 pointer-events-none flex flex-col gap-2">
         <div class="px-3.5 py-1.5 rounded-full bg-[#18191d]/90 backdrop-blur-md text-[#ffb2ba] font-mono text-[11px] uppercase tracking-wider border border-[#7a1c30]/60 shadow-lg flex items-center gap-2">
           <span class="w-2 h-2 rounded-full bg-[#ff8da1] animate-ping"></span>
-          <span>LENTE MACRO 65MM // {{ activeColor().name | uppercase }}</span>
+          <span>POLERA OVERSIZE // {{ activeColor().name | uppercase }}</span>
         </div>
         <div class="px-3 py-1 rounded-full bg-[#121316]/80 backdrop-blur text-white/90 font-mono text-[10px] tracking-wider border border-white/10 flex items-center gap-2">
           <span class="material-symbols-outlined text-[#ffb2ba] text-xs">photo_camera</span>
@@ -67,45 +77,20 @@ export interface SizeOption {
         </div>
       </div>
 
-      <!-- Floating Camera Zoom Controls Pill (Top Right) -->
+      <!-- Vistas de cámara (arriba a la derecha) -->
       <div class="absolute top-5 right-5 z-20 flex flex-col items-end gap-2">
         <div class="flex items-center gap-1 p-1.5 bg-[#18191d]/90 backdrop-blur-md rounded-full border border-[#564243]/50 shadow-xl">
-          <button
-            type="button"
-            class="px-3 py-1 rounded-full text-[10px] font-mono transition-all"
-            [class]="cameraMode() === 'general' ? 'bg-[#7a1c30] text-white font-bold' : 'text-white/80 hover:text-white hover:bg-[#7a1c30]/40'"
-            (click)="setCameraPreset('general')"
-            title="Vista General"
-          >
-            1.0x
-          </button>
-          <button
-            type="button"
-            class="px-3 py-1 rounded-full text-[10px] font-mono transition-all"
-            [class]="cameraMode() === 'lapel' ? 'bg-[#7a1c30] text-white font-bold' : 'text-[#ffb2ba] hover:text-white hover:bg-[#7a1c30]/40'"
-            (click)="setCameraPreset('lapel')"
-            title="Solapa"
-          >
-            Solapa (3.5x)
-          </button>
-          <button
-            type="button"
-            class="px-3 py-1 rounded-full text-[10px] font-mono transition-all"
-            [class]="cameraMode() === 'shoulder' ? 'bg-[#7a1c30] text-white font-bold' : 'text-white/80 hover:text-white hover:bg-[#7a1c30]/40'"
-            (click)="setCameraPreset('shoulder')"
-            title="Hombro"
-          >
-            Hombro (3.2x)
-          </button>
-          <button
-            type="button"
-            class="px-3 py-1 rounded-full text-[10px] font-mono transition-all"
-            [class]="cameraMode() === 'button' ? 'bg-[#7a1c30] text-white font-bold' : 'text-[#ff8da1] hover:text-white hover:bg-[#7a1c30]/40'"
-            (click)="setCameraPreset('button')"
-            title="Botón"
-          >
-            Botón (4.5x)
-          </button>
+          @for (vista of vistas; track vista.id) {
+            <button
+              type="button"
+              class="px-3 py-1 rounded-full text-[10px] font-mono transition-all"
+              [class]="cameraMode() === vista.id ? 'bg-[#7a1c30] text-white font-bold' : 'text-white/80 hover:text-white hover:bg-[#7a1c30]/40'"
+              (click)="setCameraPreset(vista.id)"
+              [title]="vista.titulo"
+            >
+              {{ vista.etiqueta }}
+            </button>
+          }
         </div>
 
         <!-- Zoom Pod -->
@@ -132,18 +117,18 @@ export interface SizeOption {
         </div>
       </div>
 
-      <!-- Hint Capsule (Bottom Left) -->
+      <!-- Ayuda (abajo a la izquierda) -->
       <div class="absolute bottom-5 left-5 z-20 pointer-events-none flex items-center gap-2 px-4 py-2 rounded-full bg-[#18191d]/90 text-white backdrop-blur border border-white/10 shadow-sm">
         <span class="material-symbols-outlined text-[#ffb2ba] text-sm">360</span>
         <span class="text-[11px] font-mono uppercase tracking-wider">Arrastre 360° // Rueda para zoom</span>
       </div>
 
-      <!-- Live Telemetry Pill (Bottom Right) -->
+      <!-- Combinación activa (abajo a la derecha) -->
       <div class="absolute bottom-5 right-5 z-20 pointer-events-none flex flex-col gap-2 items-end">
         <div class="px-3.5 py-1.5 rounded-full bg-[#18191d]/95 backdrop-blur text-white text-[11px] flex items-center gap-2 border border-[#7a1c30]/50 shadow-lg">
-          <span class="w-2.5 h-2.5 rounded-full transition-colors duration-300" [style.background-color]="activeColor().hex"></span>
+          <span class="w-2.5 h-2.5 rounded-full border border-white/30 transition-colors duration-300" [style.background-color]="activeColor().hex"></span>
           <span class="font-bold tracking-wider font-mono text-[#ffb2ba]">
-            {{ activeColor().name | uppercase }} // {{ activeSilhouette().atelier | uppercase }}
+            {{ activeColor().name | uppercase }} // TALLA {{ activeSize().code }}{{ activeSilhouette().jean ? ' + JEAN ' + (activeSilhouette().jean | uppercase) : '' }}
           </span>
         </div>
       </div>
@@ -154,44 +139,52 @@ export class VirtualFitting implements OnInit, OnDestroy {
   @ViewChild('canvasContainer', { static: true }) containerRef!: ElementRef<HTMLDivElement>;
   @ViewChild('renderCanvas', { static: true }) canvasRef!: ElementRef<HTMLCanvasElement>;
 
+  readonly vistas: { id: CameraMode; etiqueta: string; titulo: string }[] = [
+    { id: 'general', etiqueta: '1.0x', titulo: 'Vista general' },
+    { id: 'cuello', etiqueta: 'Cuello (3.4x)', titulo: 'Cuello redondo acanalado' },
+    { id: 'hombro', etiqueta: 'Hombro (3.0x)', titulo: 'Hombro caído' },
+    { id: 'ruedo', etiqueta: 'Ruedo (2.6x)', titulo: 'Ruedo y largo' },
+  ];
+
   readonly activeSilhouette = signal<SilhouetteOption>({
-    id: 'valmont',
-    name: 'Blazer Ejecutivo Monolítico (Valmont)',
-    atelier: 'Atelier Valmont',
-    description: 'Solapa continua envolvente en guindo y carbón',
-    defaultFabric: 'Caída Textil: Terciopelo Guindo 180s (380g/m²) // Mate Reforzado',
-    tension: '0.42 N (Suave)',
-    allowance: '+1.8 cm Confort',
-    fluidity: '98.4% Natural Fluid',
-    vault: 'Zúrich / Central',
+    id: 'polera',
+    name: 'Polera Oversize',
+    linea: 'Línea Oversize',
+    description: 'Hombro caído, cuerpo amplio y largo a la cadera',
+    tela: 'Algodón peinado 100% // Jersey 240 g/m² // Cuello acanalado 1x1',
+    gramaje: '240 g/m²',
+    hombro: '+8 cm caído',
+    largo: '74 cm (talla M)',
+    combinaCon: 'Jean negro o blanco',
+    jean: null,
   });
 
   readonly activeColor = signal<ColorOption>({
-    id: 'wine',
-    name: 'Guindo Imperial',
-    hex: '#7a1c30',
-    label: '#7a1c30',
+    id: 'negro',
+    name: 'Negro',
+    hex: '#1d1d20',
+    label: '#1d1d20',
   });
 
   readonly activeSize = signal<SizeOption>({
-    id: 'classic',
-    code: '02',
-    label: 'Classic Arch',
+    id: 'm',
+    code: 'M',
+    label: 'Mediana',
     scaleX: 1.0,
     scaleY: 1.0,
     scaleZ: 1.0,
   });
 
-  readonly cameraMode = signal<'general' | 'lapel' | 'shoulder' | 'button'>('general');
+  readonly cameraMode = signal<CameraMode>('general');
   readonly zoomMultiplier = signal<string>('1.0');
-  readonly coordinatesReadout = signal<string>('[0.00, +1.05, 0.32]');
+  readonly coordinatesReadout = signal<string>('[0.00, +0.50, 2.60]');
 
   readonly cameraModeLabel = computed(() => {
     switch (this.cameraMode()) {
-      case 'general': return '1.0X VISTA GLOBAL';
-      case 'lapel': return '3.5X MACRO SOLAPA & PESPUNTE';
-      case 'shoulder': return '3.2X MACRO SISA & HOMBRO';
-      case 'button': return '4.5X TRAMA & BOTÓN';
+      case 'general': return '1.0X VISTA COMPLETA';
+      case 'cuello': return '3.4X CUELLO ACANALADO 1X1';
+      case 'hombro': return '3.0X HOMBRO CAÍDO & MANGA';
+      case 'ruedo': return '2.6X RUEDO & LARGO';
     }
   });
 
@@ -200,21 +193,25 @@ export class VirtualFitting implements OnInit, OnDestroy {
   private renderer!: THREE.WebGLRenderer;
   private animFrameId: number | null = null;
 
-  // 3D Objects
+  // Objetos 3D
   private garmentGroup!: THREE.Group;
+  private teeGroup!: THREE.Group;
+  private jeansGroup!: THREE.Group;
   private mannequinGroup!: THREE.Group;
+  private poleMesh!: THREE.Mesh;
   private fabricMaterial!: THREE.MeshPhysicalMaterial;
-  private lapelMaterial!: THREE.MeshPhysicalMaterial;
-  private buttonMaterial!: THREE.MeshStandardMaterial;
+  private ribMaterial!: THREE.MeshPhysicalMaterial;
+  private denimMaterial!: THREE.MeshStandardMaterial;
+  private denimSeamMaterial!: THREE.MeshStandardMaterial;
   private metalStandMaterial!: THREE.MeshStandardMaterial;
 
-  // Camera state & damping
-  private currentCamPos = new THREE.Vector3(0, 0.6, 2.7);
-  private targetCamPos = new THREE.Vector3(0, 0.6, 2.7);
-  private currentLookAt = new THREE.Vector3(0, 0.4, 0);
-  private targetLookAt = new THREE.Vector3(0, 0.4, 0);
+  // Camara (con amortiguacion)
+  private currentCamPos = new THREE.Vector3(0, 0.5, 2.6);
+  private targetCamPos = new THREE.Vector3(0, 0.5, 2.6);
+  private currentLookAt = new THREE.Vector3(0, 0.2, 0);
+  private targetLookAt = new THREE.Vector3(0, 0.2, 0);
 
-  // Interaction
+  // Interaccion
   private isPointerDown = false;
   private prevPointerX = 0;
   private prevPointerY = 0;
@@ -243,15 +240,12 @@ export class VirtualFitting implements OnInit, OnDestroy {
     const width = container.clientWidth || 640;
     const height = container.clientHeight || 540;
 
-    // Scene
     this.scene = new THREE.Scene();
-    this.scene.background = null; // transparent canvas so gradient background shows through
+    this.scene.background = null; // canvas transparente: se ve el degradado de fondo
 
-    // Camera
     this.camera = new THREE.PerspectiveCamera(40, width / height, 0.1, 50);
     this.camera.position.copy(this.currentCamPos);
 
-    // Renderer
     this.renderer = new THREE.WebGLRenderer({
       canvas,
       antialias: true,
@@ -262,36 +256,23 @@ export class VirtualFitting implements OnInit, OnDestroy {
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.15;
+    this.renderer.toneMappingExposure = 1.1;
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
-    // Lighting
     this.setupLighting();
-
-    // Procedural Textures & Materials
     this.setupMaterials();
-
-    // Build Mannequin & Garment
     this.buildMannequinAndGarment();
-
-    // Input handlers
     this.setupInteractions();
-
-    // Start loop
     this.animate();
 
-    // Handle Resize
     window.addEventListener('resize', this.onResize);
   }
 
   private setupLighting() {
-    // Ambient soft studio light
-    const ambient = new THREE.AmbientLight(0xffffff, 0.85);
-    this.scene.add(ambient);
+    this.scene.add(new THREE.AmbientLight(0xffffff, 0.9));
 
-    // Key Light (Main soft shadow caster)
-    const keyLight = new THREE.DirectionalLight(0xfff5f0, 2.2);
+    const keyLight = new THREE.DirectionalLight(0xfff8f2, 2.1);
     keyLight.position.set(2.5, 4, 3);
     keyLight.castShadow = true;
     keyLight.shadow.mapSize.width = 1024;
@@ -301,104 +282,118 @@ export class VirtualFitting implements OnInit, OnDestroy {
     keyLight.shadow.bias = -0.0005;
     this.scene.add(keyLight);
 
-    // Rim / Backlight for striking luxury silhouette edge
-    const rimLight = new THREE.DirectionalLight(0xff99aa, 1.8);
+    // Luz de contorno para recortar la silueta contra el fondo oscuro
+    // (sobre todo con la polera negra).
+    const rimLight = new THREE.DirectionalLight(0xffc7d0, 1.6);
     rimLight.position.set(-3, 3, -2.5);
     this.scene.add(rimLight);
 
-    // Deep Wine Accent Spot
-    const wineAccentLight = new THREE.PointLight(0x9b1d3d, 2.5, 6);
-    wineAccentLight.position.set(0, -0.5, 1.8);
-    this.scene.add(wineAccentLight);
+    const fillLight = new THREE.PointLight(0x9b1d3d, 0.7, 6);
+    fillLight.position.set(0, -0.5, 1.8);
+    this.scene.add(fillLight);
 
-    // Soft ground contact plane
     const shadowGeo = new THREE.PlaneGeometry(4, 4);
-    const shadowMat = new THREE.MeshBasicMaterial({
-      color: 0x07080a,
-      transparent: true,
-      opacity: 0.65,
-    });
+    const shadowMat = new THREE.MeshBasicMaterial({ color: 0x07080a, transparent: true, opacity: 0.65 });
     const shadowPlane = new THREE.Mesh(shadowGeo, shadowMat);
     shadowPlane.rotation.x = -Math.PI / 2;
     shadowPlane.position.y = -1.15;
     this.scene.add(shadowPlane);
   }
 
-  private createFabricTexture(): THREE.CanvasTexture {
+  /** Punto jersey: trama fina de algodon. */
+  private createJerseyTexture(): THREE.CanvasTexture {
     const canvas = document.createElement('canvas');
-    canvas.width = 512;
-    canvas.height = 512;
+    canvas.width = 256;
+    canvas.height = 256;
     const ctx = canvas.getContext('2d');
     if (ctx) {
-      // Base background
+      // Trama muy sutil: con mas contraste la polera parecia de corderoy.
       ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, 512, 512);
-
-      // Procedural fine textile weave / twill pattern
-      ctx.fillStyle = '#f0f0f0';
-      for (let y = 0; y < 512; y += 4) {
-        for (let x = 0; x < 512; x += 4) {
-          if ((x + y) % 8 === 0) {
-            ctx.fillRect(x, y, 3, 3);
-          }
+      ctx.fillRect(0, 0, 256, 256);
+      ctx.fillStyle = '#f6f6f6';
+      for (let x = 0; x < 256; x += 3) {
+        for (let y = 0; y < 256; y += 4) {
+          ctx.fillRect(x + ((y / 4) % 2), y, 1, 3);
         }
       }
-
-      // Delicate micro grain
-      const imgData = ctx.getImageData(0, 0, 512, 512);
-      const data = imgData.data;
-      for (let i = 0; i < data.length; i += 4) {
-        const noise = (Math.random() - 0.5) * 12;
-        data[i] = Math.min(255, Math.max(0, data[i] + noise));
-        data[i + 1] = Math.min(255, Math.max(0, data[i + 1] + noise));
-        data[i + 2] = Math.min(255, Math.max(0, data[i + 2] + noise));
+      const img = ctx.getImageData(0, 0, 256, 256);
+      for (let i = 0; i < img.data.length; i += 4) {
+        const n = (Math.random() - 0.5) * 8;
+        img.data[i] = Math.min(255, Math.max(0, img.data[i] + n));
+        img.data[i + 1] = Math.min(255, Math.max(0, img.data[i + 1] + n));
+        img.data[i + 2] = Math.min(255, Math.max(0, img.data[i + 2] + n));
       }
-      ctx.putImageData(imgData, 0, 0);
+      ctx.putImageData(img, 0, 0);
     }
-
     const tex = new THREE.CanvasTexture(canvas);
     tex.wrapS = THREE.RepeatWrapping;
     tex.wrapT = THREE.RepeatWrapping;
-    tex.repeat.set(12, 12);
+    tex.repeat.set(10, 10);
+    tex.colorSpace = THREE.SRGBColorSpace;
+    return tex;
+  }
+
+  /** Denim: sarga diagonal 3x1. */
+  private createDenimTexture(): THREE.CanvasTexture {
+    const canvas = document.createElement('canvas');
+    canvas.width = 128;
+    canvas.height = 128;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, 128, 128);
+      ctx.strokeStyle = '#d6d6d6';
+      ctx.lineWidth = 2;
+      for (let i = -128; i < 256; i += 6) {
+        ctx.beginPath();
+        ctx.moveTo(i, 0);
+        ctx.lineTo(i + 128, 128);
+        ctx.stroke();
+      }
+    }
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(6, 10);
     tex.colorSpace = THREE.SRGBColorSpace;
     return tex;
   }
 
   private setupMaterials() {
-    const fabricTex = this.createFabricTexture();
+    const jersey = this.createJerseyTexture();
 
-    // Primary Garment Velvet / Wool PBR
     this.fabricMaterial = new THREE.MeshPhysicalMaterial({
       color: new THREE.Color(this.activeColor().hex),
-      roughness: 0.75,
-      metalness: 0.1,
-      clearcoat: 0.15,
-      clearcoatRoughness: 0.6,
-      map: fabricTex,
-      sheen: 0.6,
-      sheenColor: new THREE.Color(0xff8da1),
-      sheenRoughness: 0.5,
+      roughness: 0.92,
+      metalness: 0.0,
+      map: jersey,
+      sheen: 0.5,
+      sheenColor: new THREE.Color(0x666870),
+      sheenRoughness: 0.7,
+      // Las mangas son tubos abiertos: sin DoubleSide se veria el hueco por dentro.
+      side: THREE.DoubleSide,
     });
 
-    // Lapels & Accents (Silk satin or deep tonal contrast)
-    this.lapelMaterial = new THREE.MeshPhysicalMaterial({
-      color: new THREE.Color(0x18181b),
-      roughness: 0.35,
-      metalness: 0.25,
-      clearcoat: 0.45,
-      clearcoatRoughness: 0.2,
-      sheen: 0.4,
-      sheenColor: new THREE.Color(0x9b1d3d),
+    // Cuello y ruedos acanalados: mismo color, un poco mas oscuros.
+    this.ribMaterial = new THREE.MeshPhysicalMaterial({
+      color: new THREE.Color(this.activeColor().hex).multiplyScalar(0.82),
+      roughness: 0.95,
+      map: jersey,
+      side: THREE.DoubleSide,
     });
 
-    // Horn / Lacquered Buttons
-    this.buttonMaterial = new THREE.MeshStandardMaterial({
-      color: 0x111113,
-      roughness: 0.2,
-      metalness: 0.6,
+    this.denimMaterial = new THREE.MeshStandardMaterial({
+      color: new THREE.Color(COLOR_JEAN.negro),
+      roughness: 0.88,
+      map: this.createDenimTexture(),
     });
 
-    // Luxury Atelier Stand (Brushed dark titanium / pewter)
+    this.denimSeamMaterial = new THREE.MeshStandardMaterial({
+      color: new THREE.Color(COLOR_JEAN.negro).multiplyScalar(0.7),
+      roughness: 0.9,
+      side: THREE.DoubleSide,
+    });
+
     this.metalStandMaterial = new THREE.MeshStandardMaterial({
       color: 0x2e3036,
       roughness: 0.3,
@@ -406,140 +401,133 @@ export class VirtualFitting implements OnInit, OnDestroy {
     });
   }
 
+  /** Malla con sombras activadas. */
+  private malla(geo: THREE.BufferGeometry, mat: THREE.Material): THREE.Mesh {
+    const m = new THREE.Mesh(geo, mat);
+    m.castShadow = true;
+    m.receiveShadow = true;
+    return m;
+  }
+
   private buildMannequinAndGarment() {
     this.mannequinGroup = new THREE.Group();
     this.garmentGroup = new THREE.Group();
+    this.teeGroup = new THREE.Group();
+    this.jeansGroup = new THREE.Group();
 
-    // 1. Mannequin Stand Base & Pole
-    const baseGeo = new THREE.CylinderGeometry(0.35, 0.4, 0.05, 32);
-    const baseMesh = new THREE.Mesh(baseGeo, this.metalStandMaterial);
-    baseMesh.position.y = -1.12;
-    baseMesh.receiveShadow = true;
-    this.mannequinGroup.add(baseMesh);
+    // --- Maniqui: base, pie, cuello ------------------------------------
+    const base = this.malla(new THREE.CylinderGeometry(0.35, 0.4, 0.05, 32), this.metalStandMaterial);
+    base.position.y = -1.12;
+    this.mannequinGroup.add(base);
 
-    const poleGeo = new THREE.CylinderGeometry(0.025, 0.025, 1.3, 16);
-    const poleMesh = new THREE.Mesh(poleGeo, this.metalStandMaterial);
-    poleMesh.position.y = -0.5;
-    poleMesh.castShadow = true;
-    this.mannequinGroup.add(poleMesh);
+    this.poleMesh = this.malla(new THREE.CylinderGeometry(0.025, 0.025, 1.1, 16), this.metalStandMaterial);
+    this.poleMesh.position.y = -0.55;
+    this.mannequinGroup.add(this.poleMesh);
 
-    // Torso Base (Tailor's dummy covered in dark charcoal linen)
-    const dummyMat = new THREE.MeshStandardMaterial({
-      color: 0x1d1e22,
-      roughness: 0.9,
-    });
-
-    // Neck cap & finial
-    const neckFinialGeo = new THREE.CylinderGeometry(0.06, 0.07, 0.14, 24);
-    const neckFinial = new THREE.Mesh(neckFinialGeo, this.metalStandMaterial);
-    neckFinial.position.y = 0.94;
-    neckFinial.castShadow = true;
-    this.mannequinGroup.add(neckFinial);
-
-    // Dummy neck
-    const neckGeo = new THREE.CylinderGeometry(0.07, 0.085, 0.25, 24);
-    const neck = new THREE.Mesh(neckGeo, dummyMat);
-    neck.position.y = 0.82;
-    neck.castShadow = true;
+    const dummyMat = new THREE.MeshStandardMaterial({ color: 0x1d1e22, roughness: 0.9 });
+    const finial = this.malla(new THREE.CylinderGeometry(0.055, 0.065, 0.12, 24), this.metalStandMaterial);
+    finial.position.y = 0.95;
+    this.mannequinGroup.add(finial);
+    const neck = this.malla(new THREE.CylinderGeometry(0.068, 0.08, 0.22, 24), dummyMat);
+    neck.position.y = 0.84;
     this.mannequinGroup.add(neck);
 
-    // 2. Sculpted Architectural Blazer / Garment
-    // Torso Main Shell
-    const torsoGeo = new THREE.CylinderGeometry(0.24, 0.28, 0.85, 32, 8);
-    // Apply soft organic tailoring taper
+    // --- Polera oversize -----------------------------------------------
+    // Cuerpo: seccion casi rectangular (ancho y poco profundo), recto y sin
+    // entalle; el ruedo abre apenas, como cae una polera oversize.
+    const torsoGeo = new THREE.CylinderGeometry(0.3, 0.31, 0.8, 48, 12);
     const pos = torsoGeo.attributes['position'];
     for (let i = 0; i < pos.count; i++) {
-      const y = pos.getY(i);
-      let x = pos.getX(i);
-      let z = pos.getZ(i);
-
-      // Chest expansion & waist nip
-      if (y > 0.1) {
-        x *= 1.35; // Broad structured chest
-        z *= 0.95;
-      } else if (y < -0.15) {
-        x *= 1.25; // Hips fluid flare
-        z *= 1.05;
-      } else {
-        x *= 1.15; // Tailored neutral waist
-        z *= 0.9;
+      let y = pos.getY(i);
+      const ang = Math.atan2(pos.getZ(i), pos.getX(i));
+      const r = Math.hypot(pos.getX(i), pos.getZ(i));
+      // Superelipse: esquinas redondeadas pero laterales casi rectos.
+      const cx = Math.cos(ang);
+      const sz = Math.sin(ang);
+      const k = 1 / Math.pow(Math.pow(Math.abs(cx), 4) + Math.pow(Math.abs(sz), 4), 0.25);
+      const ancho = y < -0.3 ? 1.6 : 1.55;
+      const x = r * cx * k * ancho;
+      const z = r * sz * k * 0.78;
+      // Hombro caido: el techo de la polera baja desde el cuello hacia los
+      // costados (la costura del hombro cae sobre el brazo).
+      if (y > 0.2) {
+        const t = (y - 0.2) / 0.2;
+        y -= 0.1 * t * Math.pow(Math.min(Math.abs(x) / 0.48, 1), 1.6);
       }
       pos.setXYZ(i, x, y, z);
     }
     torsoGeo.computeVertexNormals();
-    const torsoMesh = new THREE.Mesh(torsoGeo, this.fabricMaterial);
-    torsoMesh.position.y = 0.35;
-    torsoMesh.castShadow = true;
-    torsoMesh.receiveShadow = true;
-    this.garmentGroup.add(torsoMesh);
+    const torso = this.malla(torsoGeo, this.fabricMaterial);
+    torso.position.y = 0.33;
+    this.teeGroup.add(torso);
 
-    // Shoulders with architectural drape
-    const shoulderGeo = new THREE.CapsuleGeometry(0.12, 0.58, 16, 24);
-    const shoulderMesh = new THREE.Mesh(shoulderGeo, this.fabricMaterial);
-    shoulderMesh.rotation.z = Math.PI / 2;
-    shoulderMesh.position.set(0, 0.68, 0);
-    shoulderMesh.scale.set(1.15, 1.45, 1.0);
-    shoulderMesh.castShadow = true;
-    this.garmentGroup.add(shoulderMesh);
+    // Mangas anchas, al codo, inclinadas hacia abajo.
+    // Cada manga cuelga de un "brazo" que gira desde el hombro: asi el
+    // ruedo de la manga queda siempre perpendicular a ella.
+    for (const lado of [1, -1]) {
+      const brazo = new THREE.Group();
+      brazo.position.set(lado * 0.455, 0.626, 0);
+      brazo.rotation.z = lado * 0.62;
 
-    // Left & Right Sleeves
-    const sleeveGeo = new THREE.CylinderGeometry(0.1, 0.08, 0.72, 24);
-    const leftSleeve = new THREE.Mesh(sleeveGeo, this.fabricMaterial);
-    leftSleeve.position.set(0.44, 0.28, 0.02);
-    leftSleeve.rotation.z = -0.18;
-    leftSleeve.castShadow = true;
-    this.garmentGroup.add(leftSleeve);
+      const manga = this.malla(new THREE.CylinderGeometry(0.15, 0.135, 0.36, 28, 1, true), this.fabricMaterial);
+      manga.position.y = -0.18;
+      brazo.add(manga);
 
-    const rightSleeve = new THREE.Mesh(sleeveGeo, this.fabricMaterial);
-    rightSleeve.position.set(-0.44, 0.28, 0.02);
-    rightSleeve.rotation.z = 0.18;
-    rightSleeve.castShadow = true;
-    this.garmentGroup.add(rightSleeve);
+      const ruedoManga = this.malla(new THREE.TorusGeometry(0.137, 0.012, 10, 32), this.ribMaterial);
+      ruedoManga.rotation.x = Math.PI / 2;
+      ruedoManga.position.y = -0.36;
+      brazo.add(ruedoManga);
 
-    // Lapels (Enveloping peak lapel sculpture in contrast satin/charcoal)
-    const lapelLeftGeo = new THREE.BoxGeometry(0.14, 0.52, 0.05);
-    const lapelLeft = new THREE.Mesh(lapelLeftGeo, this.lapelMaterial);
-    lapelLeft.position.set(0.12, 0.52, 0.23);
-    lapelLeft.rotation.set(-0.1, 0.15, -0.22);
-    lapelLeft.castShadow = true;
-    this.garmentGroup.add(lapelLeft);
+      this.teeGroup.add(brazo);
+    }
 
-    const lapelRightGeo = new THREE.BoxGeometry(0.14, 0.52, 0.05);
-    const lapelRight = new THREE.Mesh(lapelRightGeo, this.lapelMaterial);
-    lapelRight.position.set(-0.12, 0.52, 0.23);
-    lapelRight.rotation.set(-0.1, -0.15, 0.22);
-    lapelRight.castShadow = true;
-    this.garmentGroup.add(lapelRight);
+    // Cuello redondo acanalado, asentado en la abertura del cuello.
+    const cuello = this.malla(new THREE.TorusGeometry(0.1, 0.022, 14, 48), this.ribMaterial);
+    cuello.rotation.x = Math.PI / 2;
+    cuello.position.set(0, 0.735, 0.0);
+    cuello.scale.set(1.12, 1.0, 1.0);
+    this.teeGroup.add(cuello);
 
-    // Front Chest Welt Pocket
-    const pocketGeo = new THREE.BoxGeometry(0.12, 0.025, 0.02);
-    const pocket = new THREE.Mesh(pocketGeo, this.lapelMaterial);
-    pocket.position.set(0.16, 0.54, 0.25);
-    pocket.rotation.z = 0.05;
-    this.garmentGroup.add(pocket);
+    // Ruedo inferior (doble costura).
+    const ruedoGeo = new THREE.CylinderGeometry(0.312, 0.312, 0.03, 40, 1, true);
+    const rp = ruedoGeo.attributes['position'];
+    for (let i = 0; i < rp.count; i++) {
+      const ang = Math.atan2(rp.getZ(i), rp.getX(i));
+      const cx = Math.cos(ang);
+      const sz = Math.sin(ang);
+      const k = 1 / Math.pow(Math.pow(Math.abs(cx), 4) + Math.pow(Math.abs(sz), 4), 0.25);
+      rp.setXYZ(i, 0.312 * cx * k * 1.61, rp.getY(i), 0.312 * sz * k * 0.79);
+    }
+    ruedoGeo.computeVertexNormals();
+    const ruedo = this.malla(ruedoGeo, this.ribMaterial);
+    ruedo.position.y = -0.055;
+    this.teeGroup.add(ruedo);
 
-    // Bespoke Buttons & Detailed Thread Stitches
-    const buttonGeo = new THREE.CylinderGeometry(0.022, 0.022, 0.012, 24);
-    const button1 = new THREE.Mesh(buttonGeo, this.buttonMaterial);
-    button1.rotation.x = Math.PI / 2;
-    button1.position.set(0, 0.32, 0.28);
-    button1.castShadow = true;
-    this.garmentGroup.add(button1);
+    // --- Jean recto ----------------------------------------------------
+    const cadera = this.malla(new THREE.CylinderGeometry(0.22, 0.24, 0.22, 32), this.denimMaterial);
+    cadera.scale.set(1.35, 1, 0.82);
+    cadera.position.y = -0.1;
+    this.jeansGroup.add(cadera);
 
-    const button2 = new THREE.Mesh(buttonGeo, this.buttonMaterial);
-    button2.rotation.x = Math.PI / 2;
-    button2.position.set(0, 0.18, 0.29);
-    button2.castShadow = true;
-    this.garmentGroup.add(button2);
+    const pretina = this.malla(new THREE.CylinderGeometry(0.222, 0.222, 0.05, 32, 1, true), this.denimSeamMaterial);
+    pretina.scale.set(1.35, 1, 0.82);
+    pretina.position.y = 0.0;
+    this.jeansGroup.add(pretina);
 
-    // Buttonhole Pespunte detail (Subtle horizontal stitch)
-    const stitchGeo = new THREE.BoxGeometry(0.045, 0.005, 0.01);
-    const stitchMat = new THREE.MeshBasicMaterial({ color: 0xff8da1 });
-    const stitch1 = new THREE.Mesh(stitchGeo, stitchMat);
-    stitch1.position.set(0.04, 0.32, 0.28);
-    this.garmentGroup.add(stitch1);
+    for (const lado of [1, -1]) {
+      const pierna = this.malla(new THREE.CylinderGeometry(0.125, 0.118, 0.94, 28), this.denimMaterial);
+      pierna.position.set(lado * 0.135, -0.66, 0);
+      this.jeansGroup.add(pierna);
 
-    // Assemble root
+      const ruedoPierna = this.malla(new THREE.TorusGeometry(0.118, 0.008, 8, 28), this.denimSeamMaterial);
+      ruedoPierna.rotation.x = Math.PI / 2;
+      ruedoPierna.position.set(lado * 0.135, -1.11, 0);
+      this.jeansGroup.add(ruedoPierna);
+    }
+    this.jeansGroup.visible = false;
+
+    this.garmentGroup.add(this.teeGroup);
+    this.garmentGroup.add(this.jeansGroup);
     this.scene.add(this.mannequinGroup);
     this.scene.add(this.garmentGroup);
   }
@@ -553,20 +541,8 @@ export class VirtualFitting implements OnInit, OnDestroy {
       this.prevPointerY = e.clientY;
     });
 
-    window.addEventListener('pointermove', (e) => {
-      if (!this.isPointerDown) return;
-      const deltaX = e.clientX - this.prevPointerX;
-      const deltaY = e.clientY - this.prevPointerY;
-      this.prevPointerX = e.clientX;
-      this.prevPointerY = e.clientY;
-
-      this.targetRotY += deltaX * 0.008;
-      this.targetRotX = Math.max(-0.4, Math.min(0.4, this.targetRotX + deltaY * 0.005));
-    });
-
-    window.addEventListener('pointerup', () => {
-      this.isPointerDown = false;
-    });
+    window.addEventListener('pointermove', this.onPointerMove);
+    window.addEventListener('pointerup', this.onPointerUp);
 
     canvas.addEventListener('wheel', (e) => {
       e.preventDefault();
@@ -576,8 +552,24 @@ export class VirtualFitting implements OnInit, OnDestroy {
     }, { passive: false });
   }
 
+  private onPointerMove = (e: PointerEvent) => {
+    if (!this.isPointerDown) return;
+    const deltaX = e.clientX - this.prevPointerX;
+    const deltaY = e.clientY - this.prevPointerY;
+    this.prevPointerX = e.clientX;
+    this.prevPointerY = e.clientY;
+    this.targetRotY += deltaX * 0.008;
+    this.targetRotX = Math.max(-0.4, Math.min(0.4, this.targetRotX + deltaY * 0.005));
+  };
+
+  private onPointerUp = () => {
+    this.isPointerDown = false;
+  };
+
   private cleanupListeners() {
     window.removeEventListener('resize', this.onResize);
+    window.removeEventListener('pointermove', this.onPointerMove);
+    window.removeEventListener('pointerup', this.onPointerUp);
   }
 
   private onResize = () => {
@@ -592,31 +584,25 @@ export class VirtualFitting implements OnInit, OnDestroy {
   private animate = () => {
     this.animFrameId = requestAnimationFrame(this.animate);
 
-    // Smooth rotational damping
     this.rotY = THREE.MathUtils.damp(this.rotY, this.targetRotY, 8, 0.016);
     this.rotX = THREE.MathUtils.damp(this.rotX, this.targetRotX, 8, 0.016);
 
-    if (this.garmentGroup) {
-      this.garmentGroup.rotation.y = this.rotY;
-      this.garmentGroup.rotation.x = this.rotX;
-    }
-    if (this.mannequinGroup) {
-      this.mannequinGroup.rotation.y = this.rotY;
-      this.mannequinGroup.rotation.x = this.rotX;
+    for (const grupo of [this.garmentGroup, this.mannequinGroup]) {
+      if (grupo) {
+        grupo.rotation.y = this.rotY;
+        grupo.rotation.x = this.rotX;
+      }
     }
 
-    // Auto gentle subtle drift when idle
     if (!this.isPointerDown) {
       this.targetRotY += 0.0012;
     }
 
-    // Smooth camera damping
     this.currentCamPos.lerp(this.targetCamPos, 0.08);
     this.currentLookAt.lerp(this.targetLookAt, 0.08);
     this.camera.position.copy(this.currentCamPos);
     this.camera.lookAt(this.currentLookAt);
 
-    // Update Telemetry coordinate readout
     const xStr = (this.currentCamPos.x >= 0 ? '+' : '') + this.currentCamPos.x.toFixed(2);
     const yStr = (this.currentCamPos.y >= 0 ? '+' : '') + this.currentCamPos.y.toFixed(2);
     const zStr = this.currentCamPos.z.toFixed(2);
@@ -627,66 +613,60 @@ export class VirtualFitting implements OnInit, OnDestroy {
 
   public setSilhouette(silhouette: SilhouetteOption) {
     this.activeSilhouette.set(silhouette);
-    if (!this.garmentGroup) return;
-
-    // Adjust geometry / silhouette styling
-    if (silhouette.id === 'valmont') {
-      this.garmentGroup.scale.set(1.0, 1.0, 1.0);
-      this.lapelMaterial.color.set(0x18181b);
-    } else if (silhouette.id === 'kuroda') {
-      // Overcoat: longer drape, wider drop shoulder
-      this.garmentGroup.scale.set(1.08, 1.25, 1.05);
-      this.lapelMaterial.color.set(0x24262d);
-    } else if (silhouette.id === 'ginza') {
-      // Minimal formal: sharp structured cut
-      this.garmentGroup.scale.set(0.96, 1.02, 0.94);
-      this.lapelMaterial.color.set(this.activeColor().hex);
+    if (!this.jeansGroup) return;
+    this.jeansGroup.visible = silhouette.jean !== null;
+    // Con jean, las piernas llegan a la base y el pie del maniqui sobra.
+    this.poleMesh.visible = silhouette.jean === null;
+    if (silhouette.jean) {
+      const hex = COLOR_JEAN[silhouette.jean];
+      this.denimMaterial.color.set(hex);
+      this.denimSeamMaterial.color.set(hex).multiplyScalar(silhouette.jean === 'negro' ? 0.7 : 0.85);
     }
   }
 
   public setFabricColor(color: ColorOption) {
     this.activeColor.set(color);
-    if (this.fabricMaterial) {
-      this.fabricMaterial.color.set(color.hex);
-      if (color.id === 'wine' || color.id === 'deep-burgundy') {
-        this.fabricMaterial.sheenColor.set(0xff8da1);
-      } else if (color.id === 'ivory') {
-        this.fabricMaterial.sheenColor.set(0xffffff);
-      } else {
-        this.fabricMaterial.sheenColor.set(0x666870);
-      }
-    }
+    if (!this.fabricMaterial) return;
+    this.fabricMaterial.color.set(color.hex);
+    this.ribMaterial.color.set(color.hex).multiplyScalar(color.id === 'blanco' ? 0.94 : 0.82);
+    // El brillo del algodon depende del color: en el blanco casi no se nota,
+    // en el negro y el guinda marca los pliegues.
+    const sheen: Record<string, number> = { blanco: 0xffffff, negro: 0x55565c, guinda: 0xc4566f, gris: 0xc8c9cd };
+    this.fabricMaterial.sheenColor.set(sheen[color.id] ?? 0x666870);
   }
 
   public setSize(size: SizeOption) {
     this.activeSize.set(size);
-    if (this.garmentGroup) {
-      this.garmentGroup.scale.set(size.scaleX, size.scaleY, size.scaleZ);
+    if (this.teeGroup) {
+      this.teeGroup.scale.set(size.scaleX, size.scaleY, size.scaleZ);
+      // La polera crece desde el cuello: se compensa para que el cuello no
+      // atraviese el maniqui al escalar.
+      this.teeGroup.position.y = 0.79 * (1 - size.scaleY);
     }
   }
 
-  public setCameraPreset(mode: 'general' | 'lapel' | 'shoulder' | 'button') {
+  public setCameraPreset(mode: CameraMode) {
     this.cameraMode.set(mode);
     switch (mode) {
       case 'general':
         this.targetCamPos.set(0, 0.5, 2.6);
-        this.targetLookAt.set(0, 0.35, 0);
+        this.targetLookAt.set(0, 0.2, 0);
         this.zoomMultiplier.set('1.0');
         break;
-      case 'lapel':
-        this.targetCamPos.set(0.12, 0.55, 0.85);
-        this.targetLookAt.set(0.12, 0.52, 0.22);
-        this.zoomMultiplier.set('3.5');
+      case 'cuello':
+        this.targetCamPos.set(0.0, 1.12, 0.78);
+        this.targetLookAt.set(0, 0.7, 0.0);
+        this.zoomMultiplier.set('3.4');
         break;
-      case 'shoulder':
-        this.targetCamPos.set(0.42, 0.65, 0.9);
-        this.targetLookAt.set(0.38, 0.58, 0.05);
-        this.zoomMultiplier.set('3.2');
+      case 'hombro':
+        this.targetCamPos.set(0.75, 0.8, 0.95);
+        this.targetLookAt.set(0.5, 0.58, 0.0);
+        this.zoomMultiplier.set('3.0');
         break;
-      case 'button':
-        this.targetCamPos.set(0.04, 0.32, 0.65);
-        this.targetLookAt.set(0.0, 0.32, 0.28);
-        this.zoomMultiplier.set('4.5');
+      case 'ruedo':
+        this.targetCamPos.set(0.1, 0.05, 1.05);
+        this.targetLookAt.set(0, -0.05, 0.1);
+        this.zoomMultiplier.set('2.6');
         break;
     }
   }

@@ -31,7 +31,7 @@ import { hasDigit, hasLower, hasSpecial, hasUpper, isStrong } from '../../shared
           <img
             alt="Arquitectura de operaciones YouShop"
             class="w-full h-full object-cover opacity-25 mix-blend-luminosity scale-105"
-            src="https://images.unsplash.com/photo-1544441893-675973e31985?w=1600&auto=format&fit=crop&q=80"
+            src="/landing/perchero-poleras.jpg"
           />
           <div class="absolute inset-0 bg-gradient-to-b from-[#121316]/60 via-[#121316]/85 to-[#121316]/95"></div>
           <div class="absolute top-1/4 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[400px] bg-gradient-to-br from-[#7a1c30]/25 via-[#53101e]/20 to-transparent rounded-full blur-[120px]"></div>

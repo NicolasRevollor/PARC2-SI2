@@ -53,9 +53,9 @@ import { CartService } from '../../../core/services/cart.service';
             class="flex items-center gap-3 p-3 bg-gray-50 rounded-xl border border-gray-200"
           >
             <img
-              [src]="linea.producto.imagen_url || 'https://images.unsplash.com/photo-1544441893-675973e31985?w=200'"
+              [src]="linea.producto.imagen_url || '/productos/sin-imagen.jpg'"
               [alt]="linea.producto.nombre"
-              class="w-14 h-14 rounded-lg object-cover border border-gray-200 shrink-0"
+              class="w-14 h-14 rounded-lg object-contain bg-[#e6e2db] border border-gray-200 shrink-0"
             />
             <div class="flex-1 min-w-0">
               <p class="text-xs font-bold text-gray-900 truncate">{{ linea.producto.nombre }}</p>

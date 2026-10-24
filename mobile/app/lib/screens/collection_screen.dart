@@ -14,7 +14,9 @@ class CollectionScreen extends StatefulWidget {
 
 class _CollectionScreenState extends State<CollectionScreen> {
   String selectedFilter = 'Todos';
-  final List<String> filters = ['Todos', 'Oversized', 'Regular', 'Sastrería', 'Abrigos'];
+  // La categoria de cada producto es su "tipo" en el backend: la tienda solo
+  // vende poleras oversize y jeans.
+  final List<String> filters = ['Todos', 'Polera Oversize', 'Jeans'];
 
   @override
   Widget build(BuildContext context) {

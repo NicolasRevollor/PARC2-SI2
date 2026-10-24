@@ -45,9 +45,9 @@ const API_URL = environment.apiUrl;
           <div class="flex flex-col md:flex-row gap-6">
             <div class="w-full md:w-1/2 aspect-[4/3] rounded-xl overflow-hidden bg-gray-100 border border-gray-200">
               <img
-                [src]="p.imagen_url || 'https://images.unsplash.com/photo-1544441893-675973e31985?w=800'"
+                [src]="p.imagen_url || '/productos/sin-imagen.jpg'"
                 [alt]="p.nombre"
-                class="w-full h-full object-cover"
+                class="w-full h-full object-contain bg-[#e6e2db]"
               />
             </div>
             <div class="w-full md:w-1/2 flex flex-col justify-between">

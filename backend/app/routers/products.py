@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.catalogo import error_de_catalogo
 from app.database import get_db
 from app.models import Colecciones, Producto, Proveedor
 from app.schemas.products import (
@@ -53,6 +54,13 @@ async def _serialize(producto: Producto, session: AsyncSession) -> ProductoOut:
         imagen_url=producto.imagen_url,
         imagenes_secundarias=producto.imagenes_secundarias or [],
     )
+
+
+def _validar_catalogo(tipo: str | None, color: str | None, talla: str | None) -> None:
+    """La tienda solo vende poleras oversize y jeans (app/catalogo.py)."""
+    error = error_de_catalogo(tipo, color, talla)
+    if error:
+        raise HTTPException(status_code=400, detail=error)
 
 
 async def _validar_referencias(session: AsyncSession, data: dict, id_tenant: int) -> None:
@@ -172,6 +180,7 @@ async def create_product(
     _=Depends(require_permiso("producto.crear")),
     ctx: ContextoTenant = Depends(contexto_actual),
 ):
+    _validar_catalogo(payload.tipo, payload.color, payload.talla)
     await exigir_cupo(session, ctx, "productos")
     await _validar_referencias(session, payload.model_dump(), ctx.tenant.idTenant)
 
@@ -195,6 +204,14 @@ async def update_product(
         raise HTTPException(status_code=404, detail="Producto no encontrado")
 
     data = payload.model_dump(exclude_unset=True)
+    # La combinacion resultante (lo que cambia + lo que queda) tiene que
+    # seguir siendo parte de la oferta.
+    if {"tipo", "color", "talla"} & data.keys():
+        _validar_catalogo(
+            data.get("tipo", producto.tipo),
+            data.get("color", producto.color),
+            data.get("talla", producto.talla),
+        )
     await _validar_referencias(session, data, id_tenant)
 
     for key, value in data.items():

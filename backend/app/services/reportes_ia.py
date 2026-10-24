@@ -50,7 +50,8 @@ MAX_FILAS_DETALLE = 60
 UMBRAL_STOCK_CRITICO = 5
 
 SYSTEM_INSTRUCTION = (
-    "Sos el analista de operaciones de YouShop, una cadena de boutiques de ropa unisex. "
+    "Sos el analista de operaciones de YouShop, una cadena de tiendas de ropa unisex "
+    "que vende solo poleras oversize (blanco, negro, guinda, gris) y jeans (negro, blanco). "
     "Recibis metricas YA CALCULADAS por sucursal (ventas, unidades, stock, quiebres) y "
     "tenes que interpretarlas para la gerencia. Reglas estrictas: "
     "(1) NUNCA inventes cifras ni sucursales que no esten en los datos; "

@@ -9,6 +9,7 @@ import { ProductDetailComponent } from './product-detail.component';
 import { ReservationFormComponent } from '../reservations/reservation-form.component';
 import { PurchaseModalComponent } from '../checkout/purchase-modal.component';
 import { CartDrawerComponent } from '../cart/cart-drawer.component';
+import { COLORES_POR_TIPO, COLORES_TIENDA, TALLAS_POR_TIPO, TIPOS_PRENDA, esTipoPrenda } from '../../../core/catalogo';
 
 const PAGE_SIZE = 12;
 
@@ -77,22 +78,18 @@ const PAGE_SIZE = 12;
           (ngModelChange)="onFilterChange()"
           class="px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs bg-[#18191d] focus:ring-2 focus:ring-indigo-500 focus:outline-none"
         >
-          <option value="">Todos los tipos</option>
-          <option value="Camisa">Camisa</option>
-          <option value="Polera">Polera</option>
-          <option value="Pantalon">Pantalón</option>
-          <option value="Vestido">Vestido</option>
-          <option value="Chaqueta">Chaqueta</option>
-          <option value="Falda">Falda</option>
+          <option value="">Poleras y jeans</option>
+          <option *ngFor="let t of tipos" [value]="t">{{ t }}</option>
         </select>
 
-        <input
-          type="text"
+        <select
           [(ngModel)]="talla"
           (ngModelChange)="onFilterChange()"
-          placeholder="Talla (ej. M)"
-          class="w-28 px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-[#18191d] transition-all"
-        />
+          class="px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs bg-[#18191d] focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+        >
+          <option value="">Todas las tallas</option>
+          <option *ngFor="let t of tallasFiltro()" [value]="t">{{ t }}</option>
+        </select>
 
         <select
           [(ngModel)]="color"
@@ -100,11 +97,7 @@ const PAGE_SIZE = 12;
           class="px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs bg-[#18191d] focus:ring-2 focus:ring-indigo-500 focus:outline-none"
         >
           <option value="">Todos los colores</option>
-          <option value="Negro">Negro</option>
-          <option value="Blanco">Blanco</option>
-          <option value="Azul">Azul</option>
-          <option value="Rojo">Rojo</option>
-          <option value="Gris">Gris</option>
+          <option *ngFor="let c of coloresFiltro()" [value]="c">{{ c }}</option>
         </select>
 
         <select
@@ -139,9 +132,9 @@ const PAGE_SIZE = 12;
         >
           <div class="aspect-[4/3] w-full bg-gray-100 overflow-hidden relative">
             <img
-              [src]="item.imagen_url || 'https://images.unsplash.com/photo-1544441893-675973e31985?w=800&auto=format&fit=crop&q=80'"
+              [src]="item.imagen_url || '/productos/sin-imagen.jpg'"
               [alt]="item.nombre"
-              class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+              class="w-full h-full object-contain bg-[#e6e2db] group-hover:scale-105 transition-transform duration-500"
             />
             <div class="absolute bottom-3 right-3 bg-[#18191d]/95 backdrop-blur-xs px-2.5 py-1 rounded-lg border border-gray-200/80 shadow-xs text-right">
               <p class="text-xs font-bold text-gray-900">{{ item.venta.toLocaleString() }} Bs</p>
@@ -218,6 +211,20 @@ export class CatalogComponent implements OnInit {
   idColeccion: number | null = null;
   idProveedor: number | null = null;
 
+  readonly tipos = TIPOS_PRENDA;
+
+  // Con un tipo elegido solo se ofrecen sus colores/tallas (un jean no viene
+  // en guinda ni en talla M); sin tipo, las de toda la tienda.
+  coloresFiltro(): string[] {
+    return esTipoPrenda(this.tipo) ? COLORES_POR_TIPO[this.tipo] : COLORES_TIENDA;
+  }
+
+  tallasFiltro(): string[] {
+    return esTipoPrenda(this.tipo)
+      ? TALLAS_POR_TIPO[this.tipo]
+      : [...TALLAS_POR_TIPO['Polera Oversize'], ...TALLAS_POR_TIPO['Jeans']];
+  }
+
   page = signal<number>(1);
   selectedProductId = signal<number | null>(null);
   reservandoProducto = signal<ProductOut | null>(null);
@@ -257,6 +264,8 @@ export class CatalogComponent implements OnInit {
   }
 
   onFilterChange() {
+    if (this.color && !this.coloresFiltro().includes(this.color)) this.color = '';
+    if (this.talla && !this.tallasFiltro().includes(this.talla)) this.talla = '';
     this.page.set(1);
     this.fetchProducts();
   }

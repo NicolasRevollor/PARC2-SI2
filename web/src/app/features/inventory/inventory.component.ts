@@ -84,9 +84,9 @@ import { InventoryStockEntry } from '../../core/models';
                 <td class="p-3.5 pl-6">
                   <div class="flex items-center space-x-3">
                     <img
-                      [src]="item.producto_imagen || 'https://images.unsplash.com/photo-1544441893-675973e31985?w=200&auto=format&fit=crop&q=80'"
+                      [src]="item.producto_imagen || '/productos/sin-imagen.jpg'"
                       [alt]="item.producto_nombre"
-                      class="w-10 h-10 rounded-lg object-cover bg-gray-100 border border-gray-200 shrink-0"
+                      class="w-10 h-10 rounded-lg object-contain bg-[#e6e2db] border border-gray-200 shrink-0"
                     />
                     <div>
                       <span class="text-[10px] font-bold uppercase text-indigo-600 tracking-wider">

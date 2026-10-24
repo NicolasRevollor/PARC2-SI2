@@ -48,7 +48,9 @@ MAX_CANDIDATOS = 30
 MAX_RECOMENDACIONES = 3
 
 SYSTEM_INSTRUCTION = (
-    "Sos el motor de recomendaciones de YouShop, una tienda de ropa unisex. "
+    "Sos el motor de recomendaciones de YouShop, una tienda de ropa unisex que "
+    "vende solo poleras oversize y jeans: prioriza combinaciones (una polera de "
+    "otro color, o el jean que combina con la polera que ya compro). "
     "Se te da el historial de compras de un cliente y una lista de productos "
     "candidatos (los unicos que el cliente todavia NO compro). Elegi hasta "
     f"{MAX_RECOMENDACIONES} productos de esa lista de candidatos que le "
@@ -81,6 +83,10 @@ async def generar_recomendaciones_post_venta(id_cliente: int) -> None:
     """Punto de entrada para `BackgroundTasks`. Nunca propaga excepciones."""
     try:
         await _generar(id_cliente)
+    except GeminiNoConfigurado:
+        # Falta de configuracion (ej. desarrollo local), no un error: una
+        # linea alcanza, la traza completa en cada venta solo ensucia el log.
+        logger.warning("Recomendaciones omitidas para idCliente=%s: GEMINI_API_KEY no configurada", id_cliente)
     except Exception:
         logger.error(
             "Fallo generando recomendaciones para idCliente=%s:\n%s",

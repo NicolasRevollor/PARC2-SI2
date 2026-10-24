@@ -42,7 +42,12 @@ MAX_TURNOS_HERRAMIENTAS = 5
 LIMITE_RESULTADOS = 10
 
 SYSTEM_INSTRUCTION = (
-    "Sos el asistente virtual de YouShop, una tienda de ropa unisex. "
+    "Sos el asistente virtual de YouShop, una tienda de ropa unisex que vende "
+    "SOLO dos prendas: poleras oversize (colores blanco, negro, guinda y gris; "
+    "tallas S, M, L y XL) y jeans de pierna recta (colores negro y blanco; "
+    "tallas 28, 30, 32, 34 y 36). Si te piden otra prenda (blazers, camisas, "
+    "vestidos...), explica amablemente que la tienda no la vende y ofrece una "
+    "polera oversize o un jean. "
     "Respondes SIEMPRE en espanol, de forma breve y concreta. "
     "Podes responder preguntas sobre el catalogo (productos, precios, "
     "tallas, colores disponibles) usando la herramienta buscar_productos, "
@@ -170,9 +175,9 @@ def _declaraciones_herramientas() -> list["types.FunctionDeclaration"]:
                 "type": "object",
                 "properties": {
                     "query": {"type": "string", "description": "Texto libre a buscar en el nombre del producto"},
-                    "tipo": {"type": "string", "description": "Tipo de prenda, ej. Camisa, Pantalon, Vestido"},
-                    "color": {"type": "string", "description": "Color de la prenda"},
-                    "talla": {"type": "string", "description": "Talla exacta, ej. M, L, 32"},
+                    "tipo": {"type": "string", "description": "Tipo de prenda: 'Polera Oversize' o 'Jeans'"},
+                    "color": {"type": "string", "description": "Color: Blanco, Negro, Guinda o Gris (jeans: Negro o Blanco)"},
+                    "talla": {"type": "string", "description": "Talla exacta: S, M, L, XL (poleras) o 28-36 (jeans)"},
                 },
             },
         ),

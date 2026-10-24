@@ -20,6 +20,31 @@ class ApiConfig {
   //     verificar con `ip -4 addr show` si cambia de red).
   static const String baseUrl = 'https://primparcsi2.onrender.com';
 
+  // Web publicada en Vercel: sirve las imagenes del catalogo (/productos/...)
+  // y de la landing (/landing/...). El backend guarda esas rutas RELATIVAS
+  // (la web las usa tal cual); la app necesita la URL completa.
+  static const String webBaseUrl = 'https://parc-2-si-2.vercel.app';
+
+  static const String imagenSinFoto = '$webBaseUrl/productos/sin-imagen.jpg';
+
+  /// URL absoluta de una imagen de producto: completa las rutas relativas
+  /// del catalogo y deja intactas las URLs absolutas (fotos subidas a
+  /// Supabase). Sin imagen -> foto neutra del catalogo.
+  static String urlImagen(String? ruta) {
+    if (ruta == null || ruta.isEmpty) return imagenSinFoto;
+    if (ruta.startsWith('/')) return '$webBaseUrl$ruta';
+    return ruta;
+  }
+
+  /// Version recortada (PNG con fondo transparente) de una foto del
+  /// catalogo, para superponerla sobre la camara en el probador. Si la foto
+  /// no es del catalogo (una subida propia), se usa la original.
+  static String urlRecorte(String url) {
+    final esCatalogo = url.contains('/productos/') && !url.contains('/recorte/') && url.endsWith('.jpg');
+    if (!esCatalogo || url.endsWith('sin-imagen.jpg')) return url;
+    return url.replaceFirst('/productos/', '/productos/recorte/').replaceFirst(RegExp(r'\.jpg$'), '.png');
+  }
+
   // Claves de flutter_secure_storage. Compartidas entre ApiClient (lee el
   // token para el header Authorization) y AuthService (lo escribe/borra) —
   // viven aca, no en ninguno de los dos servicios, para que ApiClient no

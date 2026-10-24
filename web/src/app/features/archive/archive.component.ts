@@ -3,6 +3,17 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ArchiveService } from '../../core/services/archive.service';
 import { ProductOut, ProductoIn } from '../../core/models';
+import {
+  COLORES_POR_TIPO,
+  COLORES_TIENDA,
+  TALLAS_POR_TIPO,
+  TIPOS_PRENDA,
+  TIPO_POLERA,
+  esTipoPrenda,
+  imagenCatalogo,
+  imagenEspalda,
+  nombreSugerido,
+} from '../../core/catalogo';
 
 @Component({
   selector: 'app-archive',
@@ -48,11 +59,7 @@ import { ProductOut, ProductoIn } from '../../core/models';
           class="px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs bg-[#18191d] focus:ring-2 focus:ring-indigo-500 focus:outline-none"
         >
           <option value="">Todos los tipos</option>
-          <option value="Camisa">Camisa</option>
-          <option value="Pantalon">Pantalón</option>
-          <option value="Vestido">Vestido</option>
-          <option value="Chaqueta">Chaqueta</option>
-          <option value="Falda">Falda</option>
+          <option *ngFor="let t of tipos" [value]="t">{{ t }}</option>
         </select>
         <select
           [(ngModel)]="filterColor"
@@ -60,11 +67,7 @@ import { ProductOut, ProductoIn } from '../../core/models';
           class="px-3 py-1.5 bg-gray-50 border border-gray-200 rounded-lg text-xs bg-[#18191d] focus:ring-2 focus:ring-indigo-500 focus:outline-none"
         >
           <option value="">Todos los colores</option>
-          <option value="Negro">Negro</option>
-          <option value="Blanco">Blanco</option>
-          <option value="Azul">Azul</option>
-          <option value="Rojo">Rojo</option>
-          <option value="Gris">Gris</option>
+          <option *ngFor="let c of coloresTienda" [value]="c">{{ c }}</option>
         </select>
       </div>
 
@@ -76,9 +79,9 @@ import { ProductOut, ProductoIn } from '../../core/models';
         >
           <div class="aspect-[4/3] w-full bg-gray-100 overflow-hidden relative">
             <img
-              [src]="item.imagen_url || 'https://images.unsplash.com/photo-1544441893-675973e31985?w=800&auto=format&fit=crop&q=80'"
+              [src]="item.imagen_url || '/productos/sin-imagen.jpg'"
               [alt]="item.nombre"
-              class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+              class="w-full h-full object-contain bg-[#e6e2db] group-hover:scale-105 transition-transform duration-500"
             />
             <div class="absolute top-3 left-3 flex flex-col gap-1.5">
               <span class="px-2.5 py-1 bg-black/90 backdrop-blur-xs text-white rounded-md text-[10px] font-bold tracking-wider uppercase shadow-xs">
@@ -135,7 +138,7 @@ import { ProductOut, ProductoIn } from '../../core/models';
           <div *ngIf="inspectingItem() as p">
             <div class="flex flex-col md:flex-row gap-6">
               <div class="w-full md:w-1/2 aspect-[4/3] rounded-xl overflow-hidden bg-gray-100 border border-gray-200">
-                <img [src]="p.imagen_url || 'https://images.unsplash.com/photo-1544441893-675973e31985?w=800'" [alt]="p.nombre" class="w-full h-full object-cover" />
+                <img [src]="p.imagen_url || '/productos/sin-imagen.jpg'" [alt]="p.nombre" class="w-full h-full object-contain bg-[#e6e2db]" />
               </div>
               <div class="w-full md:w-1/2 flex flex-col justify-between">
                 <div>
@@ -209,7 +212,7 @@ import { ProductOut, ProductoIn } from '../../core/models';
         <div class="mb-5">
           <span class="text-[10px] font-bold uppercase tracking-wider text-indigo-600">Catálogo</span>
           <h2 class="text-lg font-bold text-gray-900 mt-0.5">Agregar Nuevo Producto</h2>
-          <p class="text-xs text-gray-500">Registre una nueva prenda en el catálogo maestro.</p>
+          <p class="text-xs text-gray-500">Solo poleras oversize (blanco, negro, guinda, gris) y jeans (negro, blanco). La foto se completa sola según tipo y color.</p>
         </div>
 
         <form (ngSubmit)="saveNewProduct()" class="space-y-4">
@@ -220,7 +223,9 @@ import { ProductOut, ProductoIn } from '../../core/models';
             </div>
             <div>
               <label class="text-xs font-bold text-gray-700 uppercase tracking-wide">Tipo</label>
-              <input type="text" [(ngModel)]="newProduct.tipo" name="tipo" class="w-full mt-1 px-3.5 py-2 border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none" placeholder="ej. Camisa" />
+              <select [(ngModel)]="newProduct.tipo" (ngModelChange)="onTipoNuevo()" name="tipo" required class="w-full mt-1 px-2.5 py-2 border border-gray-200 rounded-lg text-xs bg-[#18191d] focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                <option *ngFor="let t of tipos" [ngValue]="t">{{ t }}</option>
+              </select>
             </div>
           </div>
 
@@ -243,11 +248,15 @@ import { ProductOut, ProductoIn } from '../../core/models';
           <div class="grid grid-cols-2 gap-4">
             <div>
               <label class="text-xs font-bold text-gray-700 uppercase tracking-wide">Talla</label>
-              <input type="text" [(ngModel)]="newProduct.talla" name="talla" class="w-full mt-1 px-3.5 py-2 border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none" placeholder="ej. M" />
+              <select [(ngModel)]="newProduct.talla" name="talla" required class="w-full mt-1 px-2.5 py-2 border border-gray-200 rounded-lg text-xs bg-[#18191d] focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                <option *ngFor="let t of tallasNuevo()" [ngValue]="t">{{ t }}</option>
+              </select>
             </div>
             <div>
               <label class="text-xs font-bold text-gray-700 uppercase tracking-wide">Color</label>
-              <input type="text" [(ngModel)]="newProduct.color" name="color" class="w-full mt-1 px-3.5 py-2 border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none" placeholder="ej. Negro" />
+              <select [(ngModel)]="newProduct.color" (ngModelChange)="onColorNuevo()" name="color" required class="w-full mt-1 px-2.5 py-2 border border-gray-200 rounded-lg text-xs bg-[#18191d] focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+                <option *ngFor="let c of coloresNuevo()" [ngValue]="c">{{ c }}</option>
+              </select>
             </div>
           </div>
 
@@ -275,7 +284,7 @@ import { ProductOut, ProductoIn } from '../../core/models';
           <div>
             <label class="text-xs font-bold text-gray-700 uppercase tracking-wide">Imagen del Producto</label>
             <div class="mt-1 flex items-center gap-3">
-              <img *ngIf="newProduct.imagen_url" [src]="newProduct.imagen_url" class="w-14 h-14 rounded-lg object-cover border border-gray-200" />
+              <img *ngIf="newProduct.imagen_url" [src]="newProduct.imagen_url" class="w-14 h-14 rounded-lg object-contain bg-[#e6e2db] border border-gray-200" />
               <label class="flex-1 cursor-pointer px-3.5 py-2 border border-dashed border-gray-300 rounded-lg text-xs text-gray-500 text-center hover:border-indigo-400 hover:text-indigo-600 transition-colors">
                 <span *ngIf="uploadingImagen()">Subiendo...</span>
                 <span *ngIf="!uploadingImagen()">{{ newProduct.imagen_url ? 'Cambiar imagen' : 'Seleccionar imagen (JPEG, PNG o WEBP)' }}</span>
@@ -301,19 +310,67 @@ export class ArchiveComponent implements OnInit {
   filterTipo = '';
   filterColor = '';
 
-  newProduct: Partial<ProductoIn> = {
-    nombre: '',
-    descripcion: '',
-    costo: 0,
-    venta: 0,
-    tipo: '',
-    talla: '',
-    color: '',
-    idProveedor: null as unknown as number,
-    idColeccion: null as unknown as number,
-    imagen_url: '',
-    imagenes_secundarias: [],
-  };
+  readonly tipos = TIPOS_PRENDA;
+  readonly coloresTienda = COLORES_TIENDA;
+
+  // Declarados ANTES de newProduct: productoInicial() los fija y un
+  // inicializador posterior los volveria a poner en null.
+  private ultimoTipo: string | null = null;
+  private ultimoColor: string | null = null;
+
+  newProduct: Partial<ProductoIn> = this.productoInicial();
+
+  /** Colores/tallas validos para el tipo elegido en el alta. */
+  coloresNuevo(): string[] {
+    return esTipoPrenda(this.newProduct.tipo) ? COLORES_POR_TIPO[this.newProduct.tipo] : COLORES_TIENDA;
+  }
+
+  tallasNuevo(): string[] {
+    return esTipoPrenda(this.newProduct.tipo) ? TALLAS_POR_TIPO[this.newProduct.tipo] : [];
+  }
+
+  onTipoNuevo() {
+    // Al cambiar de polera a jean, color y talla tienen que ser validos para el nuevo tipo.
+    if (!this.coloresNuevo().includes(this.newProduct.color ?? '')) this.newProduct.color = this.coloresNuevo()[0];
+    if (!this.tallasNuevo().includes(this.newProduct.talla ?? '')) this.newProduct.talla = this.tallasNuevo()[0];
+    this.onColorNuevo();
+  }
+
+  /** Completa nombre y fotos del catalogo, salvo que el usuario haya subido una foto propia. */
+  onColorNuevo() {
+    const { tipo, color } = this.newProduct;
+    const anterior = nombreSugerido(this.ultimoTipo, this.ultimoColor);
+    if (!this.newProduct.nombre || this.newProduct.nombre === anterior) {
+      this.newProduct.nombre = nombreSugerido(tipo, color);
+    }
+    if (!this.newProduct.imagen_url || this.newProduct.imagen_url.startsWith('/productos/')) {
+      this.newProduct.imagen_url = imagenCatalogo(tipo, color) ?? '';
+      const espalda = imagenEspalda(tipo, color);
+      this.newProduct.imagenes_secundarias = espalda ? [espalda] : [];
+    }
+    this.ultimoTipo = tipo ?? null;
+    this.ultimoColor = color ?? null;
+  }
+
+  private productoInicial(): Partial<ProductoIn> {
+    const tipo = TIPO_POLERA;
+    const color = COLORES_POR_TIPO[tipo][1];
+    this.ultimoTipo = tipo;
+    this.ultimoColor = color;
+    return {
+      nombre: nombreSugerido(tipo, color),
+      descripcion: '',
+      costo: 0,
+      venta: 0,
+      tipo,
+      talla: TALLAS_POR_TIPO[tipo][1],
+      color,
+      idProveedor: null as unknown as number,
+      idColeccion: null as unknown as number,
+      imagen_url: imagenCatalogo(tipo, color) ?? '',
+      imagenes_secundarias: [imagenEspalda(tipo, color) ?? ''].filter(Boolean),
+    };
+  }
 
   constructor(public archiveService: ArchiveService) {}
 
@@ -382,18 +439,6 @@ export class ArchiveComponent implements OnInit {
   }
 
   private resetForm() {
-    this.newProduct = {
-      nombre: '',
-      descripcion: '',
-      costo: 0,
-      venta: 0,
-      tipo: '',
-      talla: '',
-      color: '',
-      idProveedor: null as unknown as number,
-      idColeccion: null as unknown as number,
-      imagen_url: '',
-      imagenes_secundarias: [],
-    };
+    this.newProduct = this.productoInicial();
   }
 }

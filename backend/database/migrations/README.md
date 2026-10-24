@@ -139,6 +139,17 @@ docker exec -i ropaDocker \
   -v ON_ERROR_STOP=1 \
   -f /dev/stdin \
   < database/migrations/019_backfill_metodo_pago_consumido.sql
+
+# 17) Migracion 020 (catalogo: solo poleras oversize y jeans + 15 empresas)
+#     DESTRUCTIVA: borra el catalogo anterior (blazers, etc.) de todas las
+#     empresas CON su historial (ventas, reservas, devoluciones, movimientos).
+#     Sacar un respaldo antes. Despues carga el catalogo nuevo, stock, ventas
+#     y reservas de ejemplo en las 19 empresas. Re-ejecutable sin duplicar.
+docker exec -i ropaDocker \
+  psql -U yimysito -d ropaDB \
+  -v ON_ERROR_STOP=1 \
+  -f /dev/stdin \
+  < database/migrations/020_catalogo_oversize_y_empresas.sql
 ```
 
 > **Las migraciones 014 y 015 no son opcionales.** Los modelos SQLAlchemy ya

@@ -17,7 +17,10 @@
  * tokens y orden de reenvio.
  */
 
-const VERSION = 'youshop-v1';
+// v2: cambio de catalogo (solo poleras oversize y jeans). Subir la version
+// hace que "activate" borre los caches viejos, incluidas respuestas de la API
+// con productos que ya no existen.
+const VERSION = 'youshop-v2';
 const CACHE_SHELL = `${VERSION}-shell`;
 const CACHE_ASSETS = `${VERSION}-assets`;
 const CACHE_API = `${VERSION}-api`;

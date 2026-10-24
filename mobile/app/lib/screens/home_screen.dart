@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import '../config/api_config.dart';
 import '../theme/aether_theme.dart';
 import '../providers/app_state.dart';
 import '../models/recomendacion_model.dart';
@@ -74,7 +75,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   AspectRatio(
                     aspectRatio: 16 / 10,
                     child: CachedNetworkImage(
-                      imageUrl: 'https://lh3.googleusercontent.com/aida-public/AB6AXuDWVEjDuUQ_X1l6JvlGJvjXr68r55cZvMqHoC2dCPjlzv-t0nbhrhq4Qt_M_rHaKnhnkmFT9VkhJw7xmdGauzKUYocKh5oT8KKBmmKVpNPtmgqEAlTXR8sVFtg1gPM6FDbsWDApruzAx205g6Z7njnP5tC_1lM3Jy_74UDWgFyxNjMIdyZ6nN-Hvr22utV3vMdZESNVnP_ZSU4cLhu9Ca4obAm09F1M04b9BiLkQp8f03j57smqHSsmVg',
+                      imageUrl: '${ApiConfig.webBaseUrl}/landing/perchero-poleras.jpg',
                       fit: BoxFit.cover,
                       placeholder: (_, __) => Container(color: const Color(0xFFEAE5DC)),
                     ),
@@ -101,7 +102,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'OTOÑO / INVIERNO EDIT',
+                          'COLECCIÓN ESENCIAL 2026',
                           style: GoogleFonts.outfit(
                             fontSize: 10,
                             letterSpacing: 2.0,
@@ -111,7 +112,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                         const SizedBox(height: 4),
                         Text(
-                            'Siluetas Minimalistas y Sastrería Fluida',
+                            'Poleras Oversize y Jeans',
                           style: GoogleFonts.outfit(
                             fontSize: 18,
                             fontWeight: FontWeight.w500,

@@ -5,6 +5,7 @@ import { InventoryService } from '../../core/services/inventory.service';
 import { DispatchService } from '../../core/services/dispatch.service';
 import { AuthService } from '../../core/services/auth.service';
 import { AppView } from '../../shared/components/sidebar.component';
+import { ProductOut } from '../../core/models';
 
 @Component({
   selector: 'app-dashboard',
@@ -17,7 +18,7 @@ import { AppView } from '../../shared/components/sidebar.component';
       <div class="bg-gradient-to-r from-[#18191d] via-[#1f161a] to-[#2a131b] text-white rounded-2xl p-6 lg:p-8 relative overflow-hidden shadow-xs border border-[#564243]/40">
         <div class="absolute right-0 top-0 bottom-0 w-1/2 opacity-20 pointer-events-none hidden md:block">
           <img
-            src="https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=1000&auto=format&fit=crop&q=80"
+            src="/landing/perchero-poleras.jpg"
             alt="Operaciones YouShop"
             class="w-full h-full object-cover mix-blend-luminosity"
           />
@@ -220,7 +221,7 @@ import { AppView } from '../../shared/components/sidebar.component';
         <div class="flex items-center justify-between mb-6">
           <div>
             <h2 class="text-base font-bold text-gray-900">Prendas Destacadas del Archivo Permanente</h2>
-            <p class="text-xs text-gray-500">Siluetas arquitectónicas y fabricaciones con materiales certificados</p>
+            <p class="text-xs text-gray-500">Poleras oversize y jeans: un modelo por color</p>
           </div>
           <button
             (click)="navigate.emit('archive')"
@@ -232,14 +233,14 @@ import { AppView } from '../../shared/components/sidebar.component';
 
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
           <div
-            *ngFor="let item of archiveService.products().slice(0, 3); let i = index"
+            *ngFor="let item of destacadas()"
             class="group bg-[#18191d] rounded-xl overflow-hidden border border-gray-200 hover:border-indigo-300 hover:shadow-sm transition-all flex flex-col justify-between"
           >
             <div class="aspect-[4/3] w-full overflow-hidden relative bg-gray-100">
               <img
-                [src]="imagenesDestacadas[i % imagenesDestacadas.length].url"
-                [alt]="imagenesDestacadas[i % imagenesDestacadas.length].alt"
-                class="w-full h-full object-cover group-hover:scale-102 transition-transform duration-300"
+                [src]="item.imagen_url || '/productos/sin-imagen.jpg'"
+                [alt]="item.nombre"
+                class="w-full h-full object-contain bg-[#e6e2db] group-hover:scale-102 transition-transform duration-300"
               />
               <div class="absolute top-2.5 left-2.5 bg-black/80 backdrop-blur-xs text-white px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider">
                 ID {{ item.idProducto }}
@@ -276,22 +277,21 @@ import { AppView } from '../../shared/components/sidebar.component';
 export class DashboardComponent implements OnInit {
   @Output() navigate = new EventEmitter<AppView>();
 
-  // Fotos editoriales fijas para la vitrina del dashboard: no dependen de la
-  // foto cargada en cada producto, para que esta sección siempre luzca bien.
-  readonly imagenesDestacadas = [
-    {
-      url: 'https://images.unsplash.com/photo-1594938374182-a57061dac3df?w=800&auto=format&fit=crop&q=80',
-      alt: 'Saco de vestir gris jaspeado con corbata bordó',
-    },
-    {
-      url: 'https://images.unsplash.com/photo-1625910513413-c23b8bb81cba?w=800&auto=format&fit=crop&q=80',
-      alt: 'Polera negra de piqué en primer plano',
-    },
-    {
-      url: 'https://images.unsplash.com/photo-1593030089683-a9841767a610?w=800&auto=format&fit=crop&q=80',
-      alt: 'Saco de vestir gris a cuadros con camisa celeste',
-    },
-  ];
+  // Un producto por modelo/color (el catalogo trae una fila por talla): asi la
+  // vitrina muestra, por ejemplo, la polera negra y el jean blanco, y no la
+  // misma prenda tres veces en tallas distintas. Usa la foto real de cada uno.
+  readonly destacadas = computed(() => {
+    const vistos = new Set<string>();
+    const resultado: ProductOut[] = [];
+    for (const p of this.archiveService.products()) {
+      const clave = `${p.tipo ?? ''}|${p.color ?? ''}`;
+      if (vistos.has(clave)) continue;
+      vistos.add(clave);
+      resultado.push(p);
+      if (resultado.length === 3) break;
+    }
+    return resultado;
+  });
 
   constructor(
     public archiveService: ArchiveService,

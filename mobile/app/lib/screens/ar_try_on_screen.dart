@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:google_mlkit_pose_detection/google_mlkit_pose_detection.dart';
 
+import '../config/api_config.dart';
 import '../models/product_model.dart';
 import '../services/api_client.dart';
 import '../services/customer_service.dart';
@@ -216,7 +217,13 @@ class _ArTryOnScreenState extends State<ArTryOnScreen> {
             ),
           ),
         if (pose != null)
-          _GarmentOverlay(previewSize: controller.value.previewSize, pose: pose, imageUrl: widget.product.imageUrl)
+          // Recorte con fondo transparente: con la foto del catalogo (que
+          // tiene fondo de estudio) se tapaba la camara con un rectangulo.
+          _GarmentOverlay(
+            previewSize: controller.value.previewSize,
+            pose: pose,
+            imageUrl: ApiConfig.urlRecorte(widget.product.imageUrl),
+          )
         else
           Positioned(
             bottom: 16,

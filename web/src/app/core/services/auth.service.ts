@@ -58,8 +58,16 @@ export class AuthService {
    * de cada servicio y acá solo se dispara.
    */
   private async iniciarSesionLocal(): Promise<void> {
-    await this.tenantService.cargarContexto();
-    void this.offlineSync.iniciar();
+    // Contexto de empresa y modo sin conexión son del personal: para un
+    // Cliente (o el superadmin) solo generaban 403 en /api/tenant/me y en
+    // la descarga del inventario.
+    const permisos = this.currentUserSignal()?.permisos ?? [];
+    if (permisos.includes('tenant.ver')) {
+      await this.tenantService.cargarContexto();
+    }
+    if (permisos.includes('inventario.ver')) {
+      void this.offlineSync.iniciar();
+    }
   }
 
   private loadTokenFromStorage() {

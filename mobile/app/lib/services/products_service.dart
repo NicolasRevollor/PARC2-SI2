@@ -1,3 +1,4 @@
+import '../config/api_config.dart';
 import '../models/product_model.dart';
 import 'api_client.dart';
 
@@ -7,9 +8,12 @@ import 'api_client.dart';
 /// mapeado cae en un gris neutro. Es una aproximacion visual, no un dato
 /// real del backend.
 const Map<String, String> _colorHexAproximado = {
-  'negro': '#171612',
-  'blanco': '#FFFFFF',
-  'gris': '#9CA3AF',
+  // Los cuatro colores de la polera oversize y los dos del jean (mismos
+  // tonos que las fotos del catalogo).
+  'negro': '#1D1D20',
+  'blanco': '#F4F3EF',
+  'gris': '#9A9CA2',
+  'guinda': '#6B1A2B',
   'azul': '#2a78d6',
   'rojo': '#e34948',
   'verde': '#1baf7a',
@@ -75,11 +79,10 @@ class ProductsService {
       colorName: json['color'] as String? ?? '',
       colorHex: colorHex,
       category: json['tipo'] as String? ?? '',
-      // Placeholder si el producto no tiene imagen — evita romper
-      // CachedNetworkImage con un string vacio.
-      imageUrl: (imagen != null && imagen.isNotEmpty)
-          ? imagen
-          : 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=600&q=80',
+      // El catalogo guarda rutas relativas de la web (/productos/...): se
+      // completan con el dominio de Vercel. Sin imagen -> foto neutra (evita
+      // romper CachedNetworkImage con un string vacio).
+      imageUrl: ApiConfig.urlImagen(imagen),
       description: json['descripcion'] as String? ?? '',
       // El backend no tiene un campo equivalente a "details" (lista de
       // caracteristicas de venta tipo "100% Lana Virgen") — se deja vacio.
