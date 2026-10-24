@@ -115,45 +115,57 @@ $$;
 -- ---------------------------------------------------------------------------
 -- 2) Empresas nuevas (cupo de sucursales: Free Lite 1, Basico 2, Intermedio 5)
 -- ---------------------------------------------------------------------------
-CREATE TEMP TABLE _empresas_nuevas (nombre TEXT, slug TEXT, plan_codigo TEXT, correo TEXT) ON COMMIT DROP;
-INSERT INTO _empresas_nuevas VALUES
-    ('Cristo Redentor',  'cristo-redentor',  'basico',     'cristoredentor'),
-    ('Las Palmas',       'las-palmas',       'free_lite',  'laspalmas'),
-    ('Urbarí',           'urbari',           'basico',     'urbari'),
-    ('Los Pozos',        'los-pozos',        'free_lite',  'lospozos'),
-    ('San Miguel',       'san-miguel',       'intermedio', 'sanmiguel'),
-    ('Miraflores',       'miraflores',       'basico',     'miraflores'),
-    ('Achumani',         'achumani',         'free_lite',  'achumani'),
-    ('Obrajes',          'obrajes',          'basico',     'obrajes'),
-    ('Cala Cala',        'cala-cala',        'intermedio', 'calacala'),
-    ('Queru Queru',      'queru-queru',      'basico',     'queruqueru'),
-    ('Ciudad Satélite',  'ciudad-satelite',  'basico',     'ciudadsatelite'),
-    ('La Recoleta',      'la-recoleta',      'free_lite',  'larecoleta'),
-    ('San Roque',        'san-roque',        'basico',     'sanroque'),
-    ('Cerro Rico',       'cerro-rico',       'free_lite',  'cerrorico'),
-    ('El Socavón',       'el-socavon',       'avanzado',   'elsocavon');
-
+-- Sin tablas temporales entre sentencias: el SQL Editor de Supabase ejecuta
+-- cada sentencia por separado (ignora el BEGIN), asi que una tabla
+-- temporal "ON COMMIT DROP" desaparecia apenas se creaba.
 INSERT INTO "tenant" ("nombre", "slug", "estado", "idPlan")
 SELECT e.nombre, e.slug, 'Activo', p."idPlan"
-FROM _empresas_nuevas e
+FROM (
+    VALUES
+        ('Cristo Redentor',  'cristo-redentor',  'basico'),
+        ('Las Palmas',       'las-palmas',       'free_lite'),
+        ('Urbarí',           'urbari',           'basico'),
+        ('Los Pozos',        'los-pozos',        'free_lite'),
+        ('San Miguel',       'san-miguel',       'intermedio'),
+        ('Miraflores',       'miraflores',       'basico'),
+        ('Achumani',         'achumani',         'free_lite'),
+        ('Obrajes',          'obrajes',          'basico'),
+        ('Cala Cala',        'cala-cala',        'intermedio'),
+        ('Queru Queru',      'queru-queru',      'basico'),
+        ('Ciudad Satélite',  'ciudad-satelite',  'basico'),
+        ('La Recoleta',      'la-recoleta',      'free_lite'),
+        ('San Roque',        'san-roque',        'basico'),
+        ('Cerro Rico',       'cerro-rico',       'free_lite'),
+        ('El Socavón',       'el-socavon',       'avanzado')
+) AS e(nombre, slug, plan_codigo)
 JOIN "plan" p ON p."codigo" = e.plan_codigo
 WHERE NOT EXISTS (SELECT 1 FROM "tenant" t WHERE t."slug" = e.slug);
 
 -- Administrador y cajero de cada empresa nueva (mismo hash que el seed).
+-- Correo: admin@<slug sin guiones>.bo, ej. admin@calacala.bo.
 INSERT INTO "Usuario" ("nombre", "correo", "contraseña", "codigoRol", "idTenant")
 SELECT u.nombre, u.correo,
        '$2b$12$HWqim2KP4GxJWv1kOb79tudNBV0Y94xoM2y5JRa32DSGPigvenb1C',
-       r."codigoRol", t."idTenant"
+       r."codigoRol", u."idTenant"
 FROM (
-    SELECT 'Admin ' || e.nombre AS nombre, 'admin@' || e.correo || '.bo' AS correo, 'Administrador' AS rol, e.slug
-    FROM _empresas_nuevas e
+    SELECT 'Admin ' || t."nombre" AS nombre,
+           'admin@' || replace(t."slug", '-', '') || '.bo' AS correo,
+           'Administrador' AS rol, t."idTenant"
+    FROM "tenant" t
     UNION ALL
-    SELECT 'Cajero ' || e.nombre, 'cajero@' || e.correo || '.bo', 'Cajero', e.slug
-    FROM _empresas_nuevas e
+    SELECT 'Cajero ' || t."nombre",
+           'cajero@' || replace(t."slug", '-', '') || '.bo',
+           'Cajero', t."idTenant"
+    FROM "tenant" t
 ) u
-JOIN "tenant" t ON t."slug" = u.slug
 JOIN "rol" r ON r."nombreRol" = u.rol
-WHERE NOT EXISTS (SELECT 1 FROM "Usuario" x WHERE lower(x."correo") = lower(u.correo));
+WHERE u."idTenant" IN (
+    SELECT "idTenant" FROM "tenant"
+    WHERE "slug" IN ('cristo-redentor', 'las-palmas', 'urbari', 'los-pozos', 'san-miguel', 'miraflores',
+                     'achumani', 'obrajes', 'cala-cala', 'queru-queru', 'ciudad-satelite', 'la-recoleta',
+                     'san-roque', 'cerro-rico', 'el-socavon')
+)
+  AND NOT EXISTS (SELECT 1 FROM "Usuario" x WHERE lower(x."correo") = lower(u.correo));
 
 INSERT INTO "Sucursal" ("nombre", "direccion", "idCiudad", "idTenant")
 SELECT s.nombre, s.direccion, c."idCiudad", t."idTenant"
