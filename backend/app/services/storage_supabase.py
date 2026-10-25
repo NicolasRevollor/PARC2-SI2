@@ -86,3 +86,20 @@ async def subir_imagen_producto(nombre_archivo: str, contenido: bytes) -> str:
         raise SupabaseStorageError(str(exc)) from exc
 
     return _public_url(path)
+
+
+async def subir_foto_devolucion(nombre_archivo: str, contenido: bytes) -> str:
+    """Foto de una prenda devuelta (CU2 paso 3, CU3 paso 3): mismo bucket
+    publico que las imagenes de producto, bajo `devoluciones/`."""
+    if not supabase_configurado():
+        raise SupabaseNoConfigurado(
+            "SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY no configuradas o paquete supabase ausente"
+        )
+    content_type = mimetypes.guess_type(nombre_archivo)[0] or "application/octet-stream"
+    extension = nombre_archivo.rsplit(".", 1)[-1].lower() if "." in nombre_archivo else "bin"
+    path = f"devoluciones/{uuid.uuid4().hex}.{extension}"
+    try:
+        await anyio.to_thread.run_sync(_upload_sync, path, contenido, content_type)
+    except Exception as exc:
+        raise SupabaseStorageError(str(exc)) from exc
+    return _public_url(path)

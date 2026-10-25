@@ -53,14 +53,22 @@ export class SalesService {
    * autoritativa mostrada en el comprobante.
    */
   crearMetodoEfectivo(monto: number): Promise<MetodoPago | null> {
+    return this.crearMetodo('Efectivo', monto);
+  }
+
+  /**
+   * Cobro registrado en caja por otro medio (QR o tarjeta en el terminal),
+   * p. ej. la diferencia de un cambio (CU4/CU5).
+   */
+  crearMetodo(tipo: string, monto: number): Promise<MetodoPago | null> {
     return firstValueFrom(
       this.http.post<MetodoPago>(`${API_URL}/api/payment-methods`, {
-        tipo: 'Efectivo',
+        tipo,
         estado: 'Activo',
         monto,
       })
     ).catch((err) => {
-      const msg = err.error?.detail || 'No se pudo registrar el pago en efectivo.';
+      const msg = err.error?.detail || 'No se pudo registrar el pago.';
       this.notificationService.error('Error', msg);
       return null;
     });

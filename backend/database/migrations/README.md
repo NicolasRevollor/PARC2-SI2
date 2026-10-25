@@ -163,9 +163,22 @@ docker exec -i ropaDocker \
   -v ON_ERROR_STOP=1 \
   -f /dev/stdin \
   < database/migrations/021_operacion_historica.sql
+
+# 19) Migracion 022 (devoluciones y cambios completos, CU1 a CU11 del
+#     documento del segundo parcial). Requiere la 015 (y la 021 si se quieren
+#     los casos de ejemplo sobre su historia). Crea la politica versionada por
+#     empresa, las notas de credito con sus movimientos y el inventario no
+#     vendible; agrega a "devolucion" el codigo (QR), motivo, inspeccion,
+#     autorizacion, reembolso y cambio pendiente, y los permisos
+#     devolucion.registrar / inspeccionar / autorizar. Re-ejecutable.
+docker exec -i ropaDocker \
+  psql -U yimysito -d ropaDB \
+  -v ON_ERROR_STOP=1 \
+  -f /dev/stdin \
+  < database/migrations/022_devoluciones_completas.sql
 ```
 
-> **Las migraciones 014 y 015 no son opcionales.** Los modelos SQLAlchemy ya
+> **Las migraciones 014, 015 y 022 no son opcionales.** Los modelos SQLAlchemy ya
 > mapean `Usuario.idTenant`, `producto.idTenant`, etc.; si la base no tiene
 > esas columnas, cualquier consulta sobre esas tablas falla con
 > `UndefinedColumnError`. Mismo criterio que la migracion 013.

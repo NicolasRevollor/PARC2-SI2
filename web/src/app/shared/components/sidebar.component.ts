@@ -243,10 +243,10 @@ export const VISTAS_PLATAFORMA: readonly PlatformView[] = ['platform', 'platform
             <span class="font-medium tracking-tight">Caja</span>
           </button>
 
-          <!-- Devoluciones y cambios de talla (CU28) — mismo permiso que Caja:
-               quien cobra en el mostrador es quien recibe el cambio. -->
+          <!-- Devoluciones y cambios (CU1–CU11): el personal que registra,
+               inspecciona o consulta devoluciones (Cajero, Encargado, Administrador). -->
           <button
-            *ngIf="canOpenPos"
+            *ngIf="canOpenReturns"
             (click)="selectView('returns')"
             [class.bg-indigo-50]="currentView === 'returns'"
             [class.text-indigo-700]="currentView === 'returns'"
@@ -454,6 +454,11 @@ export class SidebarComponent {
 
   get canOpenPos(): boolean {
     return this.authService.currentUser()?.permisos.includes('venta.crear') ?? false;
+  }
+
+  get canOpenReturns(): boolean {
+    const permisos = this.authService.currentUser()?.permisos ?? [];
+    return permisos.includes('devolucion.ver') || permisos.includes('devolucion.registrar');
   }
 
   get canViewReports(): boolean {

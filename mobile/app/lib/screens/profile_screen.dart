@@ -9,6 +9,7 @@ import '../services/api_client.dart';
 import '../services/customer_service.dart';
 import 'my_reservations_screen.dart';
 import 'purchase_history_screen.dart';
+import 'returns_screen.dart';
 
 /// Mobile Fase 6: perfil real (`GET/PUT /api/customers/me`). El header
 /// (nombre/correo/telefono/direccion) pasa a ser el Cliente real
@@ -316,6 +317,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
               onPressed: () {
                 Navigator.of(context).push(
                   MaterialPageRoute(builder: (_) => const PurchaseHistoryScreen()),
+                );
+              },
+            ),
+          ),
+
+          const SizedBox(height: 10),
+
+          // Devoluciones y cambios (CU2): solicitar, seguir el estado y ver
+          // las notas de credito.
+          SizedBox(
+            width: double.infinity,
+            height: 40,
+            child: OutlinedButton.icon(
+              icon: const Icon(Icons.assignment_return, size: 16),
+              label: Text('DEVOLUCIONES Y CAMBIOS', style: GoogleFonts.outfit(fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1.2)),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AetherTheme.charcoalDark,
+                side: const BorderSide(color: AetherTheme.charcoalDark),
+                shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+              ),
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const ReturnsScreen()),
                 );
               },
             ),

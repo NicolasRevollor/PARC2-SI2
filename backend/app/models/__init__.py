@@ -15,7 +15,7 @@ from sqlalchemy import (
     Time,
     UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import INET, ARRAY
+from sqlalchemy.dialects.postgresql import INET, ARRAY, JSONB
 from sqlalchemy import TIMESTAMP
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -409,15 +409,22 @@ class Respaldo(Base):
 
 
 class Devolucion(Base):
-    """Devolucion o cambio de talla/medida dentro de las 24 h posteriores a la
-    venta (migracion 015). "fechaVenta" es un snapshot inmutable de
-    Venta.fecha tomado al registrar el cambio: la ventana de 24 h queda
-    auditada en la propia fila y no depende de releer la venta."""
+    """Caso de devolucion o cambio (migraciones 015 y 022). "fechaVenta" es un
+    snapshot inmutable de Venta.fecha tomado al registrar el caso: el plazo de
+    la politica queda auditado en la propia fila y no depende de releer la
+    venta.
+
+    Estados (docs/iconix/2do parcial SI2.md): en tienda nace "EnInspeccion"
+    (CU1) y en linea "PendienteEntrega" (CU2); la inspeccion (CU3) lo deja
+    "Aprobada", "Rechazada" o "EnRevision"; la resolucion (CU4 a CU8) lo deja
+    "Completada" o "CambioPendiente". "Anulada" es una solicitud en linea que
+    no se entrego a tiempo y "Cancelada", una que el cliente desistio."""
 
     __tablename__ = "devolucion"
     __table_args__ = (
         CheckConstraint(
-            "tipo IN ('cambio_talla', 'cambio_medida', 'devolucion')", name="chk_devolucion_tipo"
+            "tipo IN ('cambio_talla', 'cambio_color', 'cambio_medida', 'cambio_producto', 'devolucion', 'nota_credito')",
+            name="chk_devolucion_tipo",
         ),
         CheckConstraint("cantidad > 0", name="chk_devolucion_cantidad"),
         Index("idx_devolucion_cliente_fecha", "idCliente", "fecha"),
@@ -447,3 +454,155 @@ class Devolucion(Base):
     idTenant: Mapped[int] = mapped_column(
         ForeignKey("tenant.idTenant", onupdate="CASCADE"), default=TENANT_POR_DEFECTO, nullable=False
     )
+    # Migracion 022: flujo completo de posventa.
+    codigo: Mapped[str | None] = mapped_column(String(20), unique=True)
+    origen: Mapped[str] = mapped_column(String(10), default="tienda", nullable=False)
+    motivoCategoria: Mapped[str | None] = mapped_column(String(12))
+    precioPagado: Mapped[float | None] = mapped_column(Numeric(12, 2))
+    idPolitica: Mapped[int | None] = mapped_column(
+        ForeignKey("politica_devolucion.idPolitica", ondelete="SET NULL", onupdate="CASCADE")
+    )
+    recargo: Mapped[float] = mapped_column(Numeric(12, 2), default=0.00, nullable=False)
+    requiereAutorizacion: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    motivoAutorizacion: Mapped[str | None] = mapped_column(String(255))
+    idAutorizador: Mapped[int | None] = mapped_column(ForeignKey("Usuario.idUser", onupdate="CASCADE"))
+    fechaAutorizacion: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+    fechaLimiteEntrega: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+    fotos: Mapped[list[str]] = mapped_column(ARRAY(Text), default=lambda: [], nullable=False)
+    condicion: Mapped[str | None] = mapped_column(String(15))
+    checklist: Mapped[dict | None] = mapped_column(JSONB)
+    codigoEscaneado: Mapped[str | None] = mapped_column(String(40))
+    notasInspeccion: Mapped[str | None] = mapped_column(String(255))
+    idInspector: Mapped[int | None] = mapped_column(ForeignKey("Usuario.idUser", onupdate="CASCADE"))
+    fechaInspeccion: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+    descuentoDeterioro: Mapped[float] = mapped_column(Numeric(12, 2), default=0.00, nullable=False)
+    motivoRechazo: Mapped[str | None] = mapped_column(String(255))
+    destinoInventario: Mapped[str | None] = mapped_column(String(12))
+    diferencia: Mapped[float] = mapped_column(Numeric(12, 2), default=0.00, nullable=False)
+    idMetPagoDiferencia: Mapped[int | None] = mapped_column(ForeignKey("metodo_pago.idMetPago", onupdate="CASCADE"))
+    idVentaCambio: Mapped[int | None] = mapped_column(ForeignKey("Venta.idVenta", onupdate="CASCADE"))
+    fechaEntregaAjuste: Mapped[date | None] = mapped_column(Date)
+    sucursalEntrega: Mapped[int | None] = mapped_column(ForeignKey("Sucursal.codigoSucursal", onupdate="CASCADE"))
+    idInvReservado: Mapped[int | None] = mapped_column(ForeignKey("Inventario.idInv", onupdate="CASCADE"))
+    opcionSinStock: Mapped[str | None] = mapped_column(String(14))
+    fechaLlegadaEstimada: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+    fechaLimiteRetiro: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+    metodoReembolso: Mapped[str | None] = mapped_column(String(12))
+    estadoReembolso: Mapped[str | None] = mapped_column(String(22))
+    referenciaReembolso: Mapped[str | None] = mapped_column(String(150))
+    cuentaDestino: Mapped[str | None] = mapped_column(String(120))
+    idNotaCredito: Mapped[int | None] = mapped_column(
+        ForeignKey("nota_credito.idNotaCredito", ondelete="SET NULL", onupdate="CASCADE")
+    )
+    fechaResolucion: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+
+
+class PoliticaDevolucion(Base):
+    """Una version de la politica de devoluciones de una empresa (CU9). Cada
+    venta usa la version vigente al momento de la venta; si la empresa nunca
+    configuro una, rige la de la plataforma (app/services/devoluciones.py)."""
+
+    __tablename__ = "politica_devolucion"
+    __table_args__ = (UniqueConstraint("idTenant", "version", name="uq_politica_version"),)
+
+    idPolitica: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    idTenant: Mapped[int] = mapped_column(ForeignKey("tenant.idTenant", ondelete="CASCADE", onupdate="CASCADE"), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    vigenteDesde: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=_ahora_utc, nullable=False)
+    plazoCambioHoras: Mapped[int] = mapped_column(Integer, nullable=False)
+    plazoGarantiaDias: Mapped[int] = mapped_column(Integer, nullable=False)
+    accionFueraPlazo: Mapped[str] = mapped_column(String(10), nullable=False)
+    recargoTipo: Mapped[str] = mapped_column(String(10), nullable=False)
+    recargoValor: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
+    recargoUnidad: Mapped[str] = mapped_column(String(5), nullable=False)
+    categoriasNoRetornables: Mapped[list[str]] = mapped_column(ARRAY(Text), default=lambda: [], nullable=False)
+    maxCambiosPorPrenda: Mapped[int] = mapped_column(Integer, nullable=False)
+    saldoAFavor: Mapped[str] = mapped_column(String(15), nullable=False)
+    permiteReembolso: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    vigenciaNotaCreditoDias: Mapped[int] = mapped_column(Integer, nullable=False)
+    respetarPrecioOriginal: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    umbralAutorizacion: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
+    maxDevolucionesMes: Mapped[int] = mapped_column(Integer, nullable=False)
+    accionDeterioro: Mapped[str] = mapped_column(String(10), nullable=False)
+    descuentoDeterioroPct: Mapped[float] = mapped_column(Numeric(5, 2), nullable=False)
+    permiteSolicitudEnLinea: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    diasEntregaEnLinea: Mapped[int] = mapped_column(Integer, nullable=False)
+    diasRetiroCambio: Mapped[int] = mapped_column(Integer, nullable=False)
+    costoAjusteMedida: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
+    condiciones: Mapped[str] = mapped_column(String(1000), nullable=False)
+    creadoEn: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=_ahora_utc, nullable=False)
+    idUsuario: Mapped[int | None] = mapped_column(ForeignKey("Usuario.idUser", ondelete="SET NULL", onupdate="CASCADE"))
+
+
+class NotaCredito(Base):
+    """Saldo a favor de un cliente emitido por una devolucion (CU7). Se canjea
+    en caja como medio de pago; "Vencida" se deduce de fechaVencimiento."""
+
+    __tablename__ = "nota_credito"
+    __table_args__ = (
+        CheckConstraint("monto > 0", name="chk_nota_monto"),
+        CheckConstraint("saldo >= 0 AND saldo <= monto", name="chk_nota_saldo"),
+        CheckConstraint("estado IN ('Vigente', 'Usada', 'Anulada')", name="chk_nota_estado"),
+    )
+
+    idNotaCredito: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    codigo: Mapped[str] = mapped_column(String(20), unique=True, nullable=False)
+    monto: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
+    saldo: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
+    estado: Mapped[str] = mapped_column(String(12), default="Vigente", nullable=False)
+    fechaEmision: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=_ahora_utc, nullable=False)
+    fechaVencimiento: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+    motivo: Mapped[str | None] = mapped_column(String(255))
+    motivoAnulacion: Mapped[str | None] = mapped_column(String(255))
+    idCliente: Mapped[int] = mapped_column(ForeignKey("Cliente.idCliente", onupdate="CASCADE"), nullable=False)
+    idDevolucion: Mapped[int | None] = mapped_column(
+        ForeignKey("devolucion.idDevolucion", ondelete="SET NULL", onupdate="CASCADE")
+    )
+    idUsuario: Mapped[int] = mapped_column(ForeignKey("Usuario.idUser", onupdate="CASCADE"), nullable=False)
+    idTenant: Mapped[int] = mapped_column(ForeignKey("tenant.idTenant", onupdate="CASCADE"), nullable=False)
+
+
+class NotaCreditoMovimiento(Base):
+    """Cada movimiento de una nota de credito (CU7): emision, consumo en caja,
+    reintegro por la devolucion de una venta pagada con la nota, anulacion y
+    extension del vencimiento."""
+
+    __tablename__ = "nota_credito_movimiento"
+
+    idMovimiento: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    idNotaCredito: Mapped[int] = mapped_column(
+        ForeignKey("nota_credito.idNotaCredito", ondelete="CASCADE", onupdate="CASCADE"), nullable=False
+    )
+    tipo: Mapped[str] = mapped_column(String(12), nullable=False)
+    monto: Mapped[float] = mapped_column(Numeric(12, 2), default=0.00, nullable=False)
+    saldoResultante: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
+    montoComplemento: Mapped[float] = mapped_column(Numeric(12, 2), default=0.00, nullable=False)
+    metodoComplemento: Mapped[str | None] = mapped_column(String(12))
+    idMetPago: Mapped[int | None] = mapped_column(ForeignKey("metodo_pago.idMetPago", onupdate="CASCADE"))
+    idDevolucion: Mapped[int | None] = mapped_column(
+        ForeignKey("devolucion.idDevolucion", ondelete="SET NULL", onupdate="CASCADE")
+    )
+    detalle: Mapped[str | None] = mapped_column(String(255))
+    fecha: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=_ahora_utc, nullable=False)
+    idUsuario: Mapped[int] = mapped_column(ForeignKey("Usuario.idUser", onupdate="CASCADE"), nullable=False)
+
+
+class InventarioNoVendible(Base):
+    """Prendas devueltas que no vuelven a la venta (CU10): defecto de fabrica
+    (con reclamo al proveedor si el producto tiene uno) o deterioradas."""
+
+    __tablename__ = "inventario_no_vendible"
+
+    idNoVendible: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    codigoSucursal: Mapped[int] = mapped_column(ForeignKey("Sucursal.codigoSucursal", onupdate="CASCADE"), nullable=False)
+    idProducto: Mapped[int] = mapped_column(ForeignKey("producto.idProducto", onupdate="CASCADE"), nullable=False)
+    cantidad: Mapped[int] = mapped_column(Integer, nullable=False)
+    motivo: Mapped[str] = mapped_column(String(12), nullable=False)
+    idDevolucion: Mapped[int | None] = mapped_column(
+        ForeignKey("devolucion.idDevolucion", ondelete="SET NULL", onupdate="CASCADE")
+    )
+    idProveedor: Mapped[int | None] = mapped_column(ForeignKey("Proveedor.idProveedor", onupdate="CASCADE"))
+    estado: Mapped[str] = mapped_column(String(12), default="Pendiente", nullable=False)
+    observaciones: Mapped[str | None] = mapped_column(String(255))
+    fecha: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=_ahora_utc, nullable=False)
+    idTenant: Mapped[int] = mapped_column(ForeignKey("tenant.idTenant", onupdate="CASCADE"), nullable=False)

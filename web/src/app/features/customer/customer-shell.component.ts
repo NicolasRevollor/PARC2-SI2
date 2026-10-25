@@ -5,14 +5,15 @@ import { CartService } from '../../core/services/cart.service';
 import { CustomerProfileComponent } from './profile/customer-profile.component';
 import { CatalogComponent } from './catalog/catalog.component';
 import { CustomerReservationsComponent } from './reservations/customer-reservations.component';
+import { CustomerReturnsComponent } from './returns/customer-returns.component';
 import { ChatWidgetComponent } from '../../shared/components/chat-widget.component';
 
-export type CustomerView = 'catalog' | 'reservations' | 'profile';
+export type CustomerView = 'catalog' | 'reservations' | 'returns' | 'profile';
 
 @Component({
   selector: 'app-customer-shell',
   standalone: true,
-  imports: [CommonModule, CustomerProfileComponent, CatalogComponent, CustomerReservationsComponent, ChatWidgetComponent],
+  imports: [CommonModule, CustomerProfileComponent, CatalogComponent, CustomerReservationsComponent, CustomerReturnsComponent, ChatWidgetComponent],
   template: `
     <div class="flex flex-col h-screen w-screen overflow-hidden bg-gray-50 text-gray-900 font-sans">
 
@@ -44,6 +45,15 @@ export type CustomerView = 'catalog' | 'reservations' | 'profile';
               class="px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors hover:bg-gray-50 hover:text-gray-900 cursor-pointer"
             >
               Mis Reservas
+            </button>
+            <button
+              (click)="currentView.set('returns')"
+              [class.bg-indigo-50]="currentView() === 'returns'"
+              [class.text-indigo-700]="currentView() === 'returns'"
+              [class.text-gray-600]="currentView() !== 'returns'"
+              class="px-3 py-1.5 rounded-lg text-sm font-semibold transition-colors hover:bg-gray-50 hover:text-gray-900 cursor-pointer"
+            >
+              Devoluciones
             </button>
             <button
               (click)="currentView.set('profile')"
@@ -109,6 +119,14 @@ export type CustomerView = 'catalog' | 'reservations' | 'profile';
           Mis Reservas
         </button>
         <button
+          (click)="currentView.set('returns')"
+          [class.text-indigo-700]="currentView() === 'returns'"
+          [class.text-gray-500]="currentView() !== 'returns'"
+          class="flex-1 text-center py-2 text-xs font-semibold cursor-pointer"
+        >
+          Devoluciones
+        </button>
+        <button
           (click)="currentView.set('profile')"
           [class.text-indigo-700]="currentView() === 'profile'"
           [class.text-gray-500]="currentView() !== 'profile'"
@@ -123,6 +141,8 @@ export type CustomerView = 'catalog' | 'reservations' | 'profile';
         <app-customer-catalog *ngIf="currentView() === 'catalog'"></app-customer-catalog>
 
         <app-customer-reservations *ngIf="currentView() === 'reservations'"></app-customer-reservations>
+
+        <app-customer-returns *ngIf="currentView() === 'returns'"></app-customer-returns>
 
         <app-customer-profile *ngIf="currentView() === 'profile'"></app-customer-profile>
       </main>

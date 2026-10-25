@@ -655,62 +655,379 @@ export interface RespaldoConfig {
 }
 
 // ─────────────────────────────────────────────
-// DEVOLUCIONES Y CAMBIOS DE TALLA (CU28 — migración 015)
+// DEVOLUCIONES Y CAMBIOS (CU1–CU11 del documento del segundo parcial)
 // ─────────────────────────────────────────────
 
-export type TipoDevolucion = 'cambio_talla' | 'cambio_medida' | 'devolucion';
+export type TipoDevolucion =
+  | 'cambio_talla'
+  | 'cambio_color'
+  | 'cambio_medida'
+  | 'cambio_producto'
+  | 'devolucion'
+  | 'nota_credito';
+export type TipoSolicitud = Exclude<TipoDevolucion, 'cambio_medida'>;
+export type EstadoDevolucion =
+  | 'PendienteEntrega'
+  | 'EnInspeccion'
+  | 'EnRevision'
+  | 'Aprobada'
+  | 'CambioPendiente'
+  | 'Completada'
+  | 'Rechazada'
+  | 'Anulada'
+  | 'Cancelada';
+export type MotivoDevolucion = 'talla' | 'medida' | 'color' | 'defecto' | 'equivocado' | 'no_desea';
+export type ResultadoInspeccion = 'apta' | 'defectuosa' | 'deteriorada' | 'no_corresponde';
+export type MetodoReembolso = 'efectivo' | 'qr' | 'tarjeta';
+export type OpcionSinStock = 'traslado' | 'otra_sucursal' | 'espera' | 'nota_credito' | 'reembolso';
+export type SaldoAFavor = 'nota_credito' | 'reembolso';
 
-export interface DevolucionIn {
+/** CU1: solicitud en tienda (queda "En inspección"). */
+export interface RegistroTiendaIn {
+  idVenta: number;
+  codigoSucursal: number;
+  motivoCategoria: MotivoDevolucion;
+  motivo?: string | null;
+  tipo: TipoDevolucion;
+  items: { idProducto: number; cantidad: number }[];
+}
+
+/** CU2: solicitud desde la tienda en línea (queda "Pendiente de entrega"). */
+export interface SolicitudDevolucionIn {
   idVenta: number;
   idProducto: number;
-  tipo: TipoDevolucion;
   cantidad: number;
-  idProductoNuevo?: number | null;
-  codigoSucursal?: number | null;
+  motivoCategoria: MotivoDevolucion;
   motivo?: string | null;
+  tipo: TipoSolicitud;
+  idProductoNuevo?: number | null;
+  codigoSucursal: number;
+  fotos?: string[];
+}
+
+export interface ChecklistInspeccion {
+  etiquetas: boolean;
+  sinUso: boolean;
+  sinManchas: boolean;
+  sinRoturas: boolean;
+  accesorios: boolean;
+}
+
+/** CU3: resultado de la inspección. */
+export interface InspeccionIn {
+  resultado: ResultadoInspeccion;
+  checklist: ChecklistInspeccion;
+  codigoEscaneado?: string | null;
+  notasInspeccion?: string | null;
+  fotos?: string[];
+  cantidadAprobada?: number | null;
+  aceptaDescuento?: boolean;
+  disconforme?: boolean;
+  motivoRechazo?: string | null;
+}
+
+/** CU4–CU8: resolución de un caso aprobado. */
+export interface ResolucionIn {
+  tipo: TipoDevolucion;
+  idProductoNuevo?: number | null;
+  productos?: { idProducto: number; cantidad: number }[];
+  codigoSucursal?: number | null;
+  metodoReembolso?: MetodoReembolso | null;
+  cuentaDestino?: string | null;
+  idMetPagoDiferencia?: number | null;
+  saldoAFavor?: SaldoAFavor | null;
+  sinStock?: OpcionSinStock | null;
+  sucursalOrigen?: number | null;
   medidaOriginal?: string | null;
   medidaNueva?: string | null;
+  fechaEntregaAjuste?: string | null;
+}
+
+export interface CompletarCambioIn {
+  accion: 'entregar' | 'nota_credito' | 'reembolso';
+  codigoSucursal?: number | null;
+  idMetPagoDiferencia?: number | null;
+  saldoAFavor?: SaldoAFavor | null;
+  metodoReembolso?: MetodoReembolso | null;
+  cuentaDestino?: string | null;
 }
 
 export interface DevolucionOut {
   idDevolucion: number;
+  codigo: string | null;
   tipo: TipoDevolucion;
+  origen: 'tienda' | 'en_linea';
   cantidad: number;
+  motivoCategoria: MotivoDevolucion | null;
   motivo: string | null;
-  estado: string;
+  estado: EstadoDevolucion;
   fecha: string;
   fechaVenta: string;
+  fechaLimiteEntrega: string | null;
   tallaOriginal: string | null;
   tallaNueva: string | null;
   medidaOriginal: string | null;
   medidaNueva: string | null;
+  fechaEntregaAjuste: string | null;
+  valor: number;
+  recargo: number;
+  descuentoDeterioro: number;
+  credito: number;
   montoDevuelto: number;
+  metodoReembolso: string | null;
+  estadoReembolso: string | null;
+  referenciaReembolso: string | null;
+  cuentaDestino: string | null;
+  diferencia: number;
+  idMetPagoDiferencia: number | null;
+  idVentaCambio: number | null;
+  idNotaCredito: number | null;
+  nota_codigo: string | null;
+  condicion: ResultadoInspeccion | null;
+  checklist: Partial<ChecklistInspeccion> | null;
+  codigoEscaneado: string | null;
+  notasInspeccion: string | null;
+  fotos: string[];
+  inspector_nombre: string | null;
+  fechaInspeccion: string | null;
+  destinoInventario: 'vendible' | 'no_vendible' | null;
+  motivoRechazo: string | null;
+  requiereAutorizacion: boolean;
+  motivoAutorizacion: string | null;
+  autorizador_nombre: string | null;
+  fechaAutorizacion: string | null;
+  opcionSinStock: string | null;
+  sucursalEntrega: number | null;
+  sucursal_entrega_nombre: string | null;
+  fechaLlegadaEstimada: string | null;
+  fechaLimiteRetiro: string | null;
+  stockDisponibleReemplazo?: number | null;
+  fechaResolucion: string | null;
   idVenta: number;
   idProducto: number;
   producto_nombre: string | null;
+  producto_color: string | null;
+  producto_tipo: string | null;
   idProductoNuevo: number | null;
   producto_nuevo_nombre: string | null;
+  producto_nuevo_color: string | null;
+  precio_unitario: number | null;
   idCliente: number;
   cliente_nombre: string | null;
   codigoSucursal: number | null;
   sucursal_nombre: string | null;
   idUsuario: number;
+  usuario_nombre: string | null;
+  politica_version: number | null;
 }
 
-/** Item vendido que todavía está dentro de la ventana de 24 h. */
-export interface ItemElegible {
-  idVenta: number;
-  fechaVenta: string;
+export interface EventoDevolucion {
+  fecha: string;
+  etapa: string;
+  detalle: string;
+  usuario: string | null;
+}
+
+/** Detalle con la línea de tiempo (CU11). */
+export interface DevolucionDetalle extends DevolucionOut {
+  lineaTiempo: EventoDevolucion[];
+}
+
+export interface ElegibilidadDevolucion {
+  estado: 'en_plazo' | 'garantia' | 'recargo' | 'fuera_plazo' | 'no_retornable' | 'max_cambios' | 'sin_unidades';
+  puede: boolean;
   horasRestantes: number;
+  fechaLimite: string;
+  garantiaHasta: string;
+  recargo: number;
+  mensaje: string;
+}
+
+export interface LineaDevolucion {
   idProducto: number;
-  producto_nombre: string;
+  producto: string;
   talla: string | null;
-  cantidadVendida: number;
-  cantidadDevuelta: number;
-  cantidadDisponible: number;
-  precio_unitario: number;
+  color: string | null;
+  tipoPrenda: string | null;
+  codigoProducto: string;
+  cantidad: number;
+  precioPagado: number;
+  ocupadas: number;
+  disponibles: number;
+  recibidaPorCambio: boolean;
+  elegibilidad: ElegibilidadDevolucion;
+  solicitudAbierta: string | null;
+}
+
+/** Venta con la elegibilidad de cada prenda (CU1 paso 4, CU2 paso 2). */
+export interface VentaDevolucion {
+  idVenta: number;
+  fecha: string;
+  idCliente: number;
+  cliente: string | null;
+  codigoSucursal: number | null;
+  sucursal: string | null;
+  formaPago: string | null;
+  total: number;
+  estadoDevolucion: 'Sin devoluciones' | 'Parcialmente devuelta' | 'Devuelta';
+  idTenant: number;
+  empresa: string | null;
+  politica_version: number | null;
+  lineas: LineaDevolucion[];
+}
+
+/** Política de devoluciones (CU9), versionada. */
+export interface PoliticaDevolucion {
+  plazoCambioHoras: number;
+  plazoGarantiaDias: number;
+  accionFueraPlazo: 'rechazar' | 'recargo';
+  recargoTipo: 'porcentaje' | 'monto';
+  recargoValor: number;
+  recargoUnidad: 'hora' | 'dia';
+  categoriasNoRetornables: string[];
+  maxCambiosPorPrenda: number;
+  saldoAFavor: 'reembolso' | 'nota_credito' | 'cliente_elige';
+  permiteReembolso: boolean;
+  vigenciaNotaCreditoDias: number;
+  respetarPrecioOriginal: boolean;
+  umbralAutorizacion: number;
+  maxDevolucionesMes: number;
+  accionDeterioro: 'rechazar' | 'descuento';
+  descuentoDeterioroPct: number;
+  permiteSolicitudEnLinea: boolean;
+  diasEntregaEnLinea: number;
+  diasRetiroCambio: number;
+  costoAjusteMedida: number;
+  condiciones: string;
+  idTenant?: number;
+  version?: number;
+  idPolitica?: number | null;
+  vigenteDesde?: string | null;
+  creadoEn?: string | null;
+  creadoPor?: string | null;
+}
+
+export interface StockSucursal {
+  codigoSucursal: number;
+  sucursal: string;
+  disponible: number;
+}
+
+export interface NoVendible {
+  idNoVendible: number;
+  idProducto: number;
+  producto: string;
+  talla: string | null;
+  color: string | null;
+  codigoSucursal: number;
+  sucursal: string | null;
+  cantidad: number;
+  motivo: 'defecto' | 'deterioro';
+  estado: 'Pendiente' | 'Reclamado' | 'Repuesto' | 'Desechado';
+  proveedor: string | null;
+  observaciones: string | null;
+  fecha: string;
+  codigoCaso: string | null;
+}
+
+/** Inventario por devolución (CU10). */
+export interface InventarioDevolucion {
+  vendible: number;
+  noVendible: number;
+  defecto: number;
+  deterioro: number;
+  porRecibir: number;
+  reclamosPendientes: number;
+  filas: {
+    idProducto: number;
+    producto: string;
+    talla: string | null;
+    color: string | null;
+    codigoSucursal: number | null;
+    sucursal: string | null;
+    vendible: number;
+    noVendible: number;
+  }[];
+  noVendibles: NoVendible[];
+}
+
+export interface TasaDevolucion {
+  clave: string;
+  detalle: string | null;
+  vendidas: number;
+  devueltas: number;
+  tasa: number;
+}
+
+export interface ConteoDevolucion {
+  clave: string;
+  detalle: string | null;
+  casos: number;
+  monto: number;
+}
+
+/** Indicadores de posventa (CU11). */
+export interface AnalisisDevoluciones {
+  casos: number;
+  unidadesDevueltas: number;
+  montoReembolsado: number;
+  notasEmitidas: number;
+  montoNotas: number;
+  cambios: number;
+  rechazadas: number;
+  porProducto: TasaDevolucion[];
+  porTalla: TasaDevolucion[];
+  motivos: ConteoDevolucion[];
+  clientesFrecuentes: ConteoDevolucion[];
+}
+
+export interface QrDevolucion {
+  codigo: string;
+  modulos: string[];
+}
+
+export interface MovimientoNotaCredito {
+  idMovimiento: number;
+  tipo: 'emision' | 'consumo' | 'reintegro' | 'anulacion' | 'extension';
+  monto: number;
+  saldoResultante: number;
+  montoComplemento: number;
+  metodoComplemento: string | null;
+  idMetPago: number | null;
+  idVenta: number | null;
+  detalle: string | null;
+  fecha: string;
+  usuario: string | null;
+}
+
+/** Nota de crédito (CU7). */
+export interface NotaCredito {
+  idNotaCredito: number;
+  codigo: string;
+  monto: number;
+  saldo: number;
+  estado: 'Vigente' | 'Usada' | 'Anulada' | 'Vencida';
+  fechaEmision: string;
+  fechaVencimiento: string;
+  motivo: string | null;
+  motivoAnulacion: string | null;
   idCliente: number;
   cliente_nombre: string | null;
+  idDevolucion: number | null;
+  codigoDevolucion: string | null;
+  idTenant: number;
+  empresa: string | null;
+  movimientos: MovimientoNotaCredito[];
+}
+
+export interface CanjeNotaOut {
+  idMetPago: number;
+  montoTotal: number;
+  montoNota: number;
+  montoComplemento: number;
+  metodoComplemento: string | null;
+  codigo: string;
+  saldoRestante: number;
 }
 
 // ─────────────────────────────────────────────

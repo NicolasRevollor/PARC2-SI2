@@ -105,3 +105,31 @@ async def obtener_payment_intent(payment_intent_id: str) -> dict:
         "currency": intent["currency"],
         "metadata": dict(getattr(intent["metadata"], "to_dict", lambda: intent["metadata"] or {})()),
     }
+
+
+async def reembolsar_payment_intent(
+    *,
+    payment_intent_id: str,
+    monto: Decimal,
+    clave_idempotencia: str,
+) -> dict:
+    """Reembolsa (total o parcialmente) un cobro ya confirmado. Lo usa una
+    devolucion de una compra en linea pagada con tarjeta (CU6); el monto lo
+    calcula el servidor a partir del precio de la venta."""
+    api_key = _api_key()
+    centavos = int((monto * 100).to_integral_value())
+
+    def _crear() -> "stripe.Refund":
+        return stripe.Refund.create(
+            payment_intent=payment_intent_id,
+            amount=centavos,
+            idempotency_key=clave_idempotencia,
+            api_key=api_key,
+        )
+
+    try:
+        reembolso = await anyio.to_thread.run_sync(_crear)
+    except stripe.error.StripeError as exc:  # type: ignore[union-attr]
+        raise StripePagoError(str(exc)) from exc
+
+    return {"id": reembolso["id"], "status": reembolso["status"], "amount": reembolso["amount"]}

@@ -7,6 +7,7 @@ import {
   Cliente,
   InventoryLocation,
   InventoryStockEntry,
+  NotaCredito,
   ProductOut,
   TicketLine,
   Venta,
@@ -14,6 +15,7 @@ import {
 } from '../../core/models';
 import { SalesService } from '../../core/services/sales.service';
 import { PaymentsService } from '../../core/services/payments.service';
+import { CreditNotesService } from '../../core/services/credit-notes.service';
 import { NotificationService } from '../../core/services/notification.service';
 import { OfflineSyncService } from '../../core/services/offline-sync.service';
 import { CardPaymentComponent } from '../../shared/components/card-payment.component';
@@ -23,7 +25,8 @@ import { environment } from '../../../environments/environment';
 const API_URL = environment.apiUrl;
 
 type EstadoRegistro = 'ticket' | 'cobrando' | 'cobrado_sin_venta' | 'vendido';
-type Modalidad = 'efectivo' | 'tarjeta';
+// "nota": canje de una nota de crédito emitida por una devolución (CU7).
+type Modalidad = 'efectivo' | 'tarjeta' | 'nota';
 
 /**
  * Registro de caja — Venta Presencial (CU19/CU20).
@@ -202,6 +205,65 @@ type Modalidad = 'efectivo' | 'tarjeta';
           >
             Tarjeta
           </button>
+          <!-- Sin conexion no se aceptan notas: la caja no puede validar el saldo (CU7 alt. 3). -->
+          <button
+            *ngIf="offlineSync.enLinea()"
+            (click)="onElegirModalidad('nota')"
+            [disabled]="enviando()"
+            class="flex-1 px-4 py-2.5 rounded-lg text-sm font-bold uppercase tracking-wide border transition-colors cursor-pointer disabled:opacity-50"
+            [class.bg-indigo-600]="modalidad() === 'nota'"
+            [class.text-white]="modalidad() === 'nota'"
+            [class.border-indigo-600]="modalidad() === 'nota'"
+            [class.text-gray-600]="modalidad() !== 'nota'"
+            [class.border-gray-200]="modalidad() !== 'nota'"
+          >
+            Nota de crédito
+          </button>
+        </div>
+
+        <!-- Canje de nota de crédito (CU7): se descuenta del saldo y paga la venta -->
+        <div *ngIf="modalidad() === 'nota'" class="space-y-3">
+          <div class="flex gap-2">
+            <input
+              type="text"
+              class="flex-1 text-sm border border-gray-200 rounded-lg px-3 py-2 font-mono uppercase"
+              placeholder="NC-000123"
+              [ngModel]="codigoNota()"
+              (ngModelChange)="codigoNota.set($event); notaConsultada.set(null)"
+              name="codigoNota"
+            />
+            <button
+              (click)="onBuscarNota()"
+              [disabled]="enviando() || codigoNota().trim().length < 4"
+              class="px-4 py-2 rounded-lg text-xs font-bold uppercase tracking-wide text-indigo-600 border border-indigo-200 hover:bg-indigo-50 cursor-pointer disabled:opacity-40"
+            >
+              Consultar
+            </button>
+          </div>
+          <div *ngIf="notaConsultada() as n" class="p-3 rounded-lg border text-xs space-y-1"
+               [ngClass]="problemaNota() ? 'border-rose-200 bg-rose-50' : 'border-emerald-200 bg-emerald-50'">
+            <p><span class="font-semibold">{{ n.codigo }}</span> · {{ n.cliente_nombre }} · {{ n.estado }}</p>
+            <p>Saldo: <span class="font-bold">Bs {{ n.saldo.toFixed(2) }}</span> · vence {{ n.fechaVencimiento | date: 'dd/MM/yyyy' }}</p>
+            <p *ngIf="problemaNota() as problema" class="font-semibold text-rose-600">{{ problema }}</p>
+            <div *ngIf="!problemaNota() && faltante() > 0" class="pt-1 space-y-1">
+              <p class="text-amber-700 font-semibold">El saldo no alcanza: faltan Bs {{ faltante().toFixed(2) }}. ¿Con qué se cobra el resto?</p>
+              <div class="flex gap-2">
+                <button type="button" (click)="metodoComplemento.set('efectivo')"
+                        class="px-3 py-1 rounded border text-[11px] font-bold uppercase cursor-pointer"
+                        [ngClass]="metodoComplemento() === 'efectivo' ? 'bg-indigo-600 text-white border-indigo-600' : 'border-gray-200 text-gray-600'">Efectivo</button>
+                <button type="button" (click)="metodoComplemento.set('qr')"
+                        class="px-3 py-1 rounded border text-[11px] font-bold uppercase cursor-pointer"
+                        [ngClass]="metodoComplemento() === 'qr' ? 'bg-indigo-600 text-white border-indigo-600' : 'border-gray-200 text-gray-600'">QR</button>
+              </div>
+            </div>
+          </div>
+          <button
+            (click)="onCanjearNota()"
+            [disabled]="enviando() || !notaConsultada() || problemaNota() !== null || (faltante() > 0 && !metodoComplemento())"
+            class="w-full px-4 py-2.5 rounded-lg text-sm font-bold uppercase tracking-wide text-white bg-emerald-600 hover:bg-emerald-700 transition-colors cursor-pointer disabled:opacity-50"
+          >
+            {{ enviando() ? 'Procesando…' : 'Canjear nota y registrar venta' }}
+          </button>
         </div>
 
         <button
@@ -268,7 +330,7 @@ type Modalidad = 'efectivo' | 'tarjeta';
       *ngIf="estado() === 'vendido' && ventaCreada() as v"
       [venta]="v"
       [clienteNombre]="clienteSeleccionadoNombre()"
-      [modalidad]="modalidad() === 'efectivo' ? 'Efectivo' : 'Tarjeta'"
+      [modalidad]="etiquetaModalidad()"
       (cerrar)="onCerrarRecibo()"
     ></app-receipt-modal>
   `
@@ -291,6 +353,9 @@ export class PosComponent implements OnInit {
   enviando = signal(false);
 
   idMetPagoActual = signal<number | null>(null);
+  codigoNota = signal<string>('');
+  notaConsultada = signal<NotaCredito | null>(null);
+  metodoComplemento = signal<'efectivo' | 'qr' | null>(null);
   montoCobrado = signal<number | null>(null);
   clientSecret = signal<string | null>(null);
   ventaCreada = signal<Venta | null>(null);
@@ -320,6 +385,25 @@ export class PosComponent implements OnInit {
 
   tarjetaDisponible = computed(() => !!environment.stripePublishableKey && !this.cardLatchedOff());
 
+  /** Por qué la nota consultada no puede pagar este ticket (null si puede). */
+  problemaNota = computed<string | null>(() => {
+    const nota = this.notaConsultada();
+    if (!nota) return null;
+    if (nota.estado !== 'Vigente') return `La nota está ${nota.estado.toLowerCase()}.`;
+    if (nota.idCliente !== this.selectedCliente()) return `La nota es de ${nota.cliente_nombre}: elegí ese cliente.`;
+    return null;
+  });
+
+  /** CU7 paso 5: si el saldo es menor que el ticket, el resto se cobra con otro medio. */
+  faltante = computed(() => {
+    const nota = this.notaConsultada();
+    return nota ? Math.max(0, Math.round((this.subtotalIndicativo() - nota.saldo) * 100) / 100) : 0;
+  });
+
+  etiquetaModalidad = computed(() =>
+    this.modalidad() === 'efectivo' ? 'Efectivo' : this.modalidad() === 'nota' ? 'Nota de crédito' : 'Tarjeta'
+  );
+
   clienteSeleccionadoNombre = computed(() => {
     const id = this.selectedCliente();
     return this.customers().find(c => c.idCliente === id)?.nombre ?? null;
@@ -329,6 +413,7 @@ export class PosComponent implements OnInit {
     private http: HttpClient,
     private salesService: SalesService,
     private paymentsService: PaymentsService,
+    private creditNotesService: CreditNotesService,
     private notificationService: NotificationService,
     public offlineSync: OfflineSyncService,
   ) {}
@@ -476,6 +561,37 @@ export class PosComponent implements OnInit {
     }
     this.idMetPagoActual.set(metodo.idMetPago);
     this.montoCobrado.set(metodo.monto);
+    await this.intentarVenta();
+  }
+
+  async onBuscarNota(): Promise<void> {
+    this.notaConsultada.set(await this.creditNotesService.buscar(this.codigoNota()));
+  }
+
+  /** Canje de la nota: igual que el efectivo, primero se obtiene el idMetPago y después la venta. */
+  async onCanjearNota(): Promise<void> {
+    const nota = this.notaConsultada();
+    const idCliente = this.selectedCliente();
+    if (this.enviando() || !this.validarAntesDeCobrar() || !nota || idCliente === null || this.problemaNota()) {
+      return;
+    }
+    const sinStock = this.lineaSinStockEnSucursal();
+    if (sinStock) {
+      this.notificationService.error('Sin stock en esta sucursal', `No hay stock suficiente de "${sinStock}" en la sucursal seleccionada.`);
+      return;
+    }
+    this.enviando.set(true);
+    this.estado.set('cobrando');
+    const canje = await this.creditNotesService.canjear(
+      nota.codigo, this.subtotalIndicativo(), idCliente, this.faltante() > 0 ? this.metodoComplemento() : null,
+    );
+    this.enviando.set(false);
+    if (!canje) {
+      this.estado.set('ticket');
+      return;
+    }
+    this.idMetPagoActual.set(canje.idMetPago);
+    this.montoCobrado.set(canje.montoTotal);
     await this.intentarVenta();
   }
 
@@ -632,6 +748,9 @@ export class PosComponent implements OnInit {
     this.montoCobrado.set(null);
     this.clientSecret.set(null);
     this.ventaCreada.set(null);
+    this.codigoNota.set('');
+    this.notaConsultada.set(null);
+    this.metodoComplemento.set(null);
     this.enviando.set(false);
   }
 }

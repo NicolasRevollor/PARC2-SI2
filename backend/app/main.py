@@ -14,6 +14,7 @@ from app.routers import (
     chat,
     cities,
     collections,
+    credit_notes,
     customers,
     dashboard,
     dispatches,
@@ -125,6 +126,7 @@ for router in (
     logs.router,
     tenants.router,
     returns.router,
+    credit_notes.router,
     platform.router,
     backups.router,
 ):
