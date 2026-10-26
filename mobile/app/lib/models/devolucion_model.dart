@@ -72,6 +72,9 @@ class Elegibilidad {
   final double recargo;
   final String mensaje;
 
+  /// Fuera del plazo de cambio pero dentro de la garantia: solo por defecto de fabrica.
+  final bool soloDefecto;
+
   const Elegibilidad({
     required this.estado,
     required this.puede,
@@ -80,6 +83,7 @@ class Elegibilidad {
     required this.garantiaHasta,
     required this.recargo,
     required this.mensaje,
+    this.soloDefecto = false,
   });
 
   factory Elegibilidad.fromJson(Map<String, dynamic> json) => Elegibilidad(
@@ -90,6 +94,7 @@ class Elegibilidad {
         garantiaHasta: json['garantiaHasta'] as String,
         recargo: _num(json['recargo']),
         mensaje: json['mensaje'] as String,
+        soloDefecto: json['soloDefecto'] as bool? ?? false,
       );
 }
 

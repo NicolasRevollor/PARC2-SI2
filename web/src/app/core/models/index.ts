@@ -841,6 +841,8 @@ export interface ElegibilidadDevolucion {
   garantiaHasta: string;
   recargo: number;
   mensaje: string;
+  /** Fuera del plazo de cambio pero dentro de la garantía: solo por defecto de fábrica. */
+  soloDefecto: boolean;
 }
 
 export interface LineaDevolucion {

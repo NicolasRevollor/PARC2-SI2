@@ -76,8 +76,9 @@ const API_URL = environment.apiUrl;
               <p class="text-xs" [ngClass]="l.elegibilidad.puede ? 'text-emerald-700' : 'text-gray-500'">{{ textoElegibilidad(l) }}</p>
             </div>
             <button *ngIf="l.solicitudAbierta" (click)="verSolicitud(l.solicitudAbierta)" class="ys-btn-sec whitespace-nowrap">Ver {{ l.solicitudAbierta }}</button>
-            <button *ngIf="!l.solicitudAbierta && l.elegibilidad.puede" (click)="abrir(v, l)" [disabled]="politica()?.permiteSolicitudEnLinea === false"
-                    class="ys-btn whitespace-nowrap">Solicitar</button>
+            <button *ngIf="!l.solicitudAbierta && (l.elegibilidad.puede || l.elegibilidad.soloDefecto)" (click)="abrir(v, l)"
+                    [disabled]="politica()?.permiteSolicitudEnLinea === false"
+                    class="ys-btn whitespace-nowrap">{{ l.elegibilidad.puede ? 'Solicitar' : 'Solicitar por defecto de fábrica' }}</button>
           </div>
         </div>
       </section>
@@ -148,7 +149,7 @@ const API_URL = environment.apiUrl;
         <div>
           <p class="ys-etiqueta">Motivo</p>
           <div class="grid grid-cols-2 gap-2 mt-1">
-            <button *ngFor="let m of motivos" type="button" (click)="motivo.set(m[0])" class="ys-opcion" [class.ys-opcion-activa]="motivo() === m[0]">{{ m[1] }}</button>
+            <button *ngFor="let m of motivosPermitidos()" type="button" (click)="motivo.set(m[0])" class="ys-opcion" [class.ys-opcion-activa]="motivo() === m[0]">{{ m[1] }}</button>
           </div>
         </div>
         <div>
@@ -231,6 +232,11 @@ export class CustomerReturnsComponent implements OnInit {
   sucursal: number | null = null;
   detalle = '';
 
+  /** Fuera del plazo de cambio solo queda el motivo defecto de fábrica (garantía). */
+  readonly motivosPermitidos = computed(() =>
+    this.seleccion()?.linea.elegibilidad.puede === false ? this.motivos.filter((m) => m[0] === 'defecto') : this.motivos,
+  );
+
   readonly tiposPermitidos = computed<TipoSolicitud[]>(() => {
     const p = this.politica();
     const tipos: TipoSolicitud[] = ['cambio_talla', 'cambio_color', 'cambio_producto'];
@@ -295,7 +301,8 @@ export class CustomerReturnsComponent implements OnInit {
     if (e.estado === 'en_plazo') return `Podés pedir el cambio: quedan ${e.horasRestantes.toFixed(1)} h`;
     if (e.estado === 'recargo') return `${e.mensaje}`;
     if (e.estado === 'fuera_plazo') {
-      return `El plazo venció el ${new Date(e.fechaLimite).toLocaleString()}. Por defecto de fábrica tenés hasta el ${new Date(e.garantiaHasta).toLocaleDateString()}.`;
+      const garantia = e.soloDefecto ? ` Por defecto de fábrica tenés hasta el ${new Date(e.garantiaHasta).toLocaleDateString()}.` : '';
+      return `El plazo de cambio venció el ${new Date(e.fechaLimite).toLocaleString()}.${garantia}`;
     }
     return e.mensaje;
   }
@@ -315,7 +322,7 @@ export class CustomerReturnsComponent implements OnInit {
 
   async abrir(venta: VentaDevolucion, linea: LineaDevolucion): Promise<void> {
     this.seleccion.set({ venta, linea });
-    this.motivo.set('talla');
+    this.motivo.set(linea.elegibilidad.puede ? 'talla' : 'defecto');
     this.cantidad.set(1);
     this.detalle = '';
     this.fotos.set([]);

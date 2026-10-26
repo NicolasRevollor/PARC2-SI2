@@ -23,8 +23,8 @@ String _textoElegibilidad(Elegibilidad e) {
     case 'en_plazo':
       return 'Podés pedir el cambio: quedan ${e.horasRestantes.toStringAsFixed(1)} h';
     case 'fuera_plazo':
-      return 'El plazo venció el ${_fecha(e.fechaLimite, hora: true)}. '
-          'Por defecto de fábrica tenés hasta el ${_fecha(e.garantiaHasta)}.';
+      return 'El plazo de cambio venció el ${_fecha(e.fechaLimite, hora: true)}.'
+          '${e.soloDefecto ? ' Por defecto de fábrica tenés hasta el ${_fecha(e.garantiaHasta)}.' : ''}';
     default:
       return e.mensaje;
   }
@@ -239,8 +239,9 @@ class _ReturnsScreenState extends State<ReturnsScreen> {
                       ),
                       if (l.solicitudAbierta != null)
                         _boton('VER ${l.solicitudAbierta}', () => _verPorCodigo(l.solicitudAbierta!))
-                      else if (l.elegibilidad.puede)
-                        _boton('SOLICITAR', _politica?.permiteSolicitudEnLinea == false ? null : () => _abrirSolicitud(v, l), principal: true),
+                      else if (l.elegibilidad.puede || l.elegibilidad.soloDefecto)
+                        _boton(l.elegibilidad.puede ? 'SOLICITAR' : 'POR DEFECTO',
+                            _politica?.permiteSolicitudEnLinea == false ? null : () => _abrirSolicitud(v, l), principal: true),
                     ],
                   ),
                 ),
@@ -520,7 +521,7 @@ class _SolicitudSheetState extends State<_SolicitudSheet> {
   List<ProductoReemplazo> _catalogo = [];
   List<Sucursal> _sucursales = [];
   final Map<int, List<StockSucursal>> _stock = {};
-  String _motivoCategoria = 'talla';
+  late String _motivoCategoria = widget.linea.elegibilidad.puede ? 'talla' : 'defecto';
   String _tipo = 'cambio_talla';
   int? _idProductoNuevo;
   int? _sucursal;
@@ -672,7 +673,12 @@ class _SolicitudSheetState extends State<_SolicitudSheet> {
             const SizedBox(height: 14),
             Text('Motivo', style: etiqueta),
             const SizedBox(height: 6),
-            _chips(etiquetasMotivoDevolucion, _motivoCategoria, (m) => setState(() => _motivoCategoria = m)),
+            // Fuera del plazo de cambio solo queda el defecto de fabrica (garantia).
+            _chips(
+              linea.elegibilidad.puede ? etiquetasMotivoDevolucion : {'defecto': etiquetasMotivoDevolucion['defecto']!},
+              _motivoCategoria,
+              (m) => setState(() => _motivoCategoria = m),
+            ),
             const SizedBox(height: 12),
             Text('¿Qué querés?', style: etiqueta),
             const SizedBox(height: 6),

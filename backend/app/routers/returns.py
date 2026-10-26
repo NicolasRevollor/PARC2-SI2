@@ -401,15 +401,20 @@ async def _venta_para_devolucion(session: AsyncSession, venta: Venta, ahora: dat
     for l in lineas:
         ocupadas = await dv.cantidad_ocupada(session, venta.idVenta, l.idProducto)
         disponibles = max(l.cantidad - ocupadas, 0)
-        eleg = dv.evaluar_elegibilidad(
+        reglas = dict(
             fecha_venta=venta.fecha,
             ahora=ahora,
             politica=politica,
             valor=l.precio_pagado,
             categoria=l.producto.tipo,
-            es_defecto=False,
             cambios_realizados=await _cambios_previos(session, venta.idVenta, l.idProducto),
             disponibles=disponibles,
+        )
+        eleg = dv.evaluar_elegibilidad(es_defecto=False, **reglas)
+        solo_defecto = (
+            not eleg.puede
+            and eleg.estado in ("fuera_plazo", "no_retornable")
+            and dv.evaluar_elegibilidad(es_defecto=True, **reglas).puede
         )
         salida.append(
             LineaDevolucionOut(
@@ -432,6 +437,7 @@ async def _venta_para_devolucion(session: AsyncSession, venta: Venta, ahora: dat
                     garantiaHasta=eleg.garantiaHasta,
                     recargo=float(eleg.recargo),
                     mensaje=eleg.mensaje,
+                    soloDefecto=solo_defecto,
                 ),
                 solicitudAbierta=abiertas.get(l.idProducto),
             )

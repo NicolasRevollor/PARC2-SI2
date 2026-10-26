@@ -225,6 +225,9 @@ class ElegibilidadOut(BaseModel):
     garantiaHasta: datetime
     recargo: float
     mensaje: str
+    # Fuera del plazo de cambio pero dentro de la garantia: solo se admite
+    # la solicitud por defecto de fabrica (CU1/CU2 flujo alternativo).
+    soloDefecto: bool = False
 
 
 class LineaDevolucionOut(BaseModel):
