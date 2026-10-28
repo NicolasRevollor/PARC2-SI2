@@ -5,9 +5,17 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.models import Bitacora, Rol, Usuario
-from app.schemas.team import ActivateAccountResponse, AuditLogOut, ChangeRoleIn, StaffUserIn, TeamMemberOut
+from app.models import Bitacora, Rol, Sucursal, Usuario, UsuarioSucursal
+from app.schemas.team import (
+    ActivateAccountResponse,
+    AsignarSucursalesIn,
+    AuditLogOut,
+    ChangeRoleIn,
+    StaffUserIn,
+    TeamMemberOut,
+)
 from app.security import hash_password, require_permiso
+from app.services.alcance import sucursales_asignadas
 from app.services.bitacora import registrar_bitacora
 from app.services.tenancy import ContextoTenant, contexto_actual, exigir_cupo, tenant_actual
 from app.services.usuarios import build_user_claims
@@ -15,6 +23,43 @@ from app.services.usuarios import build_user_claims
 router = APIRouter(prefix="/api/team", tags=["team"])
 
 ROLES_STAFF = ("Administrador", "Encargado de Sucursal", "Cajero")
+
+
+async def _miembro(session: AsyncSession, u: Usuario) -> TeamMemberOut:
+    claims = await build_user_claims(session, u)
+    return TeamMemberOut(
+        idUser=u.idUser,
+        nombre=u.nombre,
+        correo=u.correo,
+        rol=claims["rol"],
+        permisos=claims["permisos"],
+        sucursales=await sucursales_asignadas(session, u.idUser),
+    )
+
+
+async def _asignar(session: AsyncSession, usuario: Usuario, sucursales: list[int]) -> None:
+    """CU24: reemplaza las sucursales del usuario; todas deben ser de su empresa."""
+    pedidas = set(sucursales)
+    if pedidas:
+        propias = set(
+            (
+                await session.execute(
+                    select(Sucursal.codigoSucursal).where(
+                        Sucursal.codigoSucursal.in_(pedidas), Sucursal.idTenant == usuario.idTenant
+                    )
+                )
+            ).scalars()
+        )
+        if propias != pedidas:
+            raise HTTPException(status_code=400, detail="Sucursal inexistente")
+    actuales = (
+        await session.execute(select(UsuarioSucursal).where(UsuarioSucursal.idUser == usuario.idUser))
+    ).scalars().all()
+    for fila in actuales:
+        if fila.codigoSucursal not in pedidas:
+            await session.delete(fila)
+    for codigo in pedidas - {f.codigoSucursal for f in actuales}:
+        session.add(UsuarioSucursal(idUser=usuario.idUser, codigoSucursal=codigo))
 
 
 @router.get("", response_model=list[TeamMemberOut])
@@ -39,19 +84,7 @@ async def list_team(session: AsyncSession = Depends(get_db),
         )
     ).scalars().all()
 
-    resultado = []
-    for u in usuarios:
-        claims = await build_user_claims(session, u)
-        resultado.append(
-            TeamMemberOut(
-                idUser=u.idUser,
-                nombre=u.nombre,
-                correo=u.correo,
-                rol=claims["rol"],
-                permisos=claims["permisos"],
-            )
-        )
-    return resultado
+    return [await _miembro(session, u) for u in usuarios]
 
 
 @router.get("/audit-log", response_model=list[AuditLogOut])
@@ -155,6 +188,7 @@ async def create_staff_user(
     )
     session.add(nuevo)
     await session.flush()
+    await _asignar(session, nuevo, payload.sucursales)
 
     ip = request.client.host if request.client else "0.0.0.0"
     await registrar_bitacora(
@@ -162,15 +196,7 @@ async def create_staff_user(
     )
     await session.commit()
     await session.refresh(nuevo)
-
-    claims = await build_user_claims(session, nuevo)
-    return TeamMemberOut(
-        idUser=nuevo.idUser,
-        nombre=nuevo.nombre,
-        correo=nuevo.correo,
-        rol=claims["rol"],
-        permisos=claims["permisos"],
-    )
+    return await _miembro(session, nuevo)
 
 
 @router.patch("/{idUser}/role", response_model=TeamMemberOut)
@@ -224,12 +250,30 @@ async def change_staff_role(
     )
     await session.commit()
     await session.refresh(usuario)
+    return await _miembro(session, usuario)
 
-    claims = await build_user_claims(session, usuario)
-    return TeamMemberOut(
-        idUser=usuario.idUser,
-        nombre=usuario.nombre,
-        correo=usuario.correo,
-        rol=claims["rol"],
-        permisos=claims["permisos"],
+
+@router.put("/{idUser}/sucursales", response_model=TeamMemberOut)
+async def asignar_sucursales(
+    idUser: int,
+    payload: AsignarSucursalesIn,
+    request: Request,
+    session: AsyncSession = Depends(get_db),
+    current: dict = Depends(require_permiso("usuario.admin")),
+    id_tenant: int = Depends(tenant_actual),
+):
+    """CU24: sucursales en las que trabaja el usuario. El Encargado asignado
+    solo ve el historial de devoluciones de esas sucursales (CU11)."""
+    usuario = await session.get(Usuario, idUser)
+    if not usuario or usuario.idTenant != id_tenant:
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    await _asignar(session, usuario, payload.sucursales)
+    ip = request.client.host if request.client else "0.0.0.0"
+    await registrar_bitacora(
+        session,
+        f"Sucursales de {usuario.correo}: {', '.join(map(str, sorted(set(payload.sucursales)))) or 'todas'}",
+        int(current["sub"]),
+        ip,
     )
+    await session.commit()
+    return await _miembro(session, usuario)

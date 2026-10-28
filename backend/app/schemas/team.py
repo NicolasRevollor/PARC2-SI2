@@ -16,6 +16,8 @@ class TeamMemberOut(BaseModel):
     correo: str
     rol: str
     permisos: list[str]
+    # Sucursales asignadas (migracion 024, CU24); vacio = toda la empresa.
+    sucursales: list[int] = []
 
 
 class StaffUserIn(BaseModel):
@@ -23,6 +25,7 @@ class StaffUserIn(BaseModel):
     email: EmailStr
     password: str
     rol: str
+    sucursales: list[int] = []
 
     @field_validator("password")
     @classmethod
@@ -33,6 +36,10 @@ class StaffUserIn(BaseModel):
 
 class ChangeRoleIn(BaseModel):
     rol: str
+
+
+class AsignarSucursalesIn(BaseModel):
+    sucursales: list[int]
 
 
 class AuditLogOut(BaseModel):

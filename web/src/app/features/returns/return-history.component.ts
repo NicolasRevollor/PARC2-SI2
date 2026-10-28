@@ -2,7 +2,6 @@ import { Component, OnInit, computed, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ArchiveService } from '../../core/services/archive.service';
-import { InventoryService } from '../../core/services/inventory.service';
 import {
   ETIQUETA_ESTADO,
   ETIQUETA_MOTIVO,
@@ -12,7 +11,7 @@ import {
   ReturnsService,
   claseEstado,
 } from '../../core/services/returns.service';
-import { AnalisisDevoluciones, DevolucionOut } from '../../core/models';
+import { AlcanceDevoluciones, AnalisisDevoluciones, DevolucionOut } from '../../core/models';
 import { ReturnDetailComponent } from './return-detail.component';
 
 /**
@@ -30,8 +29,8 @@ import { ReturnDetailComponent } from './return-detail.component';
         <div class="flex flex-col gap-1"><span class="ys-mini">Desde</span><input type="date" [(ngModel)]="f.fecha_desde" class="ys-filtro" /></div>
         <div class="flex flex-col gap-1"><span class="ys-mini">Hasta</span><input type="date" [(ngModel)]="f.fecha_hasta" class="ys-filtro" /></div>
         <div class="flex flex-col gap-1"><span class="ys-mini">Sucursal</span>
-          <select [(ngModel)]="f.codigoSucursal" class="ys-filtro"><option [ngValue]="undefined">Todas</option>
-            <option *ngFor="let s of inventoryService.locations()" [ngValue]="s.codigoSucursal">{{ s.nombre }}</option></select></div>
+          <select [(ngModel)]="f.codigoSucursal" class="ys-filtro"><option [ngValue]="undefined">{{ restringido() ? 'Mis sucursales' : 'Todas' }}</option>
+            <option *ngFor="let s of sucursales()" [ngValue]="s.codigoSucursal">{{ s.sucursal }}</option></select></div>
         <div class="flex flex-col gap-1"><span class="ys-mini">Tipo</span>
           <select [(ngModel)]="f.tipo" class="ys-filtro"><option [ngValue]="undefined">Todos</option>
             <option *ngFor="let t of tipos" [ngValue]="t[0]">{{ t[1] }}</option></select></div>
@@ -46,14 +45,17 @@ import { ReturnDetailComponent } from './return-detail.component';
           <select [(ngModel)]="f.estado" class="ys-filtro"><option [ngValue]="undefined">Todos</option>
             <option *ngFor="let e of estados" [ngValue]="e[0]">{{ e[1] }}</option></select></div>
         <div class="flex flex-col gap-1"><span class="ys-mini">Cliente</span>
-          <input [(ngModel)]="cliente" placeholder="Nombre" class="ys-filtro w-32" /></div>
+          <input [(ngModel)]="f.cliente" placeholder="Nombre" class="ys-filtro w-32" /></div>
         <button (click)="aplicar()" class="ys-btn">Filtrar</button>
         <button (click)="limpiar()" class="ys-btn-sec">Limpiar</button>
         <div class="flex gap-2 ml-auto">
-          <button (click)="exportar('csv')" class="ys-btn-sec"><span class="material-symbols-outlined text-[16px]">table_view</span> Excel</button>
-          <button (click)="exportar('pdf')" class="ys-btn-sec"><span class="material-symbols-outlined text-[16px]">picture_as_pdf</span> PDF</button>
+          <button (click)="exportar('xlsx')" [disabled]="!filas().length" class="ys-btn-sec"><span class="material-symbols-outlined text-[16px]">table_view</span> Excel</button>
+          <button (click)="exportar('pdf')" [disabled]="!filas().length" class="ys-btn-sec"><span class="material-symbols-outlined text-[16px]">picture_as_pdf</span> PDF</button>
         </div>
       </div>
+      <p *ngIf="restringido()" class="text-[11px] text-amber-700 -mt-3">
+        Ves solo las devoluciones de tus sucursales: {{ nombresSucursales() }}.
+      </p>
 
       <!-- Indicadores (CU11 paso 4) -->
       <div *ngIf="analisis() as a" class="space-y-4">
@@ -144,46 +146,41 @@ export class ReturnHistoryComponent implements OnInit {
   readonly estados = Object.entries(ETIQUETA_ESTADO);
 
   f: FiltrosDevolucion = {};
-  cliente = '';
   readonly analisis = signal<AnalisisDevoluciones | null>(null);
   readonly abierto = signal<number | null>(null);
-  readonly busquedaCliente = signal<string>('');
+  readonly alcance = signal<AlcanceDevoluciones | null>(null);
 
-  /** El filtro por cliente es por nombre, sobre lo ya cargado. */
-  readonly filas = computed(() => {
-    const q = this.busquedaCliente().trim().toLowerCase();
-    const todas = this.returnsService.devoluciones();
-    return q ? todas.filter((d) => (d.cliente_nombre ?? '').toLowerCase().includes(q)) : todas;
-  });
+  /** Todos los filtros (también el de cliente) los aplica el servidor. */
+  readonly filas = computed(() => this.returnsService.devoluciones());
+  readonly restringido = computed(() => this.alcance()?.restringido ?? false);
+  readonly sucursales = computed(() => this.alcance()?.sucursales ?? []);
+  readonly nombresSucursales = computed(() => this.sucursales().map((s) => s.sucursal).join(', '));
 
   constructor(
     public returnsService: ReturnsService,
-    public inventoryService: InventoryService,
     public archiveService: ArchiveService,
   ) {}
 
   ngOnInit(): void {
-    if (this.inventoryService.locations().length === 0) void this.inventoryService.loadLocations();
     if (this.archiveService.products().length < 2) void this.archiveService.loadProducts({ size: 100 });
+    void this.returnsService.alcance().then((a) => this.alcance.set(a));
     void this.aplicar();
   }
 
   async aplicar(): Promise<void> {
-    this.busquedaCliente.set(this.cliente);
     const [, analisis] = await Promise.all([
       this.returnsService.cargarDevoluciones(this.f),
-      this.returnsService.analisis({ fecha_desde: this.f.fecha_desde, fecha_hasta: this.f.fecha_hasta, codigoSucursal: this.f.codigoSucursal }),
+      this.returnsService.analisis(this.f),
     ]);
     this.analisis.set(analisis);
   }
 
   limpiar(): void {
     this.f = {};
-    this.cliente = '';
     void this.aplicar();
   }
 
-  exportar(formato: 'csv' | 'pdf'): void {
+  exportar(formato: 'xlsx' | 'pdf'): void {
     void this.returnsService.exportar(formato, this.f);
   }
 

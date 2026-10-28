@@ -144,6 +144,20 @@ class Usuario(Base):
     rol: Mapped["Rol"] = relationship()
 
 
+class UsuarioSucursal(Base):
+    """Sucursales asignadas a un usuario del personal (migracion 024, CU24)."""
+
+    __tablename__ = "usuario_sucursal"
+
+    idUser: Mapped[int] = mapped_column(
+        ForeignKey("Usuario.idUser", ondelete="CASCADE", onupdate="CASCADE"), primary_key=True
+    )
+    codigoSucursal: Mapped[int] = mapped_column(
+        ForeignKey("Sucursal.codigoSucursal", ondelete="CASCADE", onupdate="CASCADE"), primary_key=True
+    )
+    fechaAsignacion: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=_ahora_utc, nullable=False)
+
+
 class Sucursal(Base):
     __tablename__ = "Sucursal"
     __table_args__ = (Index("idx_sucursal_ciudad", "idCiudad"),)

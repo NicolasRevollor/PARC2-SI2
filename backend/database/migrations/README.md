@@ -189,6 +189,16 @@ docker exec -i ropaDocker \
   -v ON_ERROR_STOP=1 \
   -f /dev/stdin \
   < database/migrations/023_suscripcion_sincronizacion_variantes.sql
+
+# 21) Migracion 024 (asignacion del personal a sucursales, CU24)
+#     Tabla "usuario_sucursal". El personal asignado solo ve el historial de
+#     devoluciones de sus sucursales (CU11); sin asignar ve toda la empresa.
+#     Asigna el personal de ejemplo "central" a la sucursal Central.
+docker exec -i ropaDocker \
+  psql -U yimysito -d ropaDB \
+  -v ON_ERROR_STOP=1 \
+  -f /dev/stdin \
+  < database/migrations/024_usuario_sucursal.sql
 ```
 
 > **Las migraciones 014, 015, 022 y 023 no son opcionales.** Los modelos SQLAlchemy ya

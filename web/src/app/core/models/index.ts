@@ -211,6 +211,8 @@ export interface TeamMember {
   correo: string;
   rol: UserRole;
   permisos: string[];
+  /** Sucursales asignadas (CU24); vacío = toda la empresa. */
+  sucursales: number[];
 }
 
 export type StaffRole = 'Administrador' | 'Encargado de Sucursal' | 'Cajero';
@@ -220,6 +222,7 @@ export interface StaffUserIn {
   email: string;
   password: string;
   rol: StaffRole;
+  sucursales?: number[];
 }
 
 export interface ChangeRoleIn {
@@ -922,6 +925,12 @@ export interface PoliticaDevolucion {
   vigenteDesde?: string | null;
   creadoEn?: string | null;
   creadoPor?: string | null;
+}
+
+/** Sucursales que el usuario puede consultar en el historial (CU11). */
+export interface AlcanceDevoluciones {
+  restringido: boolean;
+  sucursales: StockSucursal[];
 }
 
 export interface StockSucursal {

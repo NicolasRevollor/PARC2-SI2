@@ -2,6 +2,7 @@ import { Component, signal, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { TeamService } from '../../core/services/team.service';
+import { InventoryService } from '../../core/services/inventory.service';
 import { NotificationService } from '../../core/services/notification.service';
 import { TeamMember, StaffRole } from '../../core/models';
 import { hasDigit, hasLower, hasSpecial, hasUpper, hasMinLength, isStrong } from '../../shared/utils/password-rules';
@@ -85,6 +86,24 @@ const STAFF_ROLES: StaffRole[] = ['Administrador', 'Encargado de Sucursal', 'Caj
                 <option *ngFor="let rol of staffRoles" [value]="rol">{{ rol }}</option>
               </select>
             </div>
+
+            <!-- CU24: sucursales asignadas (el Encargado solo ve las suyas en el CU11) -->
+            <div class="mt-3.5 pt-3 border-t border-gray-100">
+              <p class="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">Sucursales asignadas</p>
+              <div class="flex flex-wrap gap-1.5">
+                <label *ngFor="let s of inventoryService.locations()"
+                       class="flex items-center gap-1 px-2 py-0.5 rounded border border-gray-200 text-[11px] text-gray-700 cursor-pointer"
+                       [class.opacity-50]="savingBranchesFor() === member.idUser">
+                  <input type="checkbox" [checked]="member.sucursales.includes(s.codigoSucursal)"
+                         [disabled]="savingBranchesFor() === member.idUser"
+                         (change)="alternarSucursal(member, s.codigoSucursal)" />
+                  {{ s.nombre }}
+                </label>
+              </div>
+              <p class="text-[10px] text-gray-400 mt-1">
+                {{ member.sucursales.length ? 'Solo ve los registros de estas sucursales.' : 'Sin asignar: ve toda la empresa.' }}
+              </p>
+            </div>
           </div>
         </div>
       </div>
@@ -149,6 +168,16 @@ const STAFF_ROLES: StaffRole[] = ['Administrador', 'Encargado de Sucursal', 'Caj
               <option *ngFor="let rol of staffRoles" [value]="rol">{{ rol }}</option>
             </select>
           </div>
+          <div *ngIf="form.rol !== 'Administrador'">
+            <label class="text-xs font-bold text-gray-700 uppercase tracking-wide">Sucursales</label>
+            <div class="flex flex-wrap gap-1.5 mt-1">
+              <label *ngFor="let s of inventoryService.locations()"
+                     class="flex items-center gap-1 px-2 py-0.5 rounded border border-gray-200 text-[11px] text-gray-700 cursor-pointer">
+                <input type="checkbox" [checked]="form.sucursales.includes(s.codigoSucursal)" (change)="alternarSucursalNueva(s.codigoSucursal)" />
+                {{ s.nombre }}
+              </label>
+            </div>
+          </div>
 
           <!-- Checklist en vivo de reglas de contraseña -->
           <div class="p-3 bg-gray-50 rounded-lg border border-gray-200 space-y-1.5">
@@ -196,22 +225,43 @@ export class TeamComponent implements OnInit {
   saving = signal<boolean>(false);
   createError = signal<string | null>(null);
   savingRoleFor = signal<number | null>(null);
+  savingBranchesFor = signal<number | null>(null);
 
-  form: { nombre: string; email: string; password: string; rol: StaffRole } = {
+  form: { nombre: string; email: string; password: string; rol: StaffRole; sucursales: number[] } = {
     nombre: '',
     email: '',
     password: '',
     rol: 'Cajero',
+    sucursales: [],
   };
 
   constructor(
     public teamService: TeamService,
+    public inventoryService: InventoryService,
     private notificationService: NotificationService,
   ) {}
 
   ngOnInit() {
     this.teamService.loadTeam();
     this.teamService.loadAuditLog();
+    if (this.inventoryService.locations().length === 0) void this.inventoryService.loadLocations();
+  }
+
+  alternarSucursalNueva(codigo: number): void {
+    const actuales = this.form.sucursales;
+    this.form.sucursales = actuales.includes(codigo) ? actuales.filter((c) => c !== codigo) : [...actuales, codigo];
+  }
+
+  alternarSucursal(member: TeamMember, codigo: number): void {
+    const nuevas = member.sucursales.includes(codigo)
+      ? member.sucursales.filter((c) => c !== codigo)
+      : [...member.sucursales, codigo];
+    this.savingBranchesFor.set(member.idUser);
+    this.teamService
+      .asignarSucursales(member.idUser, nuevas)
+      .then(() => this.notificationService.success('Sucursales actualizadas', `"${member.nombre}" quedó asignado.`))
+      .catch((err) => this.notificationService.error('Error', err.error?.detail || 'No se pudieron asignar las sucursales.'))
+      .finally(() => this.savingBranchesFor.set(null));
   }
 
   getRolBadgeClass(rol: string): string {
@@ -253,7 +303,7 @@ export class TeamComponent implements OnInit {
   }
 
   openCreateModal() {
-    this.form = { nombre: '', email: '', password: '', rol: 'Cajero' };
+    this.form = { nombre: '', email: '', password: '', rol: 'Cajero', sucursales: [] };
     this.createError.set(null);
     this.showCreateModal.set(true);
   }
@@ -269,7 +319,7 @@ export class TeamComponent implements OnInit {
     this.saving.set(true);
 
     this.teamService
-      .createStaffUser({ ...this.form })
+      .createStaffUser({ ...this.form, sucursales: this.form.rol === 'Administrador' ? [] : this.form.sucursales })
       .then(() => {
         this.saving.set(false);
         this.showCreateModal.set(false);

@@ -2,6 +2,7 @@ import { Injectable, signal } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 import {
+  AlcanceDevoluciones,
   AnalisisDevoluciones,
   CompletarCambioIn,
   DevolucionDetalle,
@@ -33,6 +34,8 @@ export interface FiltrosDevolucion {
   motivo?: string;
   idProducto?: number;
   talla?: string;
+  /** Nombre del cliente (búsqueda parcial). */
+  cliente?: string;
 }
 
 export const ETIQUETA_TIPO: Record<string, string> = {
@@ -186,15 +189,24 @@ export class ReturnsService {
     );
   }
 
-  analisis(filtros: { fecha_desde?: string; fecha_hasta?: string; codigoSucursal?: number }): Promise<AnalisisDevoluciones | null> {
+  /** CU11 alternativo 2: sucursales visibles para el usuario. */
+  alcance(): Promise<AlcanceDevoluciones | null> {
+    return this.pedir(
+      firstValueFrom(this.http.get<AlcanceDevoluciones>(`${API_URL}/api/returns/alcance`)),
+      'No se pudieron cargar las sucursales.',
+      false,
+    );
+  }
+
+  analisis(filtros: FiltrosDevolucion): Promise<AnalisisDevoluciones | null> {
     return this.pedir(
       firstValueFrom(this.http.get<AnalisisDevoluciones>(`${API_URL}/api/returns/analisis`, { params: this.params(filtros) })),
       'No se pudieron calcular los indicadores.',
     );
   }
 
-  /** CU11 paso 6: descarga el historial filtrado en CSV (Excel) o PDF. */
-  async exportar(formato: 'csv' | 'pdf', filtros: FiltrosDevolucion): Promise<void> {
+  /** CU11 paso 6: descarga el historial filtrado en Excel (.xlsx), CSV o PDF. */
+  async exportar(formato: 'xlsx' | 'csv' | 'pdf', filtros: FiltrosDevolucion): Promise<void> {
     const blob = await this.pedir(
       firstValueFrom(this.http.get(`${API_URL}/api/returns/export.${formato}`, { params: this.params(filtros), responseType: 'blob' })),
       'No se pudo exportar.',

@@ -36,6 +36,7 @@ from app.models import (
     Cliente,
     DetalleVenta,
     Devolucion,
+    Inventario,
     InventarioNoVendible,
     MetodoPago,
     Movimiento,
@@ -50,6 +51,7 @@ from app.models import (
     Venta,
 )
 from app.schemas.returns import (
+    AlcanceOut,
     AnalisisOut,
     AutorizacionIn,
     CompletarCambioIn,
@@ -79,6 +81,8 @@ from app.schemas.returns import (
 )
 from app.security import get_current_payload, require_permiso
 from app.services import devoluciones as dv
+from app.services.alcance import alcance_sucursales, recortar
+from app.services.excel import libro_excel
 from app.services.bitacora import registrar_bitacora
 from app.services.disponibilidad import resolver_inventario
 from app.services.horario import HORA_BOLIVIA, fin_del_dia, inicio_del_dia
@@ -479,7 +483,20 @@ async def buscar_ventas(
     texto = q.strip()
     if not texto:
         return []
-    stmt = select(Venta).join(Cliente, Cliente.idCliente == Venta.idCliente).order_by(Venta.fecha.desc())
+    # El cliente es de la plataforma y compra en varias empresas: el filtro por
+    # empresa va en la consulta, antes del limite, para no perder sus ventas.
+    de_la_empresa = (
+        select(DetalleVenta.idVenta)
+        .join(Producto, Producto.idProducto == DetalleVenta.idProducto)
+        .where(DetalleVenta.idVenta == Venta.idVenta, Producto.idTenant == id_tenant)
+        .exists()
+    )
+    stmt = (
+        select(Venta)
+        .join(Cliente, Cliente.idCliente == Venta.idCliente)
+        .where(de_la_empresa)
+        .order_by(Venta.fecha.desc())
+    )
     numero = texto.upper().removeprefix("VENTA").removeprefix("#").strip()
     if numero.isdigit():
         stmt = stmt.where(Venta.idVenta == int(numero))
@@ -669,8 +686,13 @@ def _filtros_historial(
     motivo: str | None,
     idProducto: int | None,
     talla: str | None,
+    cliente: str | None = None,
+    sucursales: set[int] | None = None,
 ) -> list:
     filtros = [Devolucion.idTenant == id_tenant]
+    if sucursales is not None:
+        # CU11 alternativo 2: el personal asignado solo ve sus sucursales.
+        filtros.append(Devolucion.codigoSucursal.in_(sucursales or {-1}))
     if idCliente is not None:
         filtros.append(Devolucion.idCliente == idCliente)
     if fecha_desde is not None:
@@ -691,11 +713,14 @@ def _filtros_historial(
         filtros.append(Devolucion.idProducto == idProducto)
     if talla:
         filtros.append(Devolucion.tallaOriginal == talla)
+    if cliente and cliente.strip():
+        filtros.append(
+            Devolucion.idCliente.in_(select(Cliente.idCliente).where(Cliente.nombre.ilike(f"%{cliente.strip()}%")))
+        )
     return filtros
 
 
-@router.get("", response_model=list[DevolucionOut])
-async def listar_devoluciones(
+def _parametros_historial(
     idCliente: int | None = None,
     fecha_desde: date | None = None,
     fecha_hasta: date | None = None,
@@ -706,6 +731,45 @@ async def listar_devoluciones(
     motivo: str | None = None,
     idProducto: int | None = None,
     talla: str | None = None,
+    cliente: str | None = None,
+) -> dict:
+    """Filtros del CU11 paso 3, iguales para la lista, los indicadores y la
+    exportacion: lo que se exporta es exactamente lo que se ve."""
+    return dict(
+        idCliente=idCliente, fecha_desde=fecha_desde, fecha_hasta=fecha_hasta, codigoSucursal=codigoSucursal,
+        tipo=tipo, estado=estado, origen=origen, motivo=motivo, idProducto=idProducto, talla=talla, cliente=cliente,
+    )
+
+
+async def _filtros_del_actor(session: AsyncSession, auth: dict, id_tenant: int, parametros: dict) -> tuple[list, set[int] | None]:
+    """Filtros SQL del historial con el alcance de sucursales del usuario."""
+    visibles = await alcance_sucursales(session, auth)
+    sucursales = recortar(parametros["codigoSucursal"], visibles)
+    filtros = _filtros_historial(id_tenant, **{**parametros, "codigoSucursal": None}, sucursales=sucursales)
+    return filtros, sucursales
+
+
+@router.get("/alcance", response_model=AlcanceOut)
+async def alcance(
+    session: AsyncSession = Depends(get_db),
+    auth: dict = Depends(require_permiso(PERMISO_VER)),
+    id_tenant: int = Depends(tenant_actual),
+):
+    """Sucursales que el usuario puede consultar en el historial (CU11)."""
+    visibles = await alcance_sucursales(session, auth)
+    stmt = select(Sucursal).where(Sucursal.idTenant == id_tenant).order_by(Sucursal.nombre)
+    if visibles is not None:
+        stmt = stmt.where(Sucursal.codigoSucursal.in_(visibles))
+    sucursales = (await session.execute(stmt)).scalars().all()
+    return AlcanceOut(
+        restringido=visibles is not None,
+        sucursales=[StockSucursalOut(codigoSucursal=s.codigoSucursal, sucursal=s.nombre, disponible=0) for s in sucursales],
+    )
+
+
+@router.get("", response_model=list[DevolucionOut])
+async def listar_devoluciones(
+    parametros: dict = Depends(_parametros_historial),
     limite: int = 500,
     session: AsyncSession = Depends(get_db),
     auth: dict = Depends(get_current_payload),
@@ -713,15 +777,11 @@ async def listar_devoluciones(
 ):
     """CU11 pasos 2-3. Un caller sin `devolucion.ver` (Cliente) ve los suyos."""
     stmt = _consulta_casos().order_by(Devolucion.fecha.desc()).limit(min(max(limite, 1), 2000))
+    idCliente, estado = parametros["idCliente"], parametros["estado"]
     if _tiene(auth, PERMISO_VER):
         await dv.aplicar_vencimientos(session, id_tenant=id_tenant)
-        stmt = stmt.where(
-            *_filtros_historial(
-                id_tenant, idCliente=idCliente, fecha_desde=fecha_desde, fecha_hasta=fecha_hasta,
-                codigoSucursal=codigoSucursal, tipo=tipo, estado=estado, origen=origen, motivo=motivo,
-                idProducto=idProducto, talla=talla,
-            )
-        )
+        filtros, _ = await _filtros_del_actor(session, auth, id_tenant, parametros)
+        stmt = stmt.where(*filtros)
     else:
         propio = await _cliente_del_caller(session, auth)
         if propio is None:
@@ -737,19 +797,20 @@ async def listar_devoluciones(
 
 @router.get("/analisis", response_model=AnalisisOut)
 async def analisis(
-    fecha_desde: date | None = None,
-    fecha_hasta: date | None = None,
-    codigoSucursal: int | None = None,
+    parametros: dict = Depends(_parametros_historial),
     session: AsyncSession = Depends(get_db),
-    _: dict = Depends(require_permiso(PERMISO_VER)),
+    auth: dict = Depends(require_permiso(PERMISO_VER)),
     id_tenant: int = Depends(tenant_actual),
 ):
     """CU11 paso 4: tasa de devolucion por producto y talla, motivos mas
-    frecuentes, monto reembolsado, notas emitidas y clientes frecuentes."""
-    filtros = _filtros_historial(
-        id_tenant, idCliente=None, fecha_desde=fecha_desde, fecha_hasta=fecha_hasta, codigoSucursal=codigoSucursal,
-        tipo=None, estado=None, origen=None, motivo=None, idProducto=None, talla=None,
-    )
+    frecuentes, monto reembolsado, notas emitidas y clientes frecuentes, con
+    los mismos filtros que la lista."""
+    return await _calcular_analisis(session, auth, id_tenant, parametros)
+
+
+async def _calcular_analisis(session: AsyncSession, auth: dict, id_tenant: int, parametros: dict) -> AnalisisOut:
+    fecha_desde, fecha_hasta = parametros["fecha_desde"], parametros["fecha_hasta"]
+    filtros, sucursales = await _filtros_del_actor(session, auth, id_tenant, parametros)
     validos = Devolucion.estado.not_in(("Cancelada", "Anulada"))
     resumen = (
         await session.execute(
@@ -762,11 +823,11 @@ async def analisis(
             ).where(*filtros)
         )
     ).one()
-    nota_filtros = [NotaCredito.idTenant == id_tenant]
-    if fecha_desde is not None:
-        nota_filtros.append(NotaCredito.fechaEmision >= inicio_del_dia(fecha_desde))
-    if fecha_hasta is not None:
-        nota_filtros.append(NotaCredito.fechaEmision <= fin_del_dia(fecha_hasta))
+    # Notas emitidas por los casos filtrados (misma sucursal, periodo, tipo...).
+    nota_filtros = [
+        NotaCredito.idTenant == id_tenant,
+        NotaCredito.idDevolucion.in_(select(Devolucion.idDevolucion).where(*filtros)),
+    ]
     notas = (await session.execute(select(func.count(), func.coalesce(func.sum(NotaCredito.monto), 0)).where(*nota_filtros))).one()
 
     # Vendidas en el mismo periodo, para la tasa.
@@ -775,6 +836,20 @@ async def analisis(
         venta_filtros.append(Venta.fecha >= inicio_del_dia(fecha_desde))
     if fecha_hasta is not None:
         venta_filtros.append(Venta.fecha <= fin_del_dia(fecha_hasta))
+    if sucursales is not None:
+        # La tasa de una sucursal se calcula contra lo que vendio ESA
+        # sucursal (la venta descuenta stock de su inventario).
+        venta_filtros.append(
+            select(Movimiento.idMov)
+            .join(Inventario, Inventario.idInv == Movimiento.idInv)
+            .where(
+                Movimiento.tipo == "venta",
+                Movimiento.motivo == func.concat("Venta ", DetalleVenta.idVenta),
+                Inventario.idProducto == DetalleVenta.idProducto,
+                Inventario.codigoSucursal.in_(sucursales or {-1}),
+            )
+            .exists()
+        )
     vendidas_prod = dict(
         (
             await session.execute(
@@ -853,41 +928,126 @@ async def analisis(
     )
 
 
-async def _filas_export(session: AsyncSession, id_tenant: int, **filtros) -> list[DevolucionOut]:
-    stmt = _consulta_casos().where(*_filtros_historial(id_tenant, **filtros)).order_by(Devolucion.fecha.desc())
+async def _filas_export(session: AsyncSession, auth: dict, id_tenant: int, parametros: dict) -> list[DevolucionOut]:
+    filtros, _ = await _filtros_del_actor(session, auth, id_tenant, parametros)
+    stmt = _consulta_casos().where(*filtros).order_by(Devolucion.fecha.desc())
     return [_fila_a_out(f) for f in (await session.execute(stmt)).all()]
 
 
 ENCABEZADOS_EXPORT = ["Codigo", "Fecha", "Cliente", "Venta", "Prenda", "Talla", "Tipo", "Motivo", "Inspeccion",
-                      "Estado", "Reembolsado", "Diferencia", "Nota", "Responsable"]
+                      "Estado", "Reembolsado", "Diferencia", "Nota", "Responsable", "Sucursal"]
+COLUMNAS_MONTO = (10, 11)
+
+
+def _valores_export(d: DevolucionOut) -> list:
+    """Una fila del historial con sus tipos reales (fecha, numeros) para Excel."""
+    return [
+        d.codigo or "", d.fecha.astimezone(HORA_BOLIVIA).replace(tzinfo=None), d.cliente_nombre or "",
+        d.idVenta, d.producto_nombre or "", d.tallaOriginal or "", dv.ETIQUETAS.get(d.tipo, d.tipo),
+        dv.MOTIVOS.get(d.motivoCategoria or "", ""), d.condicion or "", d.estado, round(d.montoDevuelto, 2),
+        round(d.diferencia, 2), d.nota_codigo or "", d.usuario_nombre or "", d.sucursal_nombre or "",
+    ]
 
 
 def _fila_export(d: DevolucionOut) -> list[str]:
-    return [
-        d.codigo or "", d.fecha.astimezone(HORA_BOLIVIA).strftime("%d/%m/%Y %H:%M"), d.cliente_nombre or "",
-        str(d.idVenta), d.producto_nombre or "", d.tallaOriginal or "", dv.ETIQUETAS.get(d.tipo, d.tipo),
-        dv.MOTIVOS.get(d.motivoCategoria or "", ""), d.condicion or "", d.estado, f"{d.montoDevuelto:.2f}",
-        f"{d.diferencia:.2f}", d.nota_codigo or "", d.usuario_nombre or "",
-    ]
+    valores = _valores_export(d)
+    valores[1] = valores[1].strftime("%d/%m/%Y %H:%M")
+    for i in COLUMNAS_MONTO:
+        valores[i] = f"{valores[i]:.2f}"
+    return [str(v) for v in valores]
+
+
+async def _registrar_exportacion(session: AsyncSession, request: Request, auth: dict, formato: str, filas: int) -> None:
+    """CU28 paso 4: la exportacion queda en la bitacora."""
+    await registrar_bitacora(
+        session, f"Exportacion del historial de devoluciones ({formato}, {filas} registros)", int(auth["sub"]), _ip(request)
+    )
+    await session.commit()
+
+
+def _texto_filtros(parametros: dict, sucursales: list[str]) -> list[tuple[str, str]]:
+    etiquetas = {
+        "fecha_desde": "Desde", "fecha_hasta": "Hasta", "tipo": "Tipo", "estado": "Estado", "origen": "Origen",
+        "motivo": "Motivo", "idProducto": "Producto", "talla": "Talla", "cliente": "Cliente", "idCliente": "Cliente (id)",
+    }
+    salida = [("Sucursales", ", ".join(sucursales) if sucursales else "Todas")]
+    for clave, nombre in etiquetas.items():
+        valor = parametros.get(clave)
+        if valor not in (None, ""):
+            if clave == "tipo":
+                valor = dv.ETIQUETAS.get(valor, valor)
+            elif clave == "motivo":
+                valor = dv.MOTIVOS.get(valor, valor)
+            salida.append((nombre, str(valor)))
+    return salida
+
+
+@router.get("/export.xlsx")
+async def exportar_excel(
+    request: Request,
+    parametros: dict = Depends(_parametros_historial),
+    session: AsyncSession = Depends(get_db),
+    auth: dict = Depends(require_permiso(PERMISO_VER)),
+    id_tenant: int = Depends(tenant_actual),
+):
+    """CU11 paso 6: Excel con el historial filtrado, los indicadores y una
+    hoja de datos sin formato."""
+    filas = await _filas_export(session, auth, id_tenant, parametros)
+    if not filas:
+        raise HTTPException(status_code=404, detail="No se encontraron devoluciones para exportar")
+    resumen = await _calcular_analisis(session, auth, id_tenant, parametros)
+    _, sucursales = await _filtros_del_actor(session, auth, id_tenant, parametros)
+    nombres = []
+    if sucursales is not None:
+        nombres = list(
+            (await session.execute(select(Sucursal.nombre).where(Sucursal.codigoSucursal.in_(sucursales or {-1})))).scalars()
+        )
+    tenant = await session.get(Tenant, id_tenant)
+    usuario = await session.get(Usuario, int(auth["sub"]))
+    contenido = libro_excel(
+        titulo="Historial y analisis de devoluciones y cambios",
+        empresa=tenant.nombre if tenant else "",
+        usuario=usuario.nombre if usuario else "",
+        filtros=_texto_filtros(parametros, nombres),
+        encabezados=ENCABEZADOS_EXPORT,
+        filas=[_valores_export(d) for d in filas],
+        columnas_monto=COLUMNAS_MONTO,
+        indicadores=[
+            ("Resumen", ["Indicador", "Valor"], [
+                ["Casos", resumen.casos], ["Prendas devueltas", resumen.unidadesDevueltas],
+                ["Cambios", resumen.cambios], ["Rechazados", resumen.rechazadas],
+                ["Monto reembolsado (Bs)", resumen.montoReembolsado], ["Notas de credito emitidas", resumen.notasEmitidas],
+                ["Monto en notas (Bs)", resumen.montoNotas],
+            ]),
+            ("Tasa de devolucion por producto", ["Producto", "Vendidas", "Devueltas", "Tasa %"],
+             [[t.clave, t.vendidas, t.devueltas, t.tasa] for t in resumen.porProducto]),
+            ("Tasa de devolucion por talla", ["Talla", "Vendidas", "Devueltas", "Tasa %"],
+             [[t.clave, t.vendidas, t.devueltas, t.tasa] for t in resumen.porTalla]),
+            ("Motivos mas frecuentes", ["Motivo", "Casos"], [[m.detalle, m.casos] for m in resumen.motivos]),
+            ("Clientes con devoluciones frecuentes", ["Cliente", "Casos", "Monto (Bs)"],
+             [[c.detalle, c.casos, c.monto] for c in resumen.clientesFrecuentes]),
+        ],
+        generado=datetime.now(HORA_BOLIVIA).replace(tzinfo=None),
+    )
+    await _registrar_exportacion(session, request, auth, "Excel", len(filas))
+    return Response(
+        content=contenido,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="devoluciones.xlsx"'},
+    )
 
 
 @router.get("/export.csv")
 async def exportar_csv(
-    fecha_desde: date | None = None,
-    fecha_hasta: date | None = None,
-    codigoSucursal: int | None = None,
-    tipo: str | None = None,
-    estado: str | None = None,
-    motivo: str | None = None,
+    request: Request,
+    parametros: dict = Depends(_parametros_historial),
     session: AsyncSession = Depends(get_db),
-    _: dict = Depends(require_permiso(PERMISO_VER)),
+    auth: dict = Depends(require_permiso(PERMISO_VER)),
     id_tenant: int = Depends(tenant_actual),
 ):
-    """CU11 paso 6: exportacion para Excel (CSV con separador ;)."""
-    filas = await _filas_export(
-        session, id_tenant, idCliente=None, fecha_desde=fecha_desde, fecha_hasta=fecha_hasta,
-        codigoSucursal=codigoSucursal, tipo=tipo, estado=estado, origen=None, motivo=motivo, idProducto=None, talla=None,
-    )
+    """Historial en CSV (separador ;), para quien lo prefiera al Excel."""
+    filas = await _filas_export(session, auth, id_tenant, parametros)
+    await _registrar_exportacion(session, request, auth, "CSV", len(filas))
     buffer = io.StringIO()
     escritor = csv.writer(buffer, delimiter=";")
     escritor.writerow(ENCABEZADOS_EXPORT)
@@ -902,23 +1062,19 @@ async def exportar_csv(
 
 @router.get("/export.pdf")
 async def exportar_pdf(
-    fecha_desde: date | None = None,
-    fecha_hasta: date | None = None,
-    codigoSucursal: int | None = None,
-    tipo: str | None = None,
-    estado: str | None = None,
-    motivo: str | None = None,
+    request: Request,
+    parametros: dict = Depends(_parametros_historial),
     session: AsyncSession = Depends(get_db),
-    _: dict = Depends(require_permiso(PERMISO_VER)),
+    auth: dict = Depends(require_permiso(PERMISO_VER)),
     id_tenant: int = Depends(tenant_actual),
 ):
     from app.routers.reports import _build_pdf_bytes
 
-    filas = await _filas_export(
-        session, id_tenant, idCliente=None, fecha_desde=fecha_desde, fecha_hasta=fecha_hasta,
-        codigoSucursal=codigoSucursal, tipo=tipo, estado=estado, origen=None, motivo=motivo, idProducto=None, talla=None,
-    )
-    periodo = f"Del {fecha_desde or 'inicio'} al {fecha_hasta or 'hoy'}"
+    filas = await _filas_export(session, auth, id_tenant, parametros)
+    if not filas:
+        raise HTTPException(status_code=404, detail="No se encontraron devoluciones para exportar")
+    await _registrar_exportacion(session, request, auth, "PDF", len(filas))
+    periodo = f"Del {parametros['fecha_desde'] or 'inicio'} al {parametros['fecha_hasta'] or 'hoy'}"
     columnas = [0, 1, 2, 4, 5, 6, 9, 10, 12]
     contenido = _build_pdf_bytes(
         "Historial de devoluciones y cambios",
@@ -1200,7 +1356,8 @@ async def solicitar_en_linea(
 
 async def _puede_ver(session: AsyncSession, caso: Devolucion, auth: dict, id_tenant: int) -> bool:
     if _tiene(auth, PERMISO_VER) or _tiene(auth, PERMISO_REGISTRAR):
-        return caso.idTenant == id_tenant
+        visibles = await alcance_sucursales(session, auth)
+        return caso.idTenant == id_tenant and (visibles is None or caso.codigoSucursal in visibles)
     propio = await _cliente_del_caller(session, auth)
     return propio is not None and caso.idCliente == propio.idCliente
 

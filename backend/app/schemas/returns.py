@@ -304,6 +304,13 @@ class StockSucursalOut(BaseModel):
     disponible: int
 
 
+class AlcanceOut(BaseModel):
+    """Sucursales que el usuario puede consultar (CU11 alternativo 2)."""
+
+    restringido: bool
+    sucursales: list[StockSucursalOut]
+
+
 class NoVendibleOut(BaseModel):
     idNoVendible: int
     idProducto: int

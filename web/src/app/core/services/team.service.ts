@@ -63,6 +63,16 @@ export class TeamService {
     });
   }
 
+  /** CU24: sucursales en las que trabaja el usuario (vacío = toda la empresa). */
+  asignarSucursales(idUser: number, sucursales: number[]): Promise<TeamMember> {
+    return firstValueFrom(
+      this.http.put<TeamMember>(`${API_URL}/api/team/${idUser}/sucursales`, { sucursales })
+    ).then((member) => {
+      this.teamMembersSignal.update((list) => list.map((m) => (m.idUser === idUser ? member : m)));
+      return member;
+    });
+  }
+
   togglePermission(userId: string, permission: string): Promise<boolean> {
     this.notificationService.warning('No disponible', 'La gestión de permisos estará disponible en Fase 2.');
     return Promise.resolve(false);
