@@ -176,9 +176,22 @@ docker exec -i ropaDocker \
   -v ON_ERROR_STOP=1 \
   -f /dev/stdin \
   < database/migrations/022_devoluciones_completas.sql
+
+# 20) Migracion 023 (suscripcion, sincronizacion y variantes)
+#     Quita el plan Free Lite (sus empresas pasan a Basico) y la columna
+#     soloLocal; crea "suscripcion" (inicio, vencimiento y estado por empresa),
+#     agrega a Venta y Reserva el UUID de la operacion y su estado de
+#     sincronizacion, crea "registro_sincronizacion" (log), "modelo_producto"
+#     (cada producto es una variante talla/color de un modelo) y
+#     "detalle_reserva". Re-ejecutable.
+docker exec -i ropaDocker \
+  psql -U yimysito -d ropaDB \
+  -v ON_ERROR_STOP=1 \
+  -f /dev/stdin \
+  < database/migrations/023_suscripcion_sincronizacion_variantes.sql
 ```
 
-> **Las migraciones 014, 015 y 022 no son opcionales.** Los modelos SQLAlchemy ya
+> **Las migraciones 014, 015, 022 y 023 no son opcionales.** Los modelos SQLAlchemy ya
 > mapean `Usuario.idTenant`, `producto.idTenant`, etc.; si la base no tiene
 > esas columnas, cualquier consulta sobre esas tablas falla con
 > `UndefinedColumnError`. Mismo criterio que la migracion 013.

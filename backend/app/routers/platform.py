@@ -29,11 +29,13 @@ from app.schemas.tenancy import (
     PlanResumenOut,
     RenombrarEmpresaIn,
     ResumenPlataformaOut,
+    SuscripcionOut,
     TenantOut,
     UsoTenantOut,
 )
 from app.security import hash_password, require_permiso
 from app.services.bitacora import registrar_bitacora
+from app.services.suscripciones import abrir_suscripcion, reflejar_estado_empresa, suscripcion_vigente
 from app.services.tenancy import excesos_para_plan, tenant_actual, uso_actual
 
 router = APIRouter(prefix="/api/platform", tags=["platform"])
@@ -57,10 +59,12 @@ async def _correo_admin(session: AsyncSession, id_tenant: int) -> str | None:
 
 
 async def _empresa_out(session: AsyncSession, tenant: Tenant, plan: Plan) -> EmpresaOut:
+    sus = await suscripcion_vigente(session, tenant.idTenant)
     return EmpresaOut(
         tenant=TenantOut.model_validate(tenant),
         plan=PlanOut.model_validate(plan),
         uso=UsoTenantOut(**await uso_actual(session, tenant.idTenant)),
+        suscripcion=SuscripcionOut.model_validate(sus) if sus else None,
         adminCorreo=await _correo_admin(session, tenant.idTenant),
     )
 
@@ -147,6 +151,7 @@ async def crear_empresa(
     tenant = Tenant(nombre=payload.nombre, slug=payload.slug, estado="Activo", idPlan=plan.idPlan)
     session.add(tenant)
     await session.flush()
+    await abrir_suscripcion(session, tenant.idTenant, plan)
 
     session.add(
         Usuario(
@@ -288,6 +293,8 @@ async def cambiar_plan_empresa(
             ),
         )
 
+    if tenant.idPlan != nuevo.idPlan:
+        await abrir_suscripcion(session, id_tenant, nuevo, suspendida=tenant.estado != "Activo")
     tenant.idPlan = nuevo.idPlan
     await registrar_bitacora(
         session,
@@ -319,6 +326,7 @@ async def cambiar_estado_empresa(
 
     anterior = tenant.estado
     tenant.estado = payload.estado
+    await reflejar_estado_empresa(session, id_tenant, payload.estado)
     await registrar_bitacora(
         session,
         f"Plataforma: estado de '{tenant.nombre}' {anterior} -> {payload.estado}",

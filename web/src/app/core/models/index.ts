@@ -308,6 +308,10 @@ export interface VentaIn {
   idMetPago: number;
   codigoSucursal?: number;
   items: { idProducto: number; cantidad: number }[];
+  /** Venta hecha sin conexión: UUID que le asigna el dispositivo (idempotencia). */
+  uuidOperacion?: string;
+  /** Hora real en que se hizo la venta en el dispositivo. */
+  fechaOperacion?: string;
 }
 
 // Línea de ticket en memoria del cliente: nunca se envía tal cual al
@@ -503,11 +507,11 @@ export interface RecomendacionOut {
 
 /** Flags booleanos del plan. Son los mismos nombres que usa el backend en
  *  `services/tenancy.py::FLAGS_PLAN`, para poder pedirlos por clave. */
-export type FeaturePlan = 'permiteIA' | 'permiteOffline' | 'permiteMultiSucursal' | 'soloLocal';
+export type FeaturePlan = 'permiteIA' | 'permiteOffline' | 'permiteMultiSucursal';
 
 export interface PlanOut {
   idPlan: number;
-  codigo: 'free_lite' | 'basico' | 'intermedio' | 'avanzado' | string;
+  codigo: 'basico' | 'intermedio' | 'avanzado' | string;
   nombre: string;
   descripcion: string | null;
   precioMensual: number;
@@ -518,7 +522,6 @@ export interface PlanOut {
   permiteIA: boolean;
   permiteOffline: boolean;
   permiteMultiSucursal: boolean;
-  soloLocal: boolean;
   orden: number;
 }
 
@@ -528,6 +531,16 @@ export interface TenantOut {
   slug: string;
   estado: string;
   fechaAlta: string;
+}
+
+/** Suscripción vigente de la empresa (migración 023). */
+export interface SuscripcionOut {
+  idSuscripcion: number;
+  idPlan: number;
+  fechaInicio: string;
+  fechaVencimiento: string;
+  estado: 'Activa' | 'Suspendida' | 'Vencida' | 'Finalizada' | string;
+  precioMensual: number;
 }
 
 export interface UsoTenantOut {
@@ -540,6 +553,7 @@ export interface TenantMeOut {
   tenant: TenantOut;
   plan: PlanOut;
   uso: UsoTenantOut;
+  suscripcion?: SuscripcionOut | null;
 }
 
 // Consola de plataforma (superadministrador — migración 016)
@@ -549,6 +563,7 @@ export interface EmpresaOut {
   tenant: TenantOut;
   plan: PlanOut;
   uso: UsoTenantOut;
+  suscripcion?: SuscripcionOut | null;
   adminCorreo: string | null;
 }
 

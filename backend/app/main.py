@@ -32,6 +32,7 @@ from app.routers import (
     sales,
     seasons,
     suppliers,
+    sync,
     team,
     tenants,
 )
@@ -129,5 +130,6 @@ for router in (
     credit_notes.router,
     platform.router,
     backups.router,
+    sync.router,
 ):
     app.include_router(router)

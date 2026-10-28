@@ -1,4 +1,4 @@
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,6 +19,7 @@ from app.services.disponibilidad import resolver_inventario
 from app.services.recomendaciones_gemini import generar_recomendaciones_post_venta
 from app.services.metodo_pago_guard import exigir_metodo_pago_consumible
 from app.services.bitacora import registrar_bitacora
+from app.services import sincronizacion as sync
 from app.services.tenancy import tenant_actual
 
 router = APIRouter(prefix="/api/sales", tags=["sales"])
@@ -74,6 +75,11 @@ async def _serialize_venta(v: Venta, session: AsyncSession, detalles: list[Detal
         idCliente=v.idCliente,
         idMetPago=v.idMetPago,
         detalles=[await _serialize_detalle(d, session) for d in detalles],
+        uuidOperacion=str(v.uuidOperacion) if v.uuidOperacion else None,
+        origenRegistro=v.origenRegistro,
+        estadoSincronizacion=v.estadoSincronizacion,
+        fechaOperacion=v.fechaOperacion,
+        fechaSincronizacion=v.fechaSincronizacion,
     )
 
 
@@ -135,10 +141,57 @@ async def get_sale(idVenta: int, session: AsyncSession = Depends(get_db),
 async def create_sale(
     payload: VentaIn,
     request: Request,
+    response: Response,
     background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_db),
     auth: dict = Depends(require_permiso("venta.crear")),
 ):
+    if payload.uuidOperacion is None:
+        return await _crear_venta(payload, request, background_tasks, session, auth)
+
+    # Venta que llega de la cola sin conexion (CU17): idempotente por UUID.
+    id_usuario = int(auth["sub"])
+    existente = await session.scalar(select(Venta).where(Venta.uuidOperacion == str(payload.uuidOperacion)))
+    if existente is not None:
+        propia = (
+            existente.idCliente == getattr(await _cliente_del_caller(session, auth), "idCliente", None)
+            if "venta.ver" not in auth.get("permisos", [])
+            else await venta_es_del_tenant(session, existente.idVenta, tenant_actual(auth))
+        )
+        if not propia:
+            raise HTTPException(status_code=409, detail="Ese identificador de operacion ya fue usado")
+        await sync.registrar(
+            session, uuid_operacion=payload.uuidOperacion, tipo="venta", resultado="Duplicada",
+            detalle=f"Ya estaba registrada como venta {existente.idVenta}", id_referencia=existente.idVenta,
+            fecha_operacion=payload.fechaOperacion, request=request, id_usuario=id_usuario, id_tenant=tenant_actual(auth),
+        )
+        await session.commit()
+        response.status_code = 200
+        detalles = (
+            await session.execute(select(DetalleVenta).where(DetalleVenta.idVenta == existente.idVenta))
+        ).scalars().all()
+        return await _serialize_venta(existente, session, detalles)
+    try:
+        return await _crear_venta(payload, request, background_tasks, session, auth)
+    except HTTPException as exc:
+        # Rechazo definitivo de la operacion: queda en el log para revisarla.
+        await session.rollback()
+        await sync.registrar(
+            session, uuid_operacion=payload.uuidOperacion, tipo="venta", resultado="Rechazada",
+            detalle=str(exc.detail), fecha_operacion=payload.fechaOperacion, request=request,
+            id_usuario=id_usuario, id_tenant=tenant_actual(auth),
+        )
+        await session.commit()
+        raise
+
+
+async def _crear_venta(
+    payload: VentaIn,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    session: AsyncSession,
+    auth: dict,
+) -> VentaOut:
     if not payload.items:
         raise HTTPException(status_code=400, detail="Debe enviar al menos un item")
 
@@ -182,7 +235,12 @@ async def create_sale(
         id_tenant_venta = sucursal.idTenant
 
     total = 0.0
-    venta = Venta(total=0.0, idCliente=id_cliente, idMetPago=payload.idMetPago)
+    venta = Venta(
+        total=0.0,
+        idCliente=id_cliente,
+        idMetPago=payload.idMetPago,
+        **sync.campos_sincronizacion(payload.uuidOperacion, payload.fechaOperacion),
+    )
     session.add(venta)
     await session.flush()
 
@@ -281,6 +339,13 @@ async def create_sale(
         )
 
     venta.total = total
+    if payload.uuidOperacion is not None:
+        await sync.registrar(
+            session, uuid_operacion=payload.uuidOperacion, tipo="venta", resultado="Aplicada",
+            detalle=f"Venta {venta.idVenta} registrada sin conexion", id_referencia=venta.idVenta,
+            fecha_operacion=payload.fechaOperacion, request=request, id_usuario=int(auth["sub"]),
+            id_tenant=id_tenant_venta,
+        )
     await registrar_bitacora(session, f"Venta {venta.idVenta} creada", int(auth["sub"]), request.client.host if request.client else "0.0.0.0")
     await session.commit()
     await session.refresh(venta)

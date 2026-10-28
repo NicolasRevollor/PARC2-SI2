@@ -15,12 +15,14 @@ from app.models import Plan, Tenant
 from app.schemas.tenancy import (
     CambiarPlanIn,
     PlanOut,
+    SuscripcionOut,
     TenantMeOut,
     TenantOut,
     UsoTenantOut,
 )
 from app.security import get_current_payload, require_permiso
 from app.services.bitacora import registrar_bitacora
+from app.services.suscripciones import abrir_suscripcion, suscripcion_vigente
 from app.services.tenancy import cargar_contexto, excesos_para_plan, tenant_actual, uso_actual
 
 router = APIRouter(prefix="/api", tags=["tenant"])
@@ -44,11 +46,15 @@ async def mi_tenant(
     _=Depends(require_permiso("tenant.ver")),
 ):
     ctx = await cargar_contexto(session, id_tenant)
-    return TenantMeOut(
+    sus = await suscripcion_vigente(session, id_tenant)
+    salida = TenantMeOut(
         tenant=TenantOut.model_validate(ctx.tenant),
         plan=PlanOut.model_validate(ctx.plan),
         uso=UsoTenantOut(**await uso_actual(session, id_tenant)),
+        suscripcion=SuscripcionOut.model_validate(sus) if sus else None,
     )
+    await session.commit()  # persiste una renovacion automatica, si la hubo
+    return salida
 
 
 @router.patch("/tenant/plan", response_model=TenantMeOut)
@@ -88,6 +94,8 @@ async def cambiar_plan(
 
     anterior = tenant.idPlan
     tenant.idPlan = nuevo.idPlan
+    if anterior != nuevo.idPlan:
+        await abrir_suscripcion(session, id_tenant, nuevo)
     await registrar_bitacora(
         session,
         f"Cambio de plan del tenant {id_tenant}: {anterior} -> {nuevo.idPlan}",
@@ -97,8 +105,10 @@ async def cambiar_plan(
     await session.commit()
 
     ctx = await cargar_contexto(session, id_tenant)
+    sus = await suscripcion_vigente(session, id_tenant)
     return TenantMeOut(
         tenant=TenantOut.model_validate(ctx.tenant),
         plan=PlanOut.model_validate(ctx.plan),
         uso=UsoTenantOut(**uso),
+        suscripcion=SuscripcionOut.model_validate(sus) if sus else None,
     )

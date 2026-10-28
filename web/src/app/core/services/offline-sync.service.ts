@@ -24,6 +24,19 @@ export interface VentaEfectivoOffline {
 const CLAVE_ULTIMA_SYNC = 'ultimaSincronizacion';
 
 /**
+ * UUID de la operación y hora real en el dispositivo (RF05/RNF05): si la
+ * venta se reenvía después de que el servidor ya la aplicó (la respuesta se
+ * perdió), el servidor la reconoce por el UUID y no la duplica.
+ */
+function conIdentificador(venta: VentaIn): VentaIn {
+  return {
+    ...venta,
+    uuidOperacion: venta.uuidOperacion ?? crypto.randomUUID(),
+    fechaOperacion: venta.fechaOperacion ?? new Date().toISOString(),
+  };
+}
+
+/**
  * Modo sin conexión (CU30): snapshot local + cola de operaciones.
  *
  * Reparto de responsabilidades con el service worker: el SW cachea GETs
@@ -162,7 +175,7 @@ export class OfflineSyncService {
       );
       return false;
     }
-    await this.localDb.encolar('venta', payload);
+    await this.localDb.encolar('venta', conIdentificador(payload));
     await this.refrescarPendientes();
     this.notificationService.warning(
       'Venta guardada sin conexión',
@@ -184,7 +197,7 @@ export class OfflineSyncService {
       );
       return false;
     }
-    await this.localDb.encolar('venta_efectivo', { monto, venta } satisfies VentaEfectivoOffline);
+    await this.localDb.encolar('venta_efectivo', { monto, venta: conIdentificador(venta) } satisfies VentaEfectivoOffline);
     await this.refrescarPendientes();
     this.notificationService.warning(
       'Venta guardada sin conexion',

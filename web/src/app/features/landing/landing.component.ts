@@ -318,7 +318,7 @@ export interface BoutiqueHouse {
                 SUMÁ TU TIENDA
               </span>
               <span class="text-xs text-[#ffb2ba] uppercase tracking-wider font-semibold">
-                Planes desde Free Lite (gratis)
+                Planes desde Bs 240 / mes
               </span>
             </div>
             <h3 class="font-headline-md text-2xl text-white mb-2">
@@ -683,7 +683,7 @@ export interface BoutiqueHouse {
           Planes para Vender con YouShop
         </h2>
         <p class="font-body-md text-sm text-[#a48b8c] mt-3 font-light">
-          Empezá gratis con Free Lite (1 sucursal) y subí de plan cuando abras más tiendas.
+          Empezá con Básico (2 sucursales) y subí de plan cuando abras más tiendas.
         </p>
       </div>
 

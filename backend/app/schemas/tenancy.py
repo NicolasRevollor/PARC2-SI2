@@ -21,7 +21,6 @@ class PlanOut(BaseModel):
     permiteIA: bool
     permiteOffline: bool
     permiteMultiSucursal: bool
-    soloLocal: bool
     orden: int
 
 
@@ -33,6 +32,19 @@ class TenantOut(BaseModel):
     slug: str
     estado: str
     fechaAlta: datetime
+
+
+class SuscripcionOut(BaseModel):
+    """Suscripcion vigente de la empresa (migracion 023)."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    idSuscripcion: int
+    idPlan: int
+    fechaInicio: datetime
+    fechaVencimiento: datetime
+    estado: str
+    precioMensual: float
 
 
 class UsoTenantOut(BaseModel):
@@ -47,6 +59,7 @@ class TenantMeOut(BaseModel):
     tenant: TenantOut
     plan: PlanOut
     uso: UsoTenantOut
+    suscripcion: SuscripcionOut | None = None
 
 
 class CambiarPlanIn(BaseModel):
@@ -64,6 +77,7 @@ class EmpresaOut(BaseModel):
     tenant: TenantOut
     plan: PlanOut
     uso: UsoTenantOut
+    suscripcion: SuscripcionOut | None = None
     # Correo de su administrador principal (el primero dado de alta), para
     # que el operador sepa a quien contactar.
     adminCorreo: str | None = None

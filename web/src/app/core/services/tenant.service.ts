@@ -31,6 +31,7 @@ export class TenantService {
   readonly plan = computed(() => this.contextoSignal()?.plan ?? null);
   readonly tenant = computed(() => this.contextoSignal()?.tenant ?? null);
   readonly uso = computed(() => this.contextoSignal()?.uso ?? null);
+  readonly suscripcion = computed(() => this.contextoSignal()?.suscripcion ?? null);
 
   constructor(
     private http: HttpClient,

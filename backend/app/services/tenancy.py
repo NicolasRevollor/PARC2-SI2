@@ -36,7 +36,7 @@ RECURSOS_CON_CUPO = {
 }
 
 # Flags booleanos del plan que habilitan funcionalidades completas.
-FLAGS_PLAN = ("permiteIA", "permiteOffline", "permiteMultiSucursal", "soloLocal")
+FLAGS_PLAN = ("permiteIA", "permiteOffline", "permiteMultiSucursal")
 
 
 @dataclass(frozen=True)

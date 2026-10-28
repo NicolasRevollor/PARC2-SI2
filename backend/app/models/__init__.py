@@ -15,8 +15,8 @@ from sqlalchemy import (
     Time,
     UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import INET, ARRAY, JSONB
-from sqlalchemy import TIMESTAMP
+from sqlalchemy.dialects.postgresql import INET, ARRAY, JSONB, UUID
+from sqlalchemy import TIMESTAMP, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -36,8 +36,8 @@ TENANT_POR_DEFECTO = 1
 
 
 class Plan(Base):
-    """Catalogo de planes de suscripcion (Free Lite / Basico / Intermedio /
-    Avanzado). Un limite en -1 significa ILIMITADO (ver services/tenancy.py)."""
+    """Catalogo de planes de suscripcion (Basico / Intermedio / Avanzado).
+    Un limite en -1 significa ILIMITADO (ver services/tenancy.py)."""
 
     __tablename__ = "plan"
 
@@ -52,7 +52,6 @@ class Plan(Base):
     permiteIA: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     permiteOffline: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     permiteMultiSucursal: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    soloLocal: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     orden: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
 
@@ -67,6 +66,24 @@ class Tenant(Base):
     idPlan: Mapped[int] = mapped_column(ForeignKey("plan.idPlan", onupdate="CASCADE"), nullable=False)
 
     plan: Mapped["Plan"] = relationship()
+
+
+class Suscripcion(Base):
+    """Contrato de una empresa con un plan (migracion 023): fecha de inicio,
+    vencimiento del periodo en curso y estado. Una sola vigente por empresa;
+    las anteriores quedan como historial de cambios de plan."""
+
+    __tablename__ = "suscripcion"
+
+    idSuscripcion: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    idTenant: Mapped[int] = mapped_column(ForeignKey("tenant.idTenant", ondelete="CASCADE", onupdate="CASCADE"), nullable=False)
+    idPlan: Mapped[int] = mapped_column(ForeignKey("plan.idPlan", onupdate="CASCADE"), nullable=False)
+    fechaInicio: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=_ahora_utc, nullable=False)
+    fechaVencimiento: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+    # Activa | Suspendida | Vencida | Finalizada
+    estado: Mapped[str] = mapped_column(String(12), default="Activa", nullable=False)
+    precioMensual: Mapped[float] = mapped_column(Numeric(10, 2), default=0.00, nullable=False)
+    creadoEn: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=_ahora_utc, nullable=False)
 
 
 class Ciudad(Base):
@@ -188,6 +205,20 @@ class Proveedor(Base):
     productos: Mapped[list["Producto"]] = relationship(back_populates="proveedor")
 
 
+class ModeloProducto(Base):
+    """Modelo de prenda (p. ej. "Polera Oversize"); sus variantes son las filas
+    de producto con cada talla y color (migracion 023)."""
+
+    __tablename__ = "modelo_producto"
+    __table_args__ = (UniqueConstraint("idTenant", "nombre", name="uq_modelo_tenant_nombre"),)
+
+    idModelo: Mapped[int] = mapped_column(Integer, primary_key=True)
+    nombre: Mapped[str] = mapped_column(String(120), nullable=False)
+    tipo: Mapped[str | None] = mapped_column(String(50))
+    descripcion: Mapped[str | None] = mapped_column(Text)
+    idTenant: Mapped[int] = mapped_column(ForeignKey("tenant.idTenant", ondelete="CASCADE", onupdate="CASCADE"), nullable=False)
+
+
 class Producto(Base):
     __tablename__ = "producto"
     __table_args__ = (
@@ -212,6 +243,10 @@ class Producto(Base):
     imagenes_secundarias: Mapped[list[str] | None] = mapped_column(ARRAY(Text), default=lambda: [])
     idTenant: Mapped[int] = mapped_column(
         ForeignKey("tenant.idTenant", onupdate="CASCADE"), default=TENANT_POR_DEFECTO, nullable=False
+    )
+    # Migracion 023: cada producto es una variante (talla + color) de un modelo.
+    idModelo: Mapped[int | None] = mapped_column(
+        ForeignKey("modelo_producto.idModelo", ondelete="SET NULL", onupdate="CASCADE")
     )
 
     proveedor: Mapped["Proveedor"] = relationship(back_populates="productos")
@@ -293,6 +328,8 @@ class Reserva(Base):
         Index("idx_reserva_cliente", "idCliente"),
         Index("idx_reserva_estado_fecha", "estado", "fecha"),
     )
+    # El UUID de la operacion lo genera la base: se lee en el mismo INSERT.
+    __mapper_args__ = {"eager_defaults": True}
 
     codigoReserva: Mapped[int] = mapped_column(Integer, primary_key=True)
     fecha: Mapped[date] = mapped_column(Date, nullable=False)
@@ -307,6 +344,31 @@ class Reserva(Base):
     # migracion 009 y D3 en design.md).
     idMetPago: Mapped[int | None] = mapped_column(ForeignKey("metodo_pago.idMetPago", onupdate="CASCADE"))
     montoDeposito: Mapped[float | None] = mapped_column(Numeric(10, 2))
+    # Migracion 023 — sincronizacion (CU14-CU17, RNF05): el UUID lo genera el
+    # dispositivo al registrar sin conexion; reenviarlo no duplica.
+    uuidOperacion: Mapped[str] = mapped_column(UUID(as_uuid=False), server_default=text("gen_random_uuid()"), nullable=False)
+    origenRegistro: Mapped[str] = mapped_column(String(12), default="en_linea", nullable=False)
+    estadoSincronizacion: Mapped[str] = mapped_column(String(12), default="Sincronizada", nullable=False)
+    fechaOperacion: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+    fechaSincronizacion: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+
+
+class DetalleReserva(Base):
+    """Prendas de una reserva (migracion 023)."""
+
+    __tablename__ = "detalle_reserva"
+    __table_args__ = (
+        CheckConstraint("cantidad > 0", name="chk_detalle_reserva_cantidad"),
+        UniqueConstraint("codigoReserva", "idProducto", name="uq_detalle_reserva_producto"),
+    )
+
+    idDetalleReserva: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    codigoReserva: Mapped[int] = mapped_column(
+        ForeignKey("Reserva.codigoReserva", ondelete="CASCADE", onupdate="CASCADE"), nullable=False
+    )
+    idProducto: Mapped[int] = mapped_column(ForeignKey("producto.idProducto", onupdate="CASCADE"), nullable=False)
+    cantidad: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    precioUnitario: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
 
 
 class Venta(Base):
@@ -316,12 +378,40 @@ class Venta(Base):
         Index("idx_venta_fecha", "fecha"),
         Index("idx_venta_cliente", "idCliente"),
     )
+    __mapper_args__ = {"eager_defaults": True}
 
     idVenta: Mapped[int] = mapped_column(Integer, primary_key=True)
     fecha: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=_ahora_utc, nullable=False)
     total: Mapped[float] = mapped_column(Numeric(12, 2), default=0.00, nullable=False)
     idCliente: Mapped[int] = mapped_column(ForeignKey("Cliente.idCliente", onupdate="CASCADE"), nullable=False)
     idMetPago: Mapped[int] = mapped_column(ForeignKey("metodo_pago.idMetPago", onupdate="CASCADE"), nullable=False)
+    # Migracion 023 — sincronizacion (CU14-CU17, RNF05): el UUID lo genera el
+    # dispositivo al registrar sin conexion; reenviarlo no duplica.
+    uuidOperacion: Mapped[str] = mapped_column(UUID(as_uuid=False), server_default=text("gen_random_uuid()"), nullable=False)
+    origenRegistro: Mapped[str] = mapped_column(String(12), default="en_linea", nullable=False)
+    estadoSincronizacion: Mapped[str] = mapped_column(String(12), default="Sincronizada", nullable=False)
+    fechaOperacion: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+    fechaSincronizacion: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+
+
+class RegistroSincronizacion(Base):
+    """Log de cada operacion recibida de la cola de un dispositivo (RNF10)."""
+
+    __tablename__ = "registro_sincronizacion"
+
+    idRegistro: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    uuidOperacion: Mapped[str] = mapped_column(UUID(as_uuid=False), nullable=False)
+    # venta | reserva | devolucion
+    tipoOperacion: Mapped[str] = mapped_column(String(12), nullable=False)
+    # Aplicada | Duplicada | Rechazada
+    resultado: Mapped[str] = mapped_column(String(12), nullable=False)
+    detalle: Mapped[str | None] = mapped_column(String(255))
+    idReferencia: Mapped[int | None] = mapped_column(Integer)
+    fechaOperacion: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+    fechaRecepcion: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=_ahora_utc, nullable=False)
+    dispositivo: Mapped[str | None] = mapped_column(String(120))
+    idUsuario: Mapped[int | None] = mapped_column(ForeignKey("Usuario.idUser", ondelete="SET NULL", onupdate="CASCADE"))
+    idTenant: Mapped[int | None] = mapped_column(ForeignKey("tenant.idTenant", ondelete="CASCADE", onupdate="CASCADE"))
 
 
 class DetalleVenta(Base):

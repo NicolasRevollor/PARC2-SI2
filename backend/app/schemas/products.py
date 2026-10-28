@@ -79,6 +79,8 @@ class ProductoOut(BaseModel):
     coleccion_nombre: Optional[str] = None
     imagen_url: Optional[str] = None
     imagenes_secundarias: list[str] = []
+    # Modelo al que pertenece esta variante (migracion 023).
+    idModelo: Optional[int] = None
 
     model_config = ConfigDict(from_attributes=True)
 

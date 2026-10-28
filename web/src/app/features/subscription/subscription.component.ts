@@ -43,6 +43,15 @@ import { PlanOut } from '../../core/models';
             <p class="text-xs text-gray-500 mt-1">Organización: {{ tenantService.tenant()?.nombre || '—' }}</p>
           </div>
 
+          <div *ngIf="tenantService.suscripcion() as s" class="mt-4 pt-4 border-t border-gray-100 space-y-1 text-xs">
+            <p class="flex justify-between"><span class="text-gray-500">Suscripción</span>
+              <span class="font-semibold" [ngClass]="s.estado === 'Activa' ? 'text-emerald-600' : 'text-amber-600'">{{ s.estado }}</span></p>
+            <p class="flex justify-between"><span class="text-gray-500">Inicio</span>
+              <span class="text-gray-700">{{ s.fechaInicio | date: 'dd/MM/yyyy' }}</span></p>
+            <p class="flex justify-between"><span class="text-gray-500">Vence (renovación mensual)</span>
+              <span class="text-gray-700">{{ s.fechaVencimiento | date: 'dd/MM/yyyy' }}</span></p>
+          </div>
+
           <div class="mt-4 pt-4 border-t border-gray-100 space-y-2">
             <div *ngFor="let f of flags()" class="flex items-center gap-2 text-xs">
               <span class="material-symbols-outlined text-[16px]"
@@ -84,7 +93,7 @@ import { PlanOut } from '../../core/models';
           <div>
             <h2 class="text-base font-bold text-gray-900">Operación sin conexión</h2>
             <p class="text-xs text-gray-500">
-              Base de datos local del dispositivo (IndexedDB). El plan Free Lite opera principalmente sobre ella.
+              Base de datos local del dispositivo (IndexedDB): permite seguir vendiendo sin red y sincronizar después.
             </p>
           </div>
           <div class="flex items-center gap-2">
@@ -221,7 +230,6 @@ export class SubscriptionComponent implements OnInit {
       { etiqueta: 'Reportes consolidados con IA', activo: !!plan?.permiteIA },
       { etiqueta: 'Modo sin conexión con base local', activo: !!plan?.permiteOffline },
       { etiqueta: 'Varias sucursales sincronizadas', activo: !!plan?.permiteMultiSucursal },
-      { etiqueta: 'Operación principalmente local (Lite)', activo: !!plan?.soloLocal },
     ];
   });
 

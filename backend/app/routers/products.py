@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.catalogo import error_de_catalogo
 from app.database import get_db
-from app.models import Colecciones, Producto, Proveedor
+from app.models import Colecciones, ModeloProducto, Producto, Proveedor
 from app.schemas.products import (
     ImagenUploadOut,
     PaginatedProductos,
@@ -54,7 +54,24 @@ async def _serialize(producto: Producto, session: AsyncSession) -> ProductoOut:
         coleccion_nombre=coleccion.nombre_coleccion if coleccion else None,
         imagen_url=producto.imagen_url,
         imagenes_secundarias=producto.imagenes_secundarias or [],
+        idModelo=producto.idModelo,
     )
+
+
+async def _modelo_de(session: AsyncSession, producto: Producto) -> int:
+    """Cada producto es una variante (talla + color) del modelo de su tipo de
+    prenda en la empresa; el modelo se crea con la primera variante."""
+    nombre = producto.tipo or producto.nombre
+    modelo = (
+        await session.execute(
+            select(ModeloProducto).where(ModeloProducto.idTenant == producto.idTenant, ModeloProducto.nombre == nombre)
+        )
+    ).scalar_one_or_none()
+    if modelo is None:
+        modelo = ModeloProducto(nombre=nombre, tipo=producto.tipo, idTenant=producto.idTenant)
+        session.add(modelo)
+        await session.flush()
+    return modelo.idModelo
 
 
 def _validar_catalogo(tipo: str | None, color: str | None, talla: str | None) -> None:
@@ -187,6 +204,7 @@ async def create_product(
     await _validar_referencias(session, payload.model_dump(), ctx.tenant.idTenant)
 
     producto = Producto(**payload.model_dump(), idTenant=ctx.tenant.idTenant)
+    producto.idModelo = await _modelo_de(session, producto)
     session.add(producto)
     await auditar(session, actor, f"Producto creado: {producto.nombre} talla {producto.talla}")
     await session.commit()
@@ -220,6 +238,8 @@ async def update_product(
 
     for key, value in data.items():
         setattr(producto, key, value)
+    if "tipo" in data or producto.idModelo is None:
+        producto.idModelo = await _modelo_de(session, producto)
 
     await auditar(session, actor, f"Producto actualizado: {producto.nombre} talla {producto.talla} (#{idProducto})")
     await session.commit()

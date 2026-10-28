@@ -1,12 +1,13 @@
 from datetime import date, time, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models import (
     Cliente,
+    DetalleReserva,
     DetalleVenta,
     Historial,
     Inventario,
@@ -26,6 +27,7 @@ from app.security import get_current_payload, require_permiso
 from app.services.metodo_pago_guard import exigir_metodo_pago_consumible
 from app.services.tenancy import tenant_actual
 from app.services.bitacora import Actor, actor_actual, auditar, registrar_bitacora
+from app.services import sincronizacion as sync
 
 router = APIRouter(prefix="/api/reservations", tags=["reservations"])
 
@@ -66,6 +68,8 @@ async def _serialize_reserva(r: Reserva, session: AsyncSession) -> ReservaOut:
         sucursal_nombre=s.nombre if s else None,
         idMetPago=r.idMetPago,
         montoDeposito=float(r.montoDeposito) if r.montoDeposito is not None else None,
+        uuidOperacion=str(r.uuidOperacion) if r.uuidOperacion else None,
+        origenRegistro=r.origenRegistro,
     )
 
 
@@ -108,10 +112,50 @@ async def list_reservations(
 @router.post("", response_model=ReservaOut, status_code=201)
 async def create_reservation(
     payload: ReservaIn,
+    request: Request,
+    response: Response,
     session: AsyncSession = Depends(get_db),
     actor: Actor = Depends(actor_actual),
     auth: dict = Depends(require_permiso("reserva.crear")),
 ):
+    if payload.uuidOperacion is None:
+        return await _crear_reserva(payload, session, actor, auth, request)
+
+    # Reserva que llega de la cola sin conexion (CU15/CU17): idempotente por UUID.
+    id_usuario = int(auth["sub"])
+    existente = await session.scalar(select(Reserva).where(Reserva.uuidOperacion == str(payload.uuidOperacion)))
+    if existente is not None:
+        if "reserva.gestionar" in auth.get("permisos", []):
+            sucursal = await session.get(Sucursal, existente.codigoSucursal)
+            propia = sucursal is not None and sucursal.idTenant == tenant_actual(auth)
+        else:
+            propia = existente.idCliente == getattr(await _cliente_del_caller(session, auth), "idCliente", None)
+        if not propia:
+            raise HTTPException(status_code=409, detail="Ese identificador de operacion ya fue usado")
+        await sync.registrar(
+            session, uuid_operacion=payload.uuidOperacion, tipo="reserva", resultado="Duplicada",
+            detalle=f"Ya estaba registrada como reserva {existente.codigoReserva}", id_referencia=existente.codigoReserva,
+            fecha_operacion=payload.fechaOperacion, request=request, id_usuario=id_usuario, id_tenant=tenant_actual(auth),
+        )
+        await session.commit()
+        response.status_code = 200
+        return await _serialize_reserva(existente, session)
+    try:
+        return await _crear_reserva(payload, session, actor, auth, request)
+    except HTTPException as exc:
+        await session.rollback()
+        await sync.registrar(
+            session, uuid_operacion=payload.uuidOperacion, tipo="reserva", resultado="Rechazada",
+            detalle=str(exc.detail), fecha_operacion=payload.fechaOperacion, request=request,
+            id_usuario=id_usuario, id_tenant=tenant_actual(auth),
+        )
+        await session.commit()
+        raise
+
+
+async def _crear_reserva(
+    payload: ReservaIn, session: AsyncSession, actor: Actor, auth: dict, request: Request
+) -> ReservaOut:
     if "reserva.gestionar" not in auth.get("permisos", []):
         cliente = await _cliente_del_caller(session, auth)
         if cliente is None:
@@ -183,8 +227,20 @@ async def create_reservation(
         idProducto=payload.idProducto,
         idMetPago=metodo.idMetPago,
         montoDeposito=metodo.monto,
+        **sync.campos_sincronizacion(payload.uuidOperacion, payload.fechaOperacion),
     )
     session.add(reserva)
+    await session.flush()
+    session.add(
+        DetalleReserva(codigoReserva=reserva.codigoReserva, idProducto=producto.idProducto, cantidad=1, precioUnitario=producto.venta)
+    )
+    if payload.uuidOperacion is not None:
+        await sync.registrar(
+            session, uuid_operacion=payload.uuidOperacion, tipo="reserva", resultado="Aplicada",
+            detalle=f"Reserva {reserva.codigoReserva} registrada sin conexion", id_referencia=reserva.codigoReserva,
+            fecha_operacion=payload.fechaOperacion, request=request, id_usuario=int(auth["sub"]),
+            id_tenant=sucursal.idTenant,
+        )
     await auditar(session, actor, f"Reserva creada: {producto.nombre} talla {producto.talla} en {sucursal.nombre} para el {payload.fecha}")
     await session.commit()
     await session.refresh(reserva)

@@ -176,6 +176,10 @@ class VentaIn(BaseModel):
     idMetPago: int
     codigoSucursal: Optional[int] = None  # None => el backend resuelve la sucursal
     items: list[DetalleVentaIn]
+    # Venta registrada sin conexion (migracion 023): UUID que le asigno el
+    # dispositivo y hora real en que se hizo. Reenviar el UUID no duplica.
+    uuidOperacion: Optional[UUID] = None
+    fechaOperacion: Optional[datetime] = None
 
 
 class DetalleVentaOut(BaseModel):
@@ -194,6 +198,11 @@ class VentaOut(ORMModel):
     idCliente: int
     idMetPago: int
     detalles: list[DetalleVentaOut] = []
+    uuidOperacion: Optional[str] = None
+    origenRegistro: str = "en_linea"
+    estadoSincronizacion: str = "Sincronizada"
+    fechaOperacion: Optional[datetime] = None
+    fechaSincronizacion: Optional[datetime] = None
 
 
 class ReservaIn(BaseModel):
@@ -203,6 +212,9 @@ class ReservaIn(BaseModel):
     codigoSucursal: int
     idProducto: int
     idMetPago: int  # anticipo verificado (CU12) — obligatorio, sin excepcion
+    # Reserva registrada sin conexion (migracion 023), igual que en VentaIn.
+    uuidOperacion: Optional[UUID] = None
+    fechaOperacion: Optional[datetime] = None
 
 
 class ReservaOut(ORMModel):
@@ -217,6 +229,8 @@ class ReservaOut(ORMModel):
     sucursal_nombre: Optional[str] = None
     idMetPago: Optional[int] = None
     montoDeposito: Optional[float] = None
+    uuidOperacion: Optional[str] = None
+    origenRegistro: str = "en_linea"
 
 
 class ReservaStatusOut(ReservaOut):

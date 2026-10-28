@@ -3,7 +3,7 @@ import { Injectable } from '@angular/core';
 /**
  * Base de datos local del dispositivo (IndexedDB), sin librerías externas.
  *
- * Es la "base temporal" del modo sin conexión y del plan Free Lite: el
+ * Es la "base temporal" del modo sin conexión: el
  * catálogo, las sucursales y el inventario se guardan acá para poder operar
  * con la red caída, y las mutaciones que no se pudieron enviar quedan en la
  * cola `outbox` hasta que vuelva la conexión.
