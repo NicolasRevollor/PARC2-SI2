@@ -84,6 +84,14 @@ import { InventarioDevolucion, NoVendible } from '../../core/models';
     </div>
   `,
 })
+// ==== DIAGRAMA <-> CODIGO (informe Parcial 2) ====================
+// [CU10] Actualizar inventario por devolucion o cambio
+// Diagramas del informe: "Robustez CU10" y "Clases CU10"
+// Pantalla (boundary) que lo usa: ResolverDevolucionUI.mostrarInventarioActualizado()
+// En palabras simples: pantalla que muestra la mercaderia que entro por devoluciones y la merma (inventario no vendible).
+// Robustez CU10: mensaje 17: muestra el inventario actualizado
+// Secuencia CU10: mostrarInventarioActualizado()
+// ==================================================================
 export class ReturnInventoryComponent implements OnInit {
   @Input() puedeGestionar = false;
   readonly estadosNoVendible: NoVendible['estado'][] = ['Pendiente', 'Reclamado', 'Repuesto', 'Desechado'];
@@ -101,6 +109,7 @@ export class ReturnInventoryComponent implements OnInit {
     this.datos.set(await this.returnsService.inventario(this.desde || undefined, this.hasta || undefined));
   }
 
+  // [CU10] InventarioNoVendible: reclamo al proveedor / destino de la merma
   async actualizar(n: NoVendible, estado: NoVendible['estado']): Promise<void> {
     if (await this.returnsService.actualizarNoVendible(n.idNoVendible, estado)) await this.cargar();
   }

@@ -130,7 +130,6 @@ type Accion = 'inspeccionar' | 'resolver' | 'completar' | 'revisar' | 'detalle';
         </div>
         <div class="space-y-2 text-xs text-gray-700">
           <label class="flex items-center gap-2 cursor-pointer"><input type="radio" name="acc" [checked]="opcion() === 'entregar'" (change)="opcion.set('entregar')" /> Entregar la prenda</label>
-          <label class="flex items-center gap-2 cursor-pointer"><input type="radio" name="acc" [checked]="opcion() === 'nota_credito'" (change)="opcion.set('nota_credito')" /> El cliente prefiere nota de crédito</label>
           <label class="flex items-center gap-2 cursor-pointer"><input type="radio" name="acc" [checked]="opcion() === 'reembolso'" (change)="opcion.set('reembolso')" /> El cliente prefiere el dinero</label>
         </div>
         <div *ngIf="opcion() === 'entregar' && c.diferencia > 0" class="text-xs p-3 rounded-lg bg-gray-50 border border-gray-200 space-y-2">
@@ -150,6 +149,16 @@ type Accion = 'inspeccionar' | 'resolver' | 'completar' | 'revisar' | 'detalle';
     </div>
   `,
 })
+// ==== DIAGRAMA <-> CODIGO (informe Parcial 2) ====================
+// [CU1] Registrar solicitud de devolucion o cambio en tienda
+// [CU2] Solicitar devolucion o cambio desde la tienda en linea
+// [CU3] Inspeccionar estado de la prenda devuelta
+// [CU4] Procesar cambio de talla, color o medida
+// [CU6] Procesar reembolso de dinero
+// [CU8] Gestionar cambio sin stock disponible
+// Diagramas del informe: "Robustez CU1" y "Clases CU1", "Robustez CU2" y "Clases CU2", "Robustez CU3" y "Clases CU3", "Robustez CU4" y "Clases CU4", "Robustez CU6" y "Clases CU6", "Robustez CU8" y "Clases CU8"
+// En palabras simples: bandeja de solicitudes pendientes del personal: desde aca se inspecciona, autoriza, completa o cancela.
+// ==================================================================
 export class ReturnTrayComponent implements OnInit {
   @Input() politica: PoliticaDevolucion | null = null;
   @Output() cambio = new EventEmitter<void>();
@@ -172,7 +181,8 @@ export class ReturnTrayComponent implements OnInit {
   readonly filtro = signal<string>('todos');
   readonly accion = signal<Accion | null>(null);
   readonly seleccionado = signal<DevolucionOut | null>(null);
-  readonly opcion = signal<'entregar' | 'nota_credito' | 'reembolso'>('entregar');
+  // Ya no hay notas de credito: el cliente retira la prenda o se le devuelve el dinero.
+  readonly opcion = signal<'entregar' | 'reembolso'>('entregar');
   readonly idPago = signal<number | null>(null);
   codigo = '';
   motivoRevision = '';
@@ -238,6 +248,9 @@ export class ReturnTrayComponent implements OnInit {
     this.abrir(accion, caso);
   }
 
+  // [CU3] InspeccionarDevolucionUI.abrirSolicitud() por codigo/QR -> ControlDevoluciones.buscarSolicitud()
+  // Robustez CU3: mensaje 1 (abre la solicitud por codigo/QR) -> 2: buscarSolicitud(codigo) a "BuscarSolicitud"
+  // Secuencia CU3: Encargado -> abrirSolicitud(codigo | QR | lista) -> buscarSolicitud(codigo)
   async abrirCodigo(): Promise<void> {
     if (!this.codigo.trim()) return;
     const caso = await this.returnsService.porCodigo(this.codigo);
@@ -262,11 +275,13 @@ export class ReturnTrayComponent implements OnInit {
     if (aprobado && this.puede('devolucion.registrar')) this.abrir('resolver', aprobado);
   }
 
+  // [CU1] [CU4] [CU6] el Encargado autoriza (solicitarAutorizacionDelEncargado())
   async autorizar(caso: DevolucionOut): Promise<void> {
     const motivo = prompt(`Autorizar ${caso.codigo}. Observación (opcional):`) ?? undefined;
     if (await this.returnsService.autorizar(caso.idDevolucion, motivo)) await this.terminado();
   }
 
+  // [CU3] flujo alternativo 5: el Administrador revisa la disconformidad
   async revisar(caso: DevolucionOut, aprobada: boolean): Promise<void> {
     if (await this.returnsService.revisar(caso.idDevolucion, aprobada, this.motivoRevision.trim())) await this.terminado();
   }
@@ -276,6 +291,9 @@ export class ReturnTrayComponent implements OnInit {
     if (pago) this.idPago.set(pago.idMetPago);
   }
 
+  // [CU8] ResolverCambioUI.completarCambio() -> ControlDevoluciones.completarCambio()
+  // Robustez CU8: mensaje 15 (completa el cambio al retirar) -> 16: completarCambio(solicitud) a "CompletarCambio" -> 20: muestra el comprobante
+  // Secuencia CU8: Empleado -> completarCambio(solicitud) -> mostrarComprobante()
   async completar(caso: DevolucionOut): Promise<void> {
     const r = await this.returnsService.completarCambio(caso.idDevolucion, {
       accion: this.opcion(),
@@ -286,6 +304,7 @@ export class ReturnTrayComponent implements OnInit {
     if (r) await this.terminado();
   }
 
+  // [CU2] flujo alternativo 3: anular una solicitud no entregada
   async cancelar(caso: DevolucionOut): Promise<void> {
     if (!confirm(`¿Cancelar ${caso.codigo}? Se le devuelve la prenda al cliente.`)) return;
     if (await this.returnsService.cancelar(caso.idDevolucion)) await this.terminado();

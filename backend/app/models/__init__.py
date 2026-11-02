@@ -1,3 +1,10 @@
+# ==== DIAGRAMA <-> CODIGO (informe Parcial 2) ====================
+# Este archivo = las ENTIDADES del "Modelo de dominio" (seccion 3.1 del informe)
+# y del diagrama de clases de la base de datos (32 clases = 32 tablas).
+# Cada clase de abajo dice en que paquete del modelo de dominio esta.
+# En los diagramas de robustez son los circulos con raya abajo (entity).
+# ==================================================================
+
 from datetime import datetime, date, time, timezone
 
 from sqlalchemy import (
@@ -35,6 +42,7 @@ def _ahora_utc() -> datetime:
 TENANT_POR_DEFECTO = 1
 
 
+# [Modelo de dominio] Paquete "Plataforma SaaS" -> entidad Plan  (tabla "plan")
 class Plan(Base):
     """Catalogo de planes de suscripcion (Basico / Intermedio / Avanzado).
     Un limite en -1 significa ILIMITADO (ver services/tenancy.py)."""
@@ -55,6 +63,7 @@ class Plan(Base):
     orden: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
 
+# [Modelo de dominio] Paquete "Plataforma SaaS" -> entidad Tenant  (tabla "tenant")
 class Tenant(Base):
     __tablename__ = "tenant"
 
@@ -68,6 +77,7 @@ class Tenant(Base):
     plan: Mapped["Plan"] = relationship()
 
 
+# [Modelo de dominio] Paquete "Plataforma SaaS" -> entidad Suscripcion  (tabla "suscripcion")
 class Suscripcion(Base):
     """Contrato de una empresa con un plan (migracion 023): fecha de inicio,
     vencimiento del periodo en curso y estado. Una sola vigente por empresa;
@@ -86,6 +96,7 @@ class Suscripcion(Base):
     creadoEn: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=_ahora_utc, nullable=False)
 
 
+# [Modelo de dominio] Paquete "Ubicacion" -> entidad Ciudad  (tabla "Ciudad")
 class Ciudad(Base):
     __tablename__ = "Ciudad"
 
@@ -95,6 +106,7 @@ class Ciudad(Base):
     sucursales: Mapped[list["Sucursal"]] = relationship(back_populates="ciudad")
 
 
+# [Modelo de dominio] Paquete "Seguridad" -> entidad Permiso  (tabla "permiso")
 class Permiso(Base):
     __tablename__ = "permiso"
 
@@ -102,6 +114,7 @@ class Permiso(Base):
     nombrePermiso: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
 
 
+# [Modelo de dominio] Paquete "Seguridad" -> entidad Rol  (tabla "rol")
 class Rol(Base):
     __tablename__ = "rol"
 
@@ -111,6 +124,7 @@ class Rol(Base):
     asignaciones: Mapped[list["AsignacionPermiso"]] = relationship(back_populates="rol")
 
 
+# [Modelo de dominio] Paquete "Seguridad" -> entidad AsignacionPermiso  (tabla "asignacion_permiso")
 class AsignacionPermiso(Base):
     __tablename__ = "asignacion_permiso"
     __table_args__ = (UniqueConstraint("codigoRol", "idPermiso", name="uq_rol_permiso"),)
@@ -125,6 +139,8 @@ class AsignacionPermiso(Base):
     permiso: Mapped["Permiso"] = relationship()
 
 
+# [Modelo de dominio] Paquete "Seguridad" -> entidad Usuario  (tabla "Usuario")
+# La usan los diagramas de: Clases CU1, CU3 (registradaPor / inspector)
 class Usuario(Base):
     __tablename__ = "Usuario"
 
@@ -144,6 +160,7 @@ class Usuario(Base):
     rol: Mapped["Rol"] = relationship()
 
 
+# [Modelo de dominio] Paquete "Seguridad (tabla puente Usuario-Sucursal)" -> entidad UsuarioSucursal  (tabla "usuario_sucursal")
 class UsuarioSucursal(Base):
     """Sucursales asignadas a un usuario del personal (migracion 024, CU24)."""
 
@@ -158,6 +175,8 @@ class UsuarioSucursal(Base):
     fechaAsignacion: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=_ahora_utc, nullable=False)
 
 
+# [Modelo de dominio] Paquete "Ubicacion" -> entidad Sucursal  (tabla "Sucursal")
+# La usan los diagramas de: Clases CU1, CU2, CU4 (sucursalReceptora)
 class Sucursal(Base):
     __tablename__ = "Sucursal"
     __table_args__ = (Index("idx_sucursal_ciudad", "idCiudad"),)
@@ -174,6 +193,7 @@ class Sucursal(Base):
     inventarios: Mapped[list["Inventario"]] = relationship(back_populates="sucursal")
 
 
+# [Modelo de dominio] Paquete "Catalogo" -> entidad Temporada  (tabla "Temporada")
 class Temporada(Base):
     __tablename__ = "Temporada"
     __table_args__ = (
@@ -190,6 +210,7 @@ class Temporada(Base):
     )
 
 
+# [Modelo de dominio] Paquete "Catalogo" -> entidad Colecciones  (tabla "Colecciones")
 class Colecciones(Base):
     __tablename__ = "Colecciones"
     __table_args__ = (Index("idx_coleccion_temporada", "idTemporada"),)
@@ -204,6 +225,8 @@ class Colecciones(Base):
     temporada: Mapped["Temporada"] = relationship()
 
 
+# [Modelo de dominio] Paquete "Catalogo" -> entidad Proveedor  (tabla "Proveedor")
+# La usan los diagramas de: [CU10] (reclamo por defecto de fabrica)
 class Proveedor(Base):
     __tablename__ = "Proveedor"
     __table_args__ = (Index("idx_proveedor_nombre", "nombre"),)
@@ -219,6 +242,8 @@ class Proveedor(Base):
     productos: Mapped[list["Producto"]] = relationship(back_populates="proveedor")
 
 
+# [Modelo de dominio] Paquete "Catalogo" -> entidad ModeloProducto  (tabla "modelo_producto")
+# La usan los diagramas de: [CU4] (variantes del mismo modelo)
 class ModeloProducto(Base):
     """Modelo de prenda (p. ej. "Polera Oversize"); sus variantes son las filas
     de producto con cada talla y color (migracion 023)."""
@@ -233,6 +258,8 @@ class ModeloProducto(Base):
     idTenant: Mapped[int] = mapped_column(ForeignKey("tenant.idTenant", ondelete="CASCADE", onupdate="CASCADE"), nullable=False)
 
 
+# [Modelo de dominio] Paquete "Catalogo" -> entidad Producto  (tabla "producto")
+# La usan los diagramas de: Clases CU1 a CU5 (prenda / prendaNueva)
 class Producto(Base):
     __tablename__ = "producto"
     __table_args__ = (
@@ -262,12 +289,19 @@ class Producto(Base):
     idModelo: Mapped[int | None] = mapped_column(
         ForeignKey("modelo_producto.idModelo", ondelete="SET NULL", onupdate="CASCADE")
     )
+    # Migracion 025: medidas REALES de la prenda en centimetros. Sirven para decir si una
+    # talla es mas grande o mas chica que otra (una "L" oversize no mide lo mismo que una "L" normal).
+    medidaPechoCm: Mapped[int | None] = mapped_column(Integer)
+    medidaLargoCm: Mapped[int | None] = mapped_column(Integer)
+    medidaCinturaCm: Mapped[int | None] = mapped_column(Integer)
 
     proveedor: Mapped["Proveedor"] = relationship(back_populates="productos")
     coleccion: Mapped["Colecciones"] = relationship()
     inventarios: Mapped[list["Inventario"]] = relationship(back_populates="producto")
 
 
+# [Modelo de dominio] Paquete "Venta y atencion" -> entidad Cliente  (tabla "Cliente")
+# La usan los diagramas de: Clases CU1, CU2, CU7
 class Cliente(Base):
     __tablename__ = "Cliente"
 
@@ -282,6 +316,8 @@ class Cliente(Base):
     tiro: Mapped[int | None] = mapped_column(Integer)
 
 
+# [Modelo de dominio] Paquete "Stock" -> entidad Inventario  (tabla "Inventario")
+# La usan los diagramas de: Clases CU2, CU4, CU8, CU10
 class Inventario(Base):
     __tablename__ = "Inventario"
     __table_args__ = (
@@ -300,6 +336,8 @@ class Inventario(Base):
     movimientos: Mapped[list["Movimiento"]] = relationship(back_populates="inventario")
 
 
+# [Modelo de dominio] Paquete "Stock" -> entidad Movimiento  (tabla "Movimiento")
+# La usan los diagramas de: [CU10] (Entrada por devolucion / Salida por cambio)
 class Movimiento(Base):
     __tablename__ = "Movimiento"
     __table_args__ = (Index("idx_movimiento_inv_fecha", "idInv", "fecha"),)
@@ -315,6 +353,8 @@ class Movimiento(Base):
     inventario: Mapped["Inventario"] = relationship(back_populates="movimientos")
 
 
+# [Modelo de dominio] Paquete "Venta y atencion" -> entidad MetodoPago  (tabla "metodo_pago")
+# La usan los diagramas de: Clases CU4, CU5, CU6, CU7 (pagoDiferencia)
 class MetodoPago(Base):
     __tablename__ = "metodo_pago"
 
@@ -336,6 +376,7 @@ class MetodoPago(Base):
     consumidoEn: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
 
 
+# [Modelo de dominio] Paquete "Venta y atencion" -> entidad Reserva  (tabla "Reserva")
 class Reserva(Base):
     __tablename__ = "Reserva"
     __table_args__ = (
@@ -367,6 +408,7 @@ class Reserva(Base):
     fechaSincronizacion: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
 
 
+# [Modelo de dominio] Paquete "Venta y atencion" -> entidad DetalleReserva  (tabla "detalle_reserva")
 class DetalleReserva(Base):
     """Prendas de una reserva (migracion 023)."""
 
@@ -385,6 +427,8 @@ class DetalleReserva(Base):
     precioUnitario: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
 
 
+# [Modelo de dominio] Paquete "Venta y atencion" -> entidad Venta  (tabla "Venta")
+# La usan los diagramas de: Clases CU1, CU2, CU5, CU6
 class Venta(Base):
     __tablename__ = "Venta"
     __table_args__ = (
@@ -408,6 +452,7 @@ class Venta(Base):
     fechaSincronizacion: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
 
 
+# [Modelo de dominio] Paquete "Sincronizacion" -> entidad RegistroSincronizacion  (tabla "registro_sincronizacion")
 class RegistroSincronizacion(Base):
     """Log de cada operacion recibida de la cola de un dispositivo (RNF10)."""
 
@@ -428,6 +473,8 @@ class RegistroSincronizacion(Base):
     idTenant: Mapped[int | None] = mapped_column(ForeignKey("tenant.idTenant", ondelete="CASCADE", onupdate="CASCADE"))
 
 
+# [Modelo de dominio] Paquete "Venta y atencion" -> entidad DetalleVenta  (tabla "detalle_venta")
+# La usan los diagramas de: Clases CU1, CU2, CU5
 class DetalleVenta(Base):
     __tablename__ = "detalle_venta"
     __table_args__ = (
@@ -444,6 +491,8 @@ class DetalleVenta(Base):
     codigoReserva: Mapped[int | None] = mapped_column(ForeignKey("Reserva.codigoReserva", ondelete="SET NULL", onupdate="CASCADE"))
 
 
+# [Modelo de dominio] Paquete "Seguridad" -> entidad Bitacora  (tabla "Bitacora")
+# La usan los diagramas de: casi todos los diagramas de robustez y clases (registrarBitacora())
 class Bitacora(Base):
     __tablename__ = "Bitacora"
     __table_args__ = (Index("idx_bitacora_fecha_user", "fecha", "idUser"),)
@@ -456,6 +505,7 @@ class Bitacora(Base):
     idUser: Mapped[int] = mapped_column(ForeignKey("Usuario.idUser", ondelete="CASCADE"), nullable=False)
 
 
+# [Modelo de dominio] Paquete "Venta y atencion" -> entidad Recomendaciones  (tabla "Recomendaciones")
 class Recomendaciones(Base):
     __tablename__ = "Recomendaciones"
     __table_args__ = (Index("idx_recomendacion_cliente", "idCliente"),)
@@ -469,6 +519,7 @@ class Recomendaciones(Base):
     idProducto: Mapped[int | None] = mapped_column(ForeignKey("producto.idProducto", onupdate="CASCADE"))
 
 
+# [Modelo de dominio] Paquete "Venta y atencion" -> entidad Historial  (tabla "historial")
 class Historial(Base):
     __tablename__ = "historial"
     __table_args__ = (Index("idx_historial_busqueda", "idCliente", "idProducto"),)
@@ -480,6 +531,7 @@ class Historial(Base):
     idVenta: Mapped[int] = mapped_column(ForeignKey("Venta.idVenta", ondelete="CASCADE", onupdate="CASCADE"), nullable=False)
 
 
+# [Modelo de dominio] Paquete "Plataforma SaaS" -> entidad Respaldo  (tabla "respaldo")
 class Respaldo(Base):
     """Registro de un respaldo (backup) de UNA empresa (migracion 018). El
     archivo vive en el bucket privado de respaldos o en disco local; aca solo
@@ -512,6 +564,8 @@ class Respaldo(Base):
     )
 
 
+# [Modelo de dominio] Paquete "Posventa" -> entidad Devolucion  (tabla "devolucion")
+# La usan los diagramas de: Clases CU1 a CU10 (es la entidad principal del modulo)
 class Devolucion(Base):
     """Caso de devolucion o cambio (migraciones 015 y 022). "fechaVenta" es un
     snapshot inmutable de Venta.fecha tomado al registrar el caso: el plazo de
@@ -527,7 +581,7 @@ class Devolucion(Base):
     __tablename__ = "devolucion"
     __table_args__ = (
         CheckConstraint(
-            "tipo IN ('cambio_talla', 'cambio_color', 'cambio_medida', 'cambio_producto', 'devolucion', 'nota_credito')",
+            "tipo IN ('cambio_talla', 'cambio_color', 'cambio_medida', 'cambio_producto', 'devolucion')",
             name="chk_devolucion_tipo",
         ),
         CheckConstraint("cantidad > 0", name="chk_devolucion_cantidad"),
@@ -595,12 +649,11 @@ class Devolucion(Base):
     estadoReembolso: Mapped[str | None] = mapped_column(String(22))
     referenciaReembolso: Mapped[str | None] = mapped_column(String(150))
     cuentaDestino: Mapped[str | None] = mapped_column(String(120))
-    idNotaCredito: Mapped[int | None] = mapped_column(
-        ForeignKey("nota_credito.idNotaCredito", ondelete="SET NULL", onupdate="CASCADE")
-    )
     fechaResolucion: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
 
 
+# [Modelo de dominio] Paquete "Posventa" -> entidad PoliticaDevolucion  (tabla "politica_devolucion")
+# La usan los diagramas de: Clases CU1 a CU9 (obtenerPoliticaVigente())
 class PoliticaDevolucion(Base):
     """Una version de la politica de devoluciones de una empresa (CU9). Cada
     venta usa la version vigente al momento de la venta; si la empresa nunca
@@ -621,9 +674,7 @@ class PoliticaDevolucion(Base):
     recargoUnidad: Mapped[str] = mapped_column(String(5), nullable=False)
     categoriasNoRetornables: Mapped[list[str]] = mapped_column(ARRAY(Text), default=lambda: [], nullable=False)
     maxCambiosPorPrenda: Mapped[int] = mapped_column(Integer, nullable=False)
-    saldoAFavor: Mapped[str] = mapped_column(String(15), nullable=False)
     permiteReembolso: Mapped[bool] = mapped_column(Boolean, nullable=False)
-    vigenciaNotaCreditoDias: Mapped[int] = mapped_column(Integer, nullable=False)
     respetarPrecioOriginal: Mapped[bool] = mapped_column(Boolean, nullable=False)
     umbralAutorizacion: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
     maxDevolucionesMes: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -638,59 +689,8 @@ class PoliticaDevolucion(Base):
     idUsuario: Mapped[int | None] = mapped_column(ForeignKey("Usuario.idUser", ondelete="SET NULL", onupdate="CASCADE"))
 
 
-class NotaCredito(Base):
-    """Saldo a favor de un cliente emitido por una devolucion (CU7). Se canjea
-    en caja como medio de pago; "Vencida" se deduce de fechaVencimiento."""
-
-    __tablename__ = "nota_credito"
-    __table_args__ = (
-        CheckConstraint("monto > 0", name="chk_nota_monto"),
-        CheckConstraint("saldo >= 0 AND saldo <= monto", name="chk_nota_saldo"),
-        CheckConstraint("estado IN ('Vigente', 'Usada', 'Anulada')", name="chk_nota_estado"),
-    )
-
-    idNotaCredito: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    codigo: Mapped[str] = mapped_column(String(20), unique=True, nullable=False)
-    monto: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
-    saldo: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
-    estado: Mapped[str] = mapped_column(String(12), default="Vigente", nullable=False)
-    fechaEmision: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=_ahora_utc, nullable=False)
-    fechaVencimiento: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
-    motivo: Mapped[str | None] = mapped_column(String(255))
-    motivoAnulacion: Mapped[str | None] = mapped_column(String(255))
-    idCliente: Mapped[int] = mapped_column(ForeignKey("Cliente.idCliente", onupdate="CASCADE"), nullable=False)
-    idDevolucion: Mapped[int | None] = mapped_column(
-        ForeignKey("devolucion.idDevolucion", ondelete="SET NULL", onupdate="CASCADE")
-    )
-    idUsuario: Mapped[int] = mapped_column(ForeignKey("Usuario.idUser", onupdate="CASCADE"), nullable=False)
-    idTenant: Mapped[int] = mapped_column(ForeignKey("tenant.idTenant", onupdate="CASCADE"), nullable=False)
-
-
-class NotaCreditoMovimiento(Base):
-    """Cada movimiento de una nota de credito (CU7): emision, consumo en caja,
-    reintegro por la devolucion de una venta pagada con la nota, anulacion y
-    extension del vencimiento."""
-
-    __tablename__ = "nota_credito_movimiento"
-
-    idMovimiento: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    idNotaCredito: Mapped[int] = mapped_column(
-        ForeignKey("nota_credito.idNotaCredito", ondelete="CASCADE", onupdate="CASCADE"), nullable=False
-    )
-    tipo: Mapped[str] = mapped_column(String(12), nullable=False)
-    monto: Mapped[float] = mapped_column(Numeric(12, 2), default=0.00, nullable=False)
-    saldoResultante: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
-    montoComplemento: Mapped[float] = mapped_column(Numeric(12, 2), default=0.00, nullable=False)
-    metodoComplemento: Mapped[str | None] = mapped_column(String(12))
-    idMetPago: Mapped[int | None] = mapped_column(ForeignKey("metodo_pago.idMetPago", onupdate="CASCADE"))
-    idDevolucion: Mapped[int | None] = mapped_column(
-        ForeignKey("devolucion.idDevolucion", ondelete="SET NULL", onupdate="CASCADE")
-    )
-    detalle: Mapped[str | None] = mapped_column(String(255))
-    fecha: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=_ahora_utc, nullable=False)
-    idUsuario: Mapped[int] = mapped_column(ForeignKey("Usuario.idUser", onupdate="CASCADE"), nullable=False)
-
-
+# [Modelo de dominio] Paquete "Stock" -> entidad InventarioNoVendible  (tabla "inventario_no_vendible")
+# La usan los diagramas de: Clases CU10 (merma / defecto de fabrica)
 class InventarioNoVendible(Base):
     """Prendas devueltas que no vuelven a la venta (CU10): defecto de fabrica
     (con reclamo al proveedor si el producto tiene uno) o deterioradas."""
@@ -710,3 +710,29 @@ class InventarioNoVendible(Base):
     observaciones: Mapped[str | None] = mapped_column(String(255))
     fecha: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=_ahora_utc, nullable=False)
     idTenant: Mapped[int] = mapped_column(ForeignKey("tenant.idTenant", onupdate="CASCADE"), nullable=False)
+
+
+# [Modelo de dominio] Paquete "Venta y atencion" -> entidad Notificacion  (tabla "notificacion")
+# Correccion de la ingeniera: los avisos al cliente ("su prenda sera enviada el viernes",
+# "le devolvemos su dinero") llegan como notificacion en la app y por correo.
+class Notificacion(Base):
+    """Un aviso para un usuario (cliente o personal). Se muestra en la bandeja
+    de notificaciones de la web y la app movil; si `porCorreo` es True, tambien
+    se manda por correo (Brevo) y `correoEnviado` queda en True."""
+
+    __tablename__ = "notificacion"
+    __table_args__ = (Index("idx_notificacion_usuario", "idUser", "fecha"),)
+
+    idNotificacion: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    idUser: Mapped[int] = mapped_column(
+        ForeignKey("Usuario.idUser", ondelete="CASCADE", onupdate="CASCADE"), nullable=False
+    )
+    idTenant: Mapped[int | None] = mapped_column(ForeignKey("tenant.idTenant", onupdate="CASCADE"))
+    tipo: Mapped[str] = mapped_column(String(20), nullable=False)  # envio | reembolso | devolucion | venta_sin_conexion
+    titulo: Mapped[str] = mapped_column(String(150), nullable=False)
+    mensaje: Mapped[str] = mapped_column(String(600), nullable=False)
+    referencia: Mapped[str | None] = mapped_column(String(40))  # p. ej. el codigo del caso DEV-000123
+    leida: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    porCorreo: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    correoEnviado: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    fecha: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=_ahora_utc, nullable=False)

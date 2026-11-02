@@ -5,7 +5,8 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-TipoDevolucion = Literal["cambio_talla", "cambio_color", "cambio_medida", "cambio_producto", "devolucion", "nota_credito"]
+# Ya no existe "nota_credito": si sobra plata, siempre se devuelve en dinero ("devolucion").
+TipoDevolucion = Literal["cambio_talla", "cambio_color", "cambio_medida", "cambio_producto", "devolucion"]
 EstadoDevolucion = Literal[
     "PendienteEntrega", "EnInspeccion", "EnRevision", "Aprobada", "CambioPendiente",
     "Completada", "Rechazada", "Anulada", "Cancelada",
@@ -13,8 +14,7 @@ EstadoDevolucion = Literal[
 MotivoCategoria = Literal["talla", "medida", "color", "defecto", "equivocado", "no_desea"]
 ResultadoInspeccion = Literal["apta", "defectuosa", "deteriorada", "no_corresponde"]
 MetodoReembolso = Literal["efectivo", "qr", "tarjeta"]
-OpcionSinStock = Literal["traslado", "otra_sucursal", "espera", "nota_credito", "reembolso"]
-SaldoAFavor = Literal["nota_credito", "reembolso"]
+OpcionSinStock = Literal["traslado", "otra_sucursal", "espera", "reembolso"]
 
 
 # --- CU1 / CU2: solicitud ---------------------------------------------------------
@@ -45,7 +45,7 @@ class SolicitudIn(BaseModel):
     cantidad: int = Field(default=1, gt=0)
     motivoCategoria: MotivoCategoria
     motivo: str | None = Field(default=None, max_length=255)
-    tipo: Literal["cambio_talla", "cambio_color", "cambio_producto", "devolucion", "nota_credito"]
+    tipo: Literal["cambio_talla", "cambio_color", "cambio_producto", "devolucion"]
     # Variante pedida: si hay existencia en la sucursal elegida, se aparta.
     idProductoNuevo: int | None = None
     codigoSucursal: int
@@ -107,10 +107,8 @@ class ResolucionIn(BaseModel):
     codigoSucursal: int | None = None
     metodoReembolso: MetodoReembolso | None = None
     cuentaDestino: str | None = Field(default=None, max_length=120)
-    # Pago ya registrado en caja por la diferencia (efectivo, tarjeta, QR o nota).
+    # Pago ya registrado en caja por la diferencia (efectivo, tarjeta o QR).
     idMetPagoDiferencia: int | None = None
-    # Preferencia del cliente cuando la politica lo deja elegir.
-    saldoAFavor: SaldoAFavor | None = None
     # CU8: que hacer si la variante no tiene existencia en la sucursal.
     sinStock: OpcionSinStock | None = None
     sucursalOrigen: int | None = None
@@ -121,10 +119,9 @@ class ResolucionIn(BaseModel):
 
 
 class CompletarCambioIn(BaseModel):
-    accion: Literal["entregar", "nota_credito", "reembolso"] = "entregar"
+    accion: Literal["entregar", "reembolso"] = "entregar"
     codigoSucursal: int | None = None
     idMetPagoDiferencia: int | None = None
-    saldoAFavor: SaldoAFavor | None = None
     metodoReembolso: MetodoReembolso | None = None
     cuentaDestino: str | None = Field(default=None, max_length=120)
 
@@ -171,8 +168,6 @@ class DevolucionOut(BaseModel):
     diferencia: float
     idMetPagoDiferencia: int | None
     idVentaCambio: int | None
-    idNotaCredito: int | None
-    nota_codigo: str | None
     condicion: str | None
     checklist: dict | None
     codigoEscaneado: str | None
@@ -273,9 +268,7 @@ class PoliticaIn(BaseModel):
     recargoUnidad: Literal["hora", "dia"]
     categoriasNoRetornables: list[str] = Field(default_factory=list)
     maxCambiosPorPrenda: int = Field(ge=1, le=20)
-    saldoAFavor: Literal["reembolso", "nota_credito", "cliente_elige"]
     permiteReembolso: bool
-    vigenciaNotaCreditoDias: int = Field(ge=1, le=730)
     respetarPrecioOriginal: bool
     umbralAutorizacion: float = Field(ge=0)
     maxDevolucionesMes: int = Field(ge=1, le=100)
@@ -378,8 +371,6 @@ class AnalisisOut(BaseModel):
     casos: int
     unidadesDevueltas: int
     montoReembolsado: float
-    notasEmitidas: int
-    montoNotas: float
     cambios: int
     rechazadas: int
     porProducto: list[TasaOut]
@@ -397,65 +388,17 @@ class FotoOut(BaseModel):
     url: str
 
 
-# --- CU7: notas de credito ----------------------------------------------------------
-
-class MovimientoNotaOut(BaseModel):
-    idMovimiento: int
-    tipo: str
-    monto: float
-    saldoResultante: float
-    montoComplemento: float
-    metodoComplemento: str | None
-    idMetPago: int | None
-    idVenta: int | None
-    detalle: str | None
-    fecha: datetime
-    usuario: str | None
+# --- Distincion entre tallas (CU2 / CU4) ----------------------------------------------
 
 
-class NotaCreditoOut(BaseModel):
-    idNotaCredito: int
-    codigo: str
-    monto: float
-    saldo: float
-    estado: Literal["Vigente", "Usada", "Anulada", "Vencida"]
-    fechaEmision: datetime
-    fechaVencimiento: datetime
-    motivo: str | None
-    motivoAnulacion: str | None
-    idCliente: int
-    cliente_nombre: str | None
-    idDevolucion: int | None
-    codigoDevolucion: str | None
-    idTenant: int
-    empresa: str | None
-    movimientos: list[MovimientoNotaOut]
+class ComparacionTallaOut(BaseModel):
+    """Correccion de la ingeniera: "distincion entre tallas, L mas grande o L menos grande".
+    Compara la prenda que devuelve con la que se lleva usando sus medidas reales en cm."""
 
-
-class CanjeIn(BaseModel):
-    codigo: str = Field(min_length=4, max_length=20)
-    # Total de la venta; si el saldo no alcanza, el resto se cobra con otro medio.
-    montoTotal: float = Field(gt=0)
-    idCliente: int
-    metodoComplemento: Literal["efectivo", "qr"] | None = None
-
-
-class CanjeOut(BaseModel):
-    """Metodo de pago listo para usar en `POST /api/sales`."""
-
-    idMetPago: int
-    montoTotal: float
-    montoNota: float
-    montoComplemento: float
-    metodoComplemento: str | None
-    codigo: str
-    saldoRestante: float
-
-
-class AnulacionIn(BaseModel):
-    motivo: str = Field(min_length=3, max_length=255)
-
-
-class ExtensionIn(BaseModel):
-    fechaVencimiento: datetime
-    motivo: str | None = Field(default=None, max_length=255)
+    idProductoOriginal: int
+    idProductoNuevo: int
+    tallaOriginal: str | None
+    tallaNueva: str | None
+    direccion: Literal["mas_grande", "mas_chica", "igual", "sin_datos"]
+    diferenciasCm: dict[str, int]
+    texto: str

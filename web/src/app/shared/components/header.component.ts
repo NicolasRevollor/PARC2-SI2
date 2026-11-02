@@ -4,11 +4,12 @@ import { FormsModule } from '@angular/forms';
 import { AuthService } from '../../core/services/auth.service';
 import { OfflineSyncService } from '../../core/services/offline-sync.service';
 import { PwaService } from '../../core/services/pwa.service';
+import { NotificacionesBellComponent } from './notificaciones-bell.component';
 
 @Component({
   selector: 'app-header',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, NotificacionesBellComponent],
   template: `
     <header class="h-16 bg-[#18191d] border-b border-gray-200 px-6 lg:px-8 flex items-center justify-between sticky top-0 z-30">
 
@@ -44,6 +45,9 @@ import { PwaService } from '../../core/services/pwa.service';
           <span class="material-symbols-outlined text-[14px]">install_mobile</span>
           <span class="text-[11px] font-bold uppercase tracking-tight">Instalar</span>
         </button>
+
+        <!-- Avisos "tipo push" (por ejemplo: devolver el dinero de una venta sin conexion) -->
+        <app-notificaciones-bell></app-notificaciones-bell>
 
         <!-- Estado real de conexión y cola offline (CU30) -->
         <div

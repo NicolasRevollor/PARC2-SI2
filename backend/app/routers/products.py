@@ -55,6 +55,9 @@ async def _serialize(producto: Producto, session: AsyncSession) -> ProductoOut:
         imagen_url=producto.imagen_url,
         imagenes_secundarias=producto.imagenes_secundarias or [],
         idModelo=producto.idModelo,
+        medidaPechoCm=producto.medidaPechoCm,
+        medidaLargoCm=producto.medidaLargoCm,
+        medidaCinturaCm=producto.medidaCinturaCm,
     )
 
 

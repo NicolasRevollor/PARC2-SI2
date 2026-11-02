@@ -11,13 +11,12 @@ import {
   claseEstado,
   textoPlazo,
 } from '../../../core/services/returns.service';
-import { CreditNotesService } from '../../../core/services/credit-notes.service';
 import {
   DevolucionOut,
   InventoryLocation,
   LineaDevolucion,
   MotivoDevolucion,
-  NotaCredito,
+  ComparacionTalla,
   PaginatedProducts,
   PoliticaDevolucion,
   ProductOut,
@@ -32,8 +31,8 @@ import { environment } from '../../../../environments/environment';
 const API_URL = environment.apiUrl;
 
 /**
- * CU2 — Solicitar devolución o cambio desde la tienda en línea, y "Mis notas
- * de crédito" (CU7). El cliente ve cada prenda con su elegibilidad y el
+ * CU2 — Solicitar devolución o cambio desde la tienda en línea. Si se le
+ * devuelve plata, recibe su nota de devolución (CU7). El cliente ve cada prenda con su elegibilidad y el
  * tiempo restante; la solicitud genera un código con QR y una fecha límite
  * para entregar la prenda en la sucursal elegida.
  */
@@ -99,7 +98,7 @@ const API_URL = environment.apiUrl;
             <span *ngIf="c.fechaLimiteRetiro"> hasta el {{ c.fechaLimiteRetiro | date: 'dd/MM/yyyy' }}</span></p>
           <p *ngIf="c.motivoRechazo" class="text-xs text-rose-600">{{ c.motivoRechazo }}</p>
           <p *ngIf="c.montoDevuelto > 0" class="text-xs text-emerald-700">Reembolso de Bs {{ c.montoDevuelto.toFixed(2) }} ({{ c.metodoReembolso }})</p>
-          <p *ngIf="c.nota_codigo" class="text-xs text-emerald-700">Nota de crédito {{ c.nota_codigo }}</p>
+          <p *ngIf="c.montoDevuelto > 0" class="text-xs text-emerald-700">Nota de devolución {{ c.codigo }}: te devolvimos Bs {{ c.montoDevuelto.toFixed(2) }}</p>
           <div class="flex flex-wrap gap-2 pt-1">
             <button (click)="mostrarQr(c)" class="ys-btn-sec"><span class="material-symbols-outlined text-[16px]">qr_code_2</span> Código QR</button>
             <button (click)="comprobante(c)" class="ys-btn-sec"><span class="material-symbols-outlined text-[16px]">picture_as_pdf</span> Comprobante</button>
@@ -108,20 +107,6 @@ const API_URL = environment.apiUrl;
         </div>
       </section>
 
-      <!-- Mis notas de crédito (CU7) -->
-      <section class="space-y-3">
-        <h2 class="text-base font-bold text-gray-900">Mis notas de crédito</h2>
-        <div *ngIf="notas().length === 0" class="ys-tarjeta p-5 text-sm text-gray-500">No tenés notas de crédito.</div>
-        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div *ngFor="let n of notas()" class="ys-tarjeta p-4 text-sm">
-            <div class="flex justify-between"><p class="font-mono font-bold text-gray-900">{{ n.codigo }}</p>
-              <span class="ys-mini" [ngClass]="n.estado === 'Vigente' ? 'text-emerald-700' : ''">{{ n.estado }}</span></div>
-            <p class="text-2xl font-bold text-gray-900 mt-1">Bs {{ n.saldo.toFixed(2) }}</p>
-            <p class="text-xs text-gray-500">de Bs {{ n.monto.toFixed(2) }} · vence {{ n.fechaVencimiento | date: 'dd/MM/yyyy' }}</p>
-            <p class="text-[11px] text-gray-500 mt-1">Usala en cualquier sucursal de {{ n.empresa }} presentando este código.</p>
-          </div>
-        </div>
-      </section>
     </div>
 
     <!-- QR de una solicitud -->
@@ -169,6 +154,11 @@ const API_URL = environment.apiUrl;
             <span class="block text-gray-500">{{ disponibilidad(p.idProducto) }}</span>
           </button>
           <p *ngIf="variantes().length === 0" class="text-xs text-amber-700">No hay otra variante del mismo modelo.</p>
+          <!-- "L mas grande o L menos grande": cuanto mas grande o mas chica es la talla elegida, en cm -->
+          <p *ngIf="comparacion() as c" class="text-[11px] p-2 rounded-lg border"
+             [ngClass]="c.direccion === 'mas_grande' ? 'border-sky-200 bg-sky-50 text-sky-800' : c.direccion === 'mas_chica' ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-gray-200 bg-gray-50 text-gray-600'">
+            <span class="material-symbols-outlined text-[14px] align-middle">straighten</span> {{ c.texto }}
+          </p>
         </div>
         <div *ngIf="tipo() === 'cambio_producto'">
           <p class="ys-etiqueta">Producto que te gustaría</p>
@@ -207,6 +197,15 @@ const API_URL = environment.apiUrl;
     </div>
   `,
 })
+// ==== DIAGRAMA <-> CODIGO (informe Parcial 2) ====================
+// [CU2] Solicitar devolucion o cambio desde la tienda en linea
+// [CU7] Emitir nota de devolucion
+// Diagramas del informe: "Robustez CU2" y "Clases CU2", "Robustez CU7" y "Clases CU7"
+// Pantalla (boundary) que lo usa: MisComprasUI (CU2) = esta clase
+// En palabras simples: pantalla del cliente "Mis compras" para pedir un cambio o la devolucion de su dinero. La version movil es mobile/app/lib/screens/returns_screen.dart
+// Robustez CU2: boundary "Mis Compras / Solicitar Cambio"
+// Secuencia CU2: lifeline "Mis Compras / Solicitar Cambio"
+// ==================================================================
 export class CustomerReturnsComponent implements OnInit {
   readonly estados = ETIQUETA_ESTADO;
   readonly tipos = ETIQUETA_TIPO;
@@ -215,7 +214,8 @@ export class CustomerReturnsComponent implements OnInit {
   readonly politica = signal<PoliticaDevolucion | null>(null);
   readonly compras = signal<VentaDevolucion[]>([]);
   readonly casos = signal<DevolucionOut[]>([]);
-  readonly notas = signal<NotaCredito[]>([]);
+  // Correccion de la ingeniera: si la talla elegida es mas grande o mas chica que la que devuelve.
+  readonly comparacion = signal<ComparacionTalla | null>(null);
   readonly cargando = signal<boolean>(true);
   readonly qr = signal<QrDevolucion | null>(null);
 
@@ -241,7 +241,6 @@ export class CustomerReturnsComponent implements OnInit {
     const p = this.politica();
     const tipos: TipoSolicitud[] = ['cambio_talla', 'cambio_color', 'cambio_producto'];
     if (p?.permiteReembolso !== false || this.motivo() === 'defecto') tipos.push('devolucion');
-    tipos.push('nota_credito');
     return tipos;
   });
 
@@ -262,23 +261,23 @@ export class CustomerReturnsComponent implements OnInit {
   constructor(
     private http: HttpClient,
     private returnsService: ReturnsService,
-    private creditNotesService: CreditNotesService,
   ) {}
 
+  // [CU2] MisComprasUI.abrirMisCompras()
+  // Robustez CU2: mensaje 1: abrirMisCompras() -> 2: listarMisCompras() -> 9: mostrarPrendasElegibles(plazo)
+  // Secuencia CU2: Cliente -> abrirMisCompras() -> mostrarPrendasElegibles(tiempo restante)
   async ngOnInit(): Promise<void> {
     await this.cargar();
   }
 
   private async cargar(): Promise<void> {
     this.cargando.set(true);
-    const [compras, casos, notas] = await Promise.all([
+    const [compras, casos] = await Promise.all([
       this.returnsService.misCompras(),
       this.returnsService.consultar({}),
-      this.creditNotesService.listar(),
     ]);
     this.compras.set(compras);
     this.casos.set(casos);
-    this.notas.set(notas);
     this.politica.set(await this.returnsService.politica(compras[0]?.idTenant));
     this.cargando.set(false);
   }
@@ -312,6 +311,7 @@ export class CustomerReturnsComponent implements OnInit {
     if (caso) void this.mostrarQr(caso);
   }
 
+  // [CU2] MisComprasUI.mostrarCodigoQR()
   async mostrarQr(caso: DevolucionOut): Promise<void> {
     this.qr.set(await this.returnsService.qr(caso.idDevolucion));
   }
@@ -320,6 +320,9 @@ export class CustomerReturnsComponent implements OnInit {
     void this.returnsService.abrirComprobante(caso.idDevolucion);
   }
 
+  // [CU2] MisComprasUI.seleccionarPrenda()
+  // Robustez CU2: mensaje 10: seleccionarPrenda(cantidad, motivo, resolucion, fotos)
+  // Secuencia CU2: Cliente -> seleccionarPrenda(cantidad, motivo, resolucion, sucursal)
   async abrir(venta: VentaDevolucion, linea: LineaDevolucion): Promise<void> {
     this.seleccion.set({ venta, linea });
     this.motivo.set(linea.elegibilidad.puede ? 'talla' : 'defecto');
@@ -344,9 +347,19 @@ export class CustomerReturnsComponent implements OnInit {
     for (const v of this.variantes()) void this.cargarStock(v.idProducto);
   }
 
+  // [CU2] MisComprasUI.mostrarVariantes() -> ControlDevoluciones.consultarStock()
+  // Robustez CU2: mensaje 11: consultarStock(idVariante) -> 15: mostrarVariantes(precio, stock por sucursal)
   elegirVariante(idProducto: number | null): void {
     this.idProductoNuevo.set(idProducto);
     if (idProducto) void this.cargarStock(idProducto);
+    // "L mas grande o L menos grande": le mostramos al cliente cuanto cambia la talla, en cm.
+    this.comparacion.set(null);
+    const original = this.seleccion()?.linea.idProducto;
+    if (idProducto && original && (this.tipo() === 'cambio_talla' || this.tipo() === 'cambio_color')) {
+      void this.returnsService.compararTallas(original, idProducto).then((c) => {
+        if (this.idProductoNuevo() === idProducto) this.comparacion.set(c);
+      });
+    }
   }
 
   private async cargarStock(idProducto: number): Promise<void> {
@@ -376,6 +389,9 @@ export class CustomerReturnsComponent implements OnInit {
     return !['cambio_talla', 'cambio_color'].includes(this.tipo()) || this.idProductoNuevo() !== null;
   }
 
+  // [CU2] MisComprasUI.elegirSucursalYConfirmar() -> ControlDevoluciones.enviarSolicitud() (backend POST /api/returns/solicitudes)
+  // Robustez CU2: mensaje 16: elegirSucursalYConfirmar() -> 17: enviarSolicitud(...) -> 23: mostrarCodigoQR(fecha limite)
+  // Secuencia CU2: enviarSolicitud(compra, prenda, motivo, sucursal) -> mostrarCodigoQR(fecha limite) / mostrarSolicitudExistente / mostrarRechazo
   async enviar(venta: VentaDevolucion, linea: LineaDevolucion): Promise<void> {
     if (!this.puedeEnviar() || this.sucursal === null) return;
     this.enviando.set(true);
@@ -398,6 +414,7 @@ export class CustomerReturnsComponent implements OnInit {
     }
   }
 
+  // [CU2] flujo alternativo 3: el cliente anula su solicitud
   async cancelar(caso: DevolucionOut): Promise<void> {
     if (!confirm(`¿Cancelar la solicitud ${caso.codigo}?`)) return;
     if (await this.returnsService.cancelar(caso.idDevolucion)) await this.cargar();

@@ -36,6 +36,13 @@ import { DevolucionOut } from '../../core/models';
     </div>
   `,
 })
+// ==== DIAGRAMA <-> CODIGO (informe Parcial 2) ====================
+// [CU6] Procesar reembolso de dinero
+// Diagramas del informe: "Robustez CU6" y "Clases CU6"
+// Pantalla (boundary) que lo usa: ProcesarReembolsoUI (lista de reembolsos pendientes)
+// En palabras simples: reembolsos que quedaron pendientes (la tarjeta fallo o falta hacer la transferencia).
+// Robustez CU6: boundary "Procesar Reembolso" (los reembolsos que quedaron pendientes en el mensaje 12)
+// ==================================================================
 export class ReturnRefundsComponent implements OnInit {
   @Output() cambio = new EventEmitter<void>();
   readonly casos = signal<DevolucionOut[]>([]);
@@ -57,6 +64,8 @@ export class ReturnRefundsComponent implements OnInit {
     return ETIQUETA_REEMBOLSO[estado ?? ''] ?? estado ?? '';
   }
 
+  // [CU6] flujo alternativo 3: reintentar PasarelaDePagos.reembolsar()
+  // Secuencia CU6: [opt la pasarela rechaza o no responde] -> reintentar el reembolso marcado "Pendiente"
   async reintentar(caso: DevolucionOut): Promise<void> {
     if (await this.returnsService.reintentarReembolso(caso.idDevolucion)) {
       await this.cargar();
@@ -64,6 +73,7 @@ export class ReturnRefundsComponent implements OnInit {
     }
   }
 
+  // [CU6] flujo alternativo 4: confirmar la transferencia hecha
   async confirmar(caso: DevolucionOut): Promise<void> {
     const comprobante = prompt(`Número de comprobante de la transferencia de ${caso.codigo}:`);
     if (!comprobante?.trim()) return;

@@ -49,6 +49,10 @@ export interface ProductOut {
   coleccion_nombre: string;
   imagen_url: string | null;
   imagenes_secundarias: string[];
+  // Medidas reales de la prenda en cm (para saber si una talla es mas grande o mas chica).
+  medidaPechoCm?: number | null;
+  medidaLargoCm?: number | null;
+  medidaCinturaCm?: number | null;
 }
 
 export interface PaginatedProducts {
@@ -681,8 +685,7 @@ export type TipoDevolucion =
   | 'cambio_color'
   | 'cambio_medida'
   | 'cambio_producto'
-  | 'devolucion'
-  | 'nota_credito';
+  | 'devolucion';
 export type TipoSolicitud = Exclude<TipoDevolucion, 'cambio_medida'>;
 export type EstadoDevolucion =
   | 'PendienteEntrega'
@@ -697,8 +700,8 @@ export type EstadoDevolucion =
 export type MotivoDevolucion = 'talla' | 'medida' | 'color' | 'defecto' | 'equivocado' | 'no_desea';
 export type ResultadoInspeccion = 'apta' | 'defectuosa' | 'deteriorada' | 'no_corresponde';
 export type MetodoReembolso = 'efectivo' | 'qr' | 'tarjeta';
-export type OpcionSinStock = 'traslado' | 'otra_sucursal' | 'espera' | 'nota_credito' | 'reembolso';
-export type SaldoAFavor = 'nota_credito' | 'reembolso';
+// Ya no hay notas de credito: si sobra plata, siempre se devuelve en dinero.
+export type OpcionSinStock = 'traslado' | 'otra_sucursal' | 'espera' | 'reembolso';
 
 /** CU1: solicitud en tienda (queda "En inspección"). */
 export interface RegistroTiendaIn {
@@ -753,7 +756,6 @@ export interface ResolucionIn {
   metodoReembolso?: MetodoReembolso | null;
   cuentaDestino?: string | null;
   idMetPagoDiferencia?: number | null;
-  saldoAFavor?: SaldoAFavor | null;
   sinStock?: OpcionSinStock | null;
   sucursalOrigen?: number | null;
   medidaOriginal?: string | null;
@@ -762,10 +764,9 @@ export interface ResolucionIn {
 }
 
 export interface CompletarCambioIn {
-  accion: 'entregar' | 'nota_credito' | 'reembolso';
+  accion: 'entregar' | 'reembolso';
   codigoSucursal?: number | null;
   idMetPagoDiferencia?: number | null;
-  saldoAFavor?: SaldoAFavor | null;
   metodoReembolso?: MetodoReembolso | null;
   cuentaDestino?: string | null;
 }
@@ -799,8 +800,6 @@ export interface DevolucionOut {
   diferencia: number;
   idMetPagoDiferencia: number | null;
   idVentaCambio: number | null;
-  idNotaCredito: number | null;
-  nota_codigo: string | null;
   condicion: ResultadoInspeccion | null;
   checklist: Partial<ChecklistInspeccion> | null;
   codigoEscaneado: string | null;
@@ -906,9 +905,7 @@ export interface PoliticaDevolucion {
   recargoUnidad: 'hora' | 'dia';
   categoriasNoRetornables: string[];
   maxCambiosPorPrenda: number;
-  saldoAFavor: 'reembolso' | 'nota_credito' | 'cliente_elige';
   permiteReembolso: boolean;
-  vigenciaNotaCreditoDias: number;
   respetarPrecioOriginal: boolean;
   umbralAutorizacion: number;
   maxDevolucionesMes: number;
@@ -997,8 +994,6 @@ export interface AnalisisDevoluciones {
   casos: number;
   unidadesDevueltas: number;
   montoReembolsado: number;
-  notasEmitidas: number;
-  montoNotas: number;
   cambios: number;
   rechazadas: number;
   porProducto: TasaDevolucion[];
@@ -1012,48 +1007,26 @@ export interface QrDevolucion {
   modulos: string[];
 }
 
-export interface MovimientoNotaCredito {
-  idMovimiento: number;
-  tipo: 'emision' | 'consumo' | 'reintegro' | 'anulacion' | 'extension';
-  monto: number;
-  saldoResultante: number;
-  montoComplemento: number;
-  metodoComplemento: string | null;
-  idMetPago: number | null;
-  idVenta: number | null;
-  detalle: string | null;
+/** Correccion de la ingeniera: "L mas grande o L menos grande" (GET /api/returns/comparar-tallas). */
+export interface ComparacionTalla {
+  idProductoOriginal: number;
+  idProductoNuevo: number;
+  tallaOriginal: string | null;
+  tallaNueva: string | null;
+  direccion: 'mas_grande' | 'mas_chica' | 'igual' | 'sin_datos';
+  diferenciasCm: Record<string, number>;
+  texto: string;
+}
+
+/** Aviso "tipo push" de la bandeja de notificaciones (GET /api/notificaciones). */
+export interface Notificacion {
+  idNotificacion: number;
+  tipo: 'envio' | 'reembolso' | 'devolucion' | 'venta_sin_conexion';
+  titulo: string;
+  mensaje: string;
+  referencia: string | null;
+  leida: boolean;
   fecha: string;
-  usuario: string | null;
-}
-
-/** Nota de crédito (CU7). */
-export interface NotaCredito {
-  idNotaCredito: number;
-  codigo: string;
-  monto: number;
-  saldo: number;
-  estado: 'Vigente' | 'Usada' | 'Anulada' | 'Vencida';
-  fechaEmision: string;
-  fechaVencimiento: string;
-  motivo: string | null;
-  motivoAnulacion: string | null;
-  idCliente: number;
-  cliente_nombre: string | null;
-  idDevolucion: number | null;
-  codigoDevolucion: string | null;
-  idTenant: number;
-  empresa: string | null;
-  movimientos: MovimientoNotaCredito[];
-}
-
-export interface CanjeNotaOut {
-  idMetPago: number;
-  montoTotal: number;
-  montoNota: number;
-  montoComplemento: number;
-  metodoComplemento: string | null;
-  codigo: string;
-  saldoRestante: number;
 }
 
 // ─────────────────────────────────────────────

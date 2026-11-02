@@ -6,12 +6,12 @@ import { InventoryService } from '../../core/services/inventory.service';
 import { ETIQUETA_RESULTADO, ETIQUETA_TIPO, ReturnsService } from '../../core/services/returns.service';
 import { SalesService } from '../../core/services/sales.service';
 import type {
+  ComparacionTalla,
   DevolucionOut,
   MetodoReembolso,
   OpcionSinStock,
   PoliticaDevolucion,
   ProductOut,
-  SaldoAFavor,
   StockSucursal,
   TipoDevolucion,
 } from '../../core/models';
@@ -23,9 +23,10 @@ const VARIANTES: TipoDevolucion[] = ['cambio_talla', 'cambio_color'];
  *  - CU4 cambio de talla, color o ajuste de medida, con la diferencia de precio;
  *  - CU5 cambio por uno o varios productos distintos (nueva venta enlazada);
  *  - CU6 reembolso por el medio de pago de la venta;
- *  - CU7 nota de crédito por el saldo a favor;
+ *  - CU7 nota de devolución: si al cliente le sobra plata, SIEMPRE se le devuelve
+ *    en dinero (ya no hay notas de crédito) y se le entrega la nota de devolución;
  *  - CU8 si la variante no tiene stock en la sucursal: traslado, atención en
- *    otra sucursal, lista de espera, otra prenda, nota o reembolso.
+ *    otra sucursal, lista de espera, otra prenda o devolverle el dinero.
  * Los montos que se muestran son una estimación: el servidor los recalcula.
  */
 @Component({
@@ -74,6 +75,11 @@ const VARIANTES: TipoDevolucion[] = ['cambio_talla', 'cambio_color'];
             <span class="text-gray-900 font-semibold">{{ p.nombre }} · talla {{ p.talla }} · {{ p.color }}</span>
             <span class="text-gray-500">Bs {{ p.venta }} · {{ existenciaTexto(p.idProducto) }}</span>
           </button>
+          <!-- "L mas grande o L menos grande": comparacion real en cm entre la prenda devuelta y la elegida -->
+          <p *ngIf="comparacion() as c" class="text-[11px] p-2 rounded-lg border"
+             [ngClass]="c.direccion === 'mas_grande' ? 'border-sky-200 bg-sky-50 text-sky-800' : c.direccion === 'mas_chica' ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-gray-200 bg-gray-50 text-gray-600'">
+            <span class="material-symbols-outlined text-[14px] align-middle">straighten</span> {{ c.texto }}
+          </p>
         </div>
 
         <!-- CU5: productos distintos -->
@@ -126,10 +132,7 @@ const VARIANTES: TipoDevolucion[] = ['cambio_talla', 'cambio_color'];
             Lista de espera: avisar cuando haya reposición
           </label>
           <label class="flex items-center gap-2 cursor-pointer">
-            <input type="radio" name="sinStock" [checked]="sinStock() === 'nota_credito'" (change)="sinStock.set('nota_credito')" /> Nota de crédito
-          </label>
-          <label class="flex items-center gap-2 cursor-pointer">
-            <input type="radio" name="sinStock" [checked]="sinStock() === 'reembolso'" (change)="sinStock.set('reembolso')" /> Reembolso (siempre se permite si no hay stock)
+            <input type="radio" name="sinStock" [checked]="sinStock() === 'reembolso'" (change)="sinStock.set('reembolso')" /> Devolverle el dinero (siempre se permite si no hay stock)
           </label>
           <button *ngIf="esVariante()" (click)="elegirTipo('cambio_producto')" class="text-[11px] font-bold uppercase text-indigo-600 bg-transparent border-0 p-0 cursor-pointer">Elegir otra prenda</button>
         </div>
@@ -145,11 +148,8 @@ const VARIANTES: TipoDevolucion[] = ['cambio_talla', 'cambio_color'];
           <p *ngIf="idPagoDiferencia()" class="text-emerald-700 font-semibold">Diferencia cobrada (pago #{{ idPagoDiferencia() }}).</p>
           <ng-container *ngIf="diferencia() < 0">
             <p class="text-gray-700">Saldo a favor del cliente: <span class="font-bold">Bs {{ (-diferencia()).toFixed(2) }}</span></p>
-            <div *ngIf="clienteElige()" class="flex gap-4">
-              <label class="flex items-center gap-2 cursor-pointer"><input type="radio" name="saldo" [checked]="saldoAFavor() === 'nota_credito'" (change)="saldoAFavor.set('nota_credito')" /> Nota de crédito</label>
-              <label class="flex items-center gap-2 cursor-pointer"><input type="radio" name="saldo" [checked]="saldoAFavor() === 'reembolso'" (change)="saldoAFavor.set('reembolso')" /> Dinero</label>
-            </div>
-            <p *ngIf="!clienteElige()" class="text-gray-500">Según la política se entrega como {{ politica?.saldoAFavor === 'reembolso' ? 'reembolso' : 'nota de crédito' }}.</p>
+            <!-- Ya no hay notas de credito: el saldo a favor se devuelve en dinero y se entrega la nota de devolucion (CU7). -->
+            <p class="text-gray-500">Se le devuelve en dinero y recibe su nota de devolución.</p>
           </ng-container>
         </div>
 
@@ -163,12 +163,12 @@ const VARIANTES: TipoDevolucion[] = ['cambio_talla', 'cambio_color'];
           <p class="text-[11px] text-gray-500">
             {{ medio() === 'tarjeta' ? 'Se pide a la pasarela sobre el cobro original; si no responde, queda pendiente para reintentar.'
               : medio() === 'qr' ? 'Queda como transferencia pendiente hasta adjuntar el comprobante.'
-              : 'Se entrega en caja. Si la venta se pagó con una nota de crédito, ese monto vuelve a la nota.' }}
+              : 'Se entrega en caja junto con la nota de devolución.' }}
           </p>
         </div>
 
-        <p *ngIf="tipo() === 'nota_credito'" class="text-xs p-3 rounded-lg bg-indigo-50 border border-indigo-200 text-gray-700">
-          Se emite una nota de crédito por Bs {{ caso.credito.toFixed(2) }}, válida {{ politica?.vigenciaNotaCreditoDias ?? 90 }} días.
+        <p *ngIf="tipo() === 'devolucion'" class="text-xs p-3 rounded-lg bg-indigo-50 border border-indigo-200 text-gray-700">
+          Se le devuelven Bs {{ caso.credito.toFixed(2) }} y se emite la nota de devolución (CU7) con el código {{ caso.codigo }}.
         </p>
 
         <p *ngIf="error()" class="text-xs text-rose-600 p-3 rounded-lg bg-rose-50 border border-rose-200">{{ error() }}</p>
@@ -180,6 +180,20 @@ const VARIANTES: TipoDevolucion[] = ['cambio_talla', 'cambio_color'];
     </div>
   `,
 })
+// ==== DIAGRAMA <-> CODIGO (informe Parcial 2) ====================
+// [CU4] Procesar cambio de talla, color o medida
+// [CU5] Procesar cambio por un producto diferente
+// [CU6] Procesar reembolso de dinero
+// [CU7] Emitir nota de devolucion
+// [CU8] Gestionar cambio sin stock disponible
+// [CU10] Actualizar inventario por devolucion o cambio
+// Diagramas del informe: "Robustez CU4" y "Clases CU4", "Robustez CU5" y "Clases CU5", "Robustez CU6" y "Clases CU6", "Robustez CU7" y "Clases CU7", "Robustez CU8" y "Clases CU8", "Robustez CU10" y "Clases CU10"
+// Pantalla (boundary) que lo usa: ResolverCambioUI (CU4, CU8), CambioOtroProductoUI (CU5), ProcesarReembolsoUI (CU6), ResolverDevolucionUI (CU7, CU10) = esta clase
+// En palabras simples: pantalla donde se resuelve una solicitud aprobada: cambio de talla/color, por otro producto o devolver el dinero.
+// Robustez: boundary "Resolver Cambio" (CU4, CU8), "Cambio por Otro Producto" (CU5), "Procesar Reembolso" (CU6),
+//   "Resolver Devolución" (CU7, CU10)
+// Secuencia: lifeline "Resolver Cambio" (CU4, CU8), "Cambio por Otro Producto" (CU5), "Procesar Reembolso" (CU6), "Resolver Devolución" (CU7, CU10)
+// ==================================================================
 export class ReturnResolveComponent implements OnInit {
   @Input({ required: true }) caso!: DevolucionOut;
   @Input() politica: PoliticaDevolucion | null = null;
@@ -197,7 +211,8 @@ export class ReturnResolveComponent implements OnInit {
   readonly stocks = signal<Record<number, StockSucursal[]>>({});
   readonly sucursal = signal<number | null>(null);
   readonly sinStock = signal<OpcionSinStock | null>(null);
-  readonly saldoAFavor = signal<SaldoAFavor>('nota_credito');
+  // Correccion de la ingeniera: si la talla nueva es mas grande o mas chica (y por cuantos cm).
+  readonly comparacion = signal<ComparacionTalla | null>(null);
   readonly medio = signal<MetodoReembolso>('efectivo');
   readonly idPagoDiferencia = signal<number | null>(null);
   readonly formaPago = signal<string | null>(null);
@@ -217,7 +232,6 @@ export class ReturnResolveComponent implements OnInit {
   readonly tipos = computed<TipoDevolucion[]>(() => {
     const tipos: TipoDevolucion[] = ['cambio_talla', 'cambio_color', 'cambio_medida', 'cambio_producto'];
     if (this.politica?.permiteReembolso !== false || this.caso.condicion === 'defectuosa') tipos.push('devolucion');
-    tipos.push('nota_credito');
     return tipos;
   });
 
@@ -278,15 +292,13 @@ export class ReturnResolveComponent implements OnInit {
     (this.esCambio() && this.entregas().length > 0 && !this.sinStockAqui()) || (this.tipo() === 'cambio_medida' && this.diferencia() > 0)
   );
 
-  readonly clienteElige = computed(() => this.politica?.saldoAFavor === 'cliente_elige' && (this.politica.permiteReembolso || this.caso.condicion === 'defectuosa'));
-
   readonly supera = computed(() => this.diferencia() > (this.politica?.umbralAutorizacion ?? Infinity) && !this.caso.autorizador_nombre);
 
   readonly pideMedio = computed(() => {
     if (this.tipo() === 'devolucion') return true;
     if (this.sinStockAqui() && this.sinStock() === 'reembolso') return true;
-    const aDinero = this.politica?.saldoAFavor === 'reembolso' || (this.clienteElige() && this.saldoAFavor() === 'reembolso');
-    return this.muestraDiferencia() && this.diferencia() < 0 && aDinero;
+    // Si le sobra plata en un cambio, siempre se le devuelve en dinero: hay que elegir el medio.
+    return this.muestraDiferencia() && this.diferencia() < 0;
   });
 
   /** Método (no computed): también depende de campos de formulario que no son signals. */
@@ -314,7 +326,7 @@ export class ReturnResolveComponent implements OnInit {
     if (this.inventoryService.locations().length === 0) void this.inventoryService.loadLocations();
     if (this.archiveService.products().length < 2) await this.archiveService.loadProducts({ size: 100 });
     this.sucursal.set(this.caso.sucursalEntrega ?? this.caso.codigoSucursal);
-    this.elegirTipo(this.tipos().includes(this.caso.tipo) ? this.caso.tipo : 'nota_credito');
+    this.elegirTipo(this.tipos().includes(this.caso.tipo) ? this.caso.tipo : this.tipos()[0]);
     if (this.caso.idProductoNuevo) {
       const nuevo = this.archiveService.products().find((p) => p.idProducto === this.caso.idProductoNuevo);
       if (nuevo) this.elegirVariante(nuevo);
@@ -335,9 +347,11 @@ export class ReturnResolveComponent implements OnInit {
     return ETIQUETA_RESULTADO[this.caso.condicion ?? ''] ?? 'sin inspección';
   }
 
+  // [CU4] [CU5] [CU6] elegir la resolucion (TipoDevolucion) -> ResolverCambioUI.abrirCambio() / CambioOtroProductoUI.abrirCambio() / ProcesarReembolsoUI.abrirReembolso()
   elegirTipo(tipo: TipoDevolucion): void {
     this.tipo.set(tipo);
     this.idProductoNuevo.set(null);
+    this.comparacion.set(null);
     this.sinStock.set(null);
     this.idPagoDiferencia.set(null);
     this.error.set(null);
@@ -356,6 +370,9 @@ export class ReturnResolveComponent implements OnInit {
     return (fila?.disponible ?? 0) >= cantidad;
   }
 
+  // [CU8] ResolverCambioUI.mostrarOpcionesSinStock(): muestra si hay stock en esta sucursal
+  // Robustez CU8: mensaje 2: buscarStock(variante nueva) a "BuscarStockSucursales" -> 5: muestra opciones (traslado, otra sucursal...)
+  // Secuencia CU8: lifeline "Resolver Cambio" -> buscarStock(idProductoNuevo) -> mostrarOpciones(traslado | otra sucursal | otra prenda | reembolso)
   existenciaTexto(idProducto: number): string {
     const stock = this.stocks()[idProducto];
     if (!stock) return 'consultando…';
@@ -363,13 +380,25 @@ export class ReturnResolveComponent implements OnInit {
     return aqui > 0 ? `${aqui} en esta sucursal` : 'sin existencia aquí';
   }
 
+  // [CU4] ResolverCambioUI.elegirVariante() -> ControlDevoluciones.calcularDiferencia()
+  // Robustez CU4: mensaje 7 (elige la nueva talla o color) -> 8: calcularDiferencia(variante nueva) a "CalcularDiferencia" -> 11: muestra la diferencia
+  // Secuencia CU4: Empleado -> elegirVariante(talla | color) -> calcularDiferencia(idVariante) -> mostrarMontoACobrar(diferencia)
   elegirVariante(p: ProductOut): void {
     this.idProductoNuevo.set(p.idProducto);
     this.sinStock.set(null);
     this.idPagoDiferencia.set(null);
     void this.cargarStock(p.idProducto);
+    // Correccion de la ingeniera ("L mas grande o L menos grande"): preguntamos al backend
+    // si la talla elegida es mas grande o mas chica que la devuelta, en centimetros.
+    this.comparacion.set(null);
+    void this.returnsService.compararTallas(this.caso.idProducto, p.idProducto).then((c) => {
+      if (this.idProductoNuevo() === p.idProducto) this.comparacion.set(c);
+    });
   }
 
+  // [CU5] CambioOtroProductoUI.agregarProducto() -> ControlDevoluciones.cotizarProducto()
+  // Robustez CU5: mensaje 6 (agrega productos nuevos) -> 7: cotizarProductos(productos, cantidades) -> 12: muestra diferencia o saldo a favor
+  // Secuencia CU5: Empleado -> agregarProducto(codigo | catalogo, cantidad) -> cotizarProducto(idProducto, cantidad) -> mostrarDiferencia(total - credito)
   agregarProducto(): void {
     const primero = this.otrosProductos()[0];
     if (!primero) return;
@@ -394,6 +423,8 @@ export class ReturnResolveComponent implements OnInit {
     this.idPagoDiferencia.set(null);
   }
 
+  // [CU4] [CU5] ResolverCambioUI.registrarPago() / CambioOtroProductoUI.registrarPago() (cobrar la diferencia)
+  // Secuencia CU4: Empleado -> registrarPago(efectivo | tarjeta | QR)  |  Secuencia CU5: confirmarCambio(metodo de pago)
   async cobrar(tipo: string): Promise<void> {
     this.cobrando.set(true);
     const pago = await this.salesService.crearMetodo(tipo, this.diferencia());
@@ -401,6 +432,13 @@ export class ReturnResolveComponent implements OnInit {
     if (pago) this.idPagoDiferencia.set(pago.idMetPago);
   }
 
+  // [CU4] [CU5] [CU6] [CU7] [CU8] [CU10] confirmarCambio() / confirmarReembolso() / ResolverDevolucionUI.confirmarCambioOReembolso()
+  // -> ControlDevoluciones.resolver() (backend POST /api/returns/{id}/resolver)
+  // Robustez: CU4 msj 13 confirmarCambio -> "ConfirmarCambio" | CU5 msj 14 confirmarCambio -> "ControlDevoluciones" |
+  //   CU6 msj 9 confirmarReembolso -> "EjecutarReembolso" | CU7 la nota de devolucion sale del backend (comprobante.pdf) |
+  //   CU8 msj 7 resolver(traslado) -> "Backend : GestionarTraslado" | CU10 msj 2 resolver(solicitud) -> "ResolverDevolucion"
+  // Secuencia: CU4 confirmarCambio() | CU5 confirmarCambio(metodo de pago) | CU6 confirmarReembolso() |
+  //   CU8 confirmarCambio(variante) / elegirOpcion(opcion, sucursal) | CU10 confirmarCambioOReembolso() -> mostrarComprobante() o mostrarError(reintentar)
   async confirmar(): Promise<void> {
     if (this.bloqueo() !== null) return;
     this.guardando.set(true);
@@ -414,7 +452,6 @@ export class ReturnResolveComponent implements OnInit {
       metodoReembolso: this.pideMedio() ? this.medio() : null,
       cuentaDestino: this.medio() === 'qr' ? this.cuentaDestino.trim() || null : null,
       idMetPagoDiferencia: this.idPagoDiferencia(),
-      saldoAFavor: this.clienteElige() ? this.saldoAFavor() : null,
       sinStock,
       sucursalOrigen: sinStock === 'traslado' || sinStock === 'otra_sucursal' ? this.sucursalOrigen ?? this.otrasConStock()[0]?.codigoSucursal ?? null : null,
       medidaOriginal: this.tipo() === 'cambio_medida' ? this.medidaOriginal.trim() || null : null,

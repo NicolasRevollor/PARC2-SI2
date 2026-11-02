@@ -77,14 +77,12 @@ import { PoliticaDevolucion } from '../../core/models';
           </section>
 
           <section class="space-y-3">
-            <p class="ys-etiqueta">Saldo a favor y notas de crédito</p>
+            <p class="ys-etiqueta">Saldo a favor y devolución del dinero</p>
             <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <label class="text-xs text-gray-700">Saldo a favor se entrega como
-                <select [(ngModel)]="p.saldoAFavor" class="ys-campo"><option value="cliente_elige">Lo elige el cliente</option>
-                  <option value="nota_credito">Nota de crédito</option><option value="reembolso">Dinero</option></select>
-                <span *ngIf="errores()['saldoAFavor']" class="block text-[11px] text-rose-600">{{ errores()['saldoAFavor'] }}</span></label>
-              <label class="text-xs text-gray-700">Validez de las notas (días)<input type="number" min="1" [(ngModel)]="p.vigenciaNotaCreditoDias" class="ys-campo" /></label>
-              <label class="flex items-center gap-2 text-xs text-gray-700 mt-5"><input type="checkbox" [(ngModel)]="p.permiteReembolso" /> Se devuelve dinero</label>
+                <!-- Ya no hay notas de credito: el saldo a favor SIEMPRE se devuelve en dinero (con nota de devolucion). -->
+                <p class="ys-campo bg-gray-50 text-gray-600">Siempre en dinero (se entrega una nota de devolución)</p></label>
+              <label class="flex items-center gap-2 text-xs text-gray-700 mt-5"><input type="checkbox" [(ngModel)]="p.permiteReembolso" /> Acepta devolver la prenda por dinero</label>
             </div>
           </section>
 
@@ -131,6 +129,14 @@ import { PoliticaDevolucion } from '../../core/models';
     </div>
   `,
 })
+// ==== DIAGRAMA <-> CODIGO (informe Parcial 2) ====================
+// [CU9] Configurar politica de devoluciones y cambios
+// Diagramas del informe: "Robustez CU9" y "Clases CU9"
+// Pantalla (boundary) que lo usa: PoliticaDevolucionesUI (esta clase)
+// En palabras simples: pantalla "Politica de devoluciones" del Administrador de empresa.
+// Robustez CU9: boundary "Política de Devoluciones" (mensajes 1, 5, 6 y 13 con el Administrador de empresa)
+// Secuencia CU9: lifeline "Política de Devoluciones" (pantalla del Administrador de empresa)
+// ==================================================================
 export class ReturnPolicyComponent implements OnChanges, OnInit {
   @Input() politica: PoliticaDevolucion | null = null;
   @Input() editable = false;
@@ -173,6 +179,9 @@ export class ReturnPolicyComponent implements OnChanges, OnInit {
       : [...p.categoriasNoRetornables, categoria];
   }
 
+  // [CU9] PoliticaDevolucionesUI.guardar() -> ControlDevoluciones.guardarPolitica() (si hay error: marcarCamposConError())
+  // Robustez CU9: mensaje 6 (modifica y guarda) -> 7: guardarPolitica(valores) a "ValidarPolitica" -> 13: muestra la version
+  // Secuencia CU9: Administrador -> guardar() -> guardarPolitica(valores) -> mostrarConfirmacion(version, vigente desde) o marcarCamposConError(campos)
   async guardar(p: PoliticaDevolucion): Promise<void> {
     this.guardando.set(true);
     const r = await this.returnsService.guardarPolitica(p);

@@ -4,6 +4,7 @@ import { firstValueFrom } from 'rxjs';
 import {
   AlcanceDevoluciones,
   AnalisisDevoluciones,
+  ComparacionTalla,
   CompletarCambioIn,
   DevolucionDetalle,
   DevolucionOut,
@@ -43,8 +44,7 @@ export const ETIQUETA_TIPO: Record<string, string> = {
   cambio_color: 'Cambio de color',
   cambio_medida: 'Ajuste de medida',
   cambio_producto: 'Cambio por otro producto',
-  devolucion: 'Reembolso',
-  nota_credito: 'Nota de crédito',
+  devolucion: 'Devolución del dinero',
 };
 
 export const ETIQUETA_ESTADO: Record<string, string> = {
@@ -114,6 +114,20 @@ export const ESTADOS_ABIERTOS = 'PendienteEntrega,EnInspeccion,EnRevision,Aproba
  * operación y muestra el mensaje del servidor cuando la rechaza.
  */
 @Injectable({ providedIn: 'root' })
+// ==== DIAGRAMA <-> CODIGO (informe Parcial 2) ====================
+// [CU1] Registrar solicitud de devolucion o cambio en tienda
+// [CU2] Solicitar devolucion o cambio desde la tienda en linea
+// [CU3] Inspeccionar estado de la prenda devuelta
+// [CU4] Procesar cambio de talla, color o medida
+// [CU5] Procesar cambio por un producto diferente
+// [CU6] Procesar reembolso de dinero
+// [CU7] Emitir nota de devolucion
+// [CU8] Gestionar cambio sin stock disponible
+// [CU9] Configurar politica de devoluciones y cambios
+// [CU10] Actualizar inventario por devolucion o cambio
+// Diagramas del informe: "Robustez CU1" y "Clases CU1", "Robustez CU2" y "Clases CU2", "Robustez CU3" y "Clases CU3", "Robustez CU4" y "Clases CU4", "Robustez CU5" y "Clases CU5", "Robustez CU6" y "Clases CU6", "Robustez CU7" y "Clases CU7", "Robustez CU8" y "Clases CU8", "Robustez CU9" y "Clases CU9", "Robustez CU10" y "Clases CU10"
+// En palabras simples: este servicio es el puente entre las pantallas (UI) y el backend (ControlDevoluciones). Cada metodo dice a que endpoint de backend/app/routers/returns.py llama.
+// ==================================================================
 export class ReturnsService {
   private readonly devolucionesSignal = signal<DevolucionOut[]>([]);
   private readonly cargandoSignal = signal<boolean>(false);
@@ -182,6 +196,9 @@ export class ReturnsService {
     );
   }
 
+  // [CU3] ControlDevoluciones.buscarSolicitud() -> GET /api/returns/codigo/{codigo}
+  // Robustez CU3: control "BuscarSolicitud"
+  // Secuencia CU3: buscarSolicitud(codigo) -> "BuscarSolicitud"
   porCodigo(codigo: string): Promise<DevolucionOut | null> {
     return this.pedir(
       firstValueFrom(this.http.get<DevolucionOut>(`${API_URL}/api/returns/codigo/${encodeURIComponent(codigo.trim().toUpperCase())}`)),
@@ -221,6 +238,7 @@ export class ReturnsService {
   }
 
   /** Comprobante del caso con QR (PDF) en una pestaña nueva. */
+  // [CU4] [CU5] [CU6] GET /api/returns/{id}/comprobante.pdf
   async abrirComprobante(idDevolucion: number): Promise<void> {
     const blob = await this.pedir(
       firstValueFrom(this.http.get(`${API_URL}/api/returns/${idDevolucion}/comprobante.pdf`, { responseType: 'blob' })),
@@ -229,12 +247,16 @@ export class ReturnsService {
     if (blob) window.open(URL.createObjectURL(blob), '_blank');
   }
 
+  // [CU2] MisComprasUI.mostrarCodigoQR() -> GET /api/returns/{id}/qr
   qr(idDevolucion: number): Promise<QrDevolucion | null> {
     return this.pedir(firstValueFrom(this.http.get<QrDevolucion>(`${API_URL}/api/returns/${idDevolucion}/qr`)), '', false);
   }
 
   // --- CU1 / CU2 ----------------------------------------------------------
 
+  // [CU1] ControlDevoluciones.buscarVenta() -> GET /api/returns/ventas
+  // Robustez CU1: control "BuscarVenta"
+  // Secuencia CU1: buscarVenta(dato) -> "BuscarVenta"
   buscarVentas(q: string): Promise<VentaDevolucion[] | null> {
     return this.pedir(
       firstValueFrom(this.http.get<VentaDevolucion[]>(`${API_URL}/api/returns/ventas`, { params: { q } })),
@@ -242,6 +264,9 @@ export class ReturnsService {
     );
   }
 
+  // [CU2] ControlDevoluciones.listarMisCompras() -> GET /api/returns/mis-compras
+  // Robustez CU2: control "ControlDevoluciones" (listarMisCompras)
+  // Secuencia CU2: listarMisCompras(idCliente) -> "ListarComprasElegibles"
   async misCompras(): Promise<VentaDevolucion[]> {
     return (
       (await this.pedir(
@@ -251,6 +276,9 @@ export class ReturnsService {
     );
   }
 
+  // [CU1] ControlDevoluciones.registrarSolicitud() -> POST /api/returns
+  // Robustez CU1: controles "ValidarElegibilidad" y "RegistrarSolicitud"
+  // Secuencia CU1: validarSolicitud(...) -> "ValidarElegibilidad" -> registrarSolicitud(...) -> "RegistrarSolicitud"
   async registrar(payload: RegistroTiendaIn): Promise<DevolucionOut[] | null> {
     const casos = await this.pedir(
       firstValueFrom(this.http.post<DevolucionOut[]>(`${API_URL}/api/returns`, payload)),
@@ -262,6 +290,9 @@ export class ReturnsService {
     return casos;
   }
 
+  // [CU2] ControlDevoluciones.enviarSolicitud() -> POST /api/returns/solicitudes
+  // Robustez CU2: control "ControlDevoluciones" (enviarSolicitud)
+  // Secuencia CU2: enviarSolicitud(...) -> "ValidarSolicitud" -> registrarSolicitud(...) -> "RegistrarSolicitudEnLinea"
   async solicitar(payload: SolicitudDevolucionIn): Promise<DevolucionOut | null> {
     const caso = await this.pedir(
       firstValueFrom(this.http.post<DevolucionOut>(`${API_URL}/api/returns/solicitudes`, payload)),
@@ -271,6 +302,7 @@ export class ReturnsService {
     return caso;
   }
 
+  // [CU2] [CU3] POST /api/returns/fotos
   async subirFoto(archivo: File): Promise<string | null> {
     const datos = new FormData();
     datos.append('archivo', archivo);
@@ -283,6 +315,9 @@ export class ReturnsService {
 
   // --- CU3 / autorización --------------------------------------------------
 
+  // [CU3] ControlDevoluciones.registrarInspeccion() -> POST /api/returns/{id}/inspeccion
+  // Robustez CU3: controles "EvaluarCondicion" y "RegistrarInspeccion"
+  // Secuencia CU3: evaluarPrenda(...) -> "EvaluarCondicion" -> registrarInspeccion(...) -> "RegistrarInspeccion"
   inspeccionar(idDevolucion: number, payload: InspeccionIn): Promise<DevolucionOut[] | null> {
     return this.pedir(
       firstValueFrom(this.http.post<DevolucionOut[]>(`${API_URL}/api/returns/${idDevolucion}/inspeccion`, payload)),
@@ -290,6 +325,7 @@ export class ReturnsService {
     );
   }
 
+  // [CU3] flujo alternativo 5 -> POST /api/returns/{id}/revision
   revisar(idDevolucion: number, aprobada: boolean, motivo: string): Promise<DevolucionOut | null> {
     return this.pedir(
       firstValueFrom(this.http.post<DevolucionOut>(`${API_URL}/api/returns/${idDevolucion}/revision`, { aprobada, motivo })),
@@ -297,6 +333,8 @@ export class ReturnsService {
     );
   }
 
+  // [CU1] [CU4] [CU6] ControlDevoluciones.exigirAutorizacion() -> POST /api/returns/{id}/autorizar
+  // Secuencia CU6: autorizar(idDevolucion)  [opt el monto supera el umbral de autorizacion]
   autorizar(idDevolucion: number, motivo?: string): Promise<DevolucionOut | null> {
     return this.pedir(
       firstValueFrom(this.http.post<DevolucionOut>(`${API_URL}/api/returns/${idDevolucion}/autorizar`, { motivo: motivo || null })),
@@ -307,6 +345,11 @@ export class ReturnsService {
   // --- CU4–CU8 -------------------------------------------------------------
 
   /** Devuelve el caso, o el mensaje de error del servidor (para mostrarlo en el formulario). */
+  // [CU4] [CU5] [CU6] [CU7] [CU8] [CU10] ControlDevoluciones.resolver() -> POST /api/returns/{id}/resolver
+  // Robustez: "ConfirmarCambio" (CU4), "ControlDevoluciones" (CU5), "EjecutarReembolso" (CU6),
+  //   la nota de devolucion (CU7) sale en comprobante.pdf, "Backend : GestionarTraslado" (CU8), "ResolverDevolucion" (CU10)
+  // Secuencia: resolver(...) -> "ConfirmarCambio" (CU4, CU5), "EjecutarReembolso" (CU6),
+  //   "GestionarTraslado" (CU8), "ResolverDevolucion" (CU10)
   async resolver(idDevolucion: number, payload: ResolucionIn): Promise<DevolucionOut | string> {
     try {
       return await firstValueFrom(this.http.post<DevolucionOut>(`${API_URL}/api/returns/${idDevolucion}/resolver`, payload));
@@ -315,6 +358,9 @@ export class ReturnsService {
     }
   }
 
+  // [CU8] ControlDevoluciones.completarCambio() -> POST /api/returns/{id}/completar-cambio
+  // Robustez CU8: control "CompletarCambio"
+  // Secuencia CU8: completarCambio(idDevolucion, "entregar") -> "CompletarCambio"
   completarCambio(idDevolucion: number, payload: CompletarCambioIn): Promise<DevolucionOut | null> {
     return this.pedir(
       firstValueFrom(this.http.post<DevolucionOut>(`${API_URL}/api/returns/${idDevolucion}/completar-cambio`, payload)),
@@ -322,6 +368,7 @@ export class ReturnsService {
     );
   }
 
+  // [CU2] flujo alternativo 3 -> POST /api/returns/{id}/cancelar
   async cancelar(idDevolucion: number): Promise<DevolucionOut | null> {
     const caso = await this.pedir(
       firstValueFrom(this.http.post<DevolucionOut>(`${API_URL}/api/returns/${idDevolucion}/cancelar`, {})),
@@ -331,12 +378,24 @@ export class ReturnsService {
     return caso;
   }
 
+  // [CU2] [CU4] [CU8] ControlDevoluciones.consultarStock() / obtenerVariantes() -> GET /api/returns/stock/{idProducto}
+  // Robustez: "ConsultarVariantes" (CU4), "BuscarStockSucursales" (CU8), consultarStock (CU2)
+  // Secuencia CU4: obtenerVariantes(idDevolucion) -> "ConsultarVariantes"  |  Secuencia CU8: buscarStock(idProductoNuevo) -> "BuscarStockSucursales"
   async stockReemplazo(idProducto: number): Promise<StockSucursal[]> {
     return (await this.pedir(firstValueFrom(this.http.get<StockSucursal[]>(`${API_URL}/api/returns/stock/${idProducto}`)), '', false)) ?? [];
   }
 
+  // [CU2] [CU4] Correccion de la ingeniera: "distincion entre tallas, L mas grande o L menos grande".
+  // En palabras simples: le pregunta al backend si la prenda nueva es mas grande o mas chica que la que se
+  //   devuelve, y por cuantos cm. -> GET /api/returns/comparar-tallas (backend: dv.comparar_tallas()).
+  compararTallas(idOriginal: number, idNuevo: number): Promise<ComparacionTalla | null> {
+    const params = new HttpParams().set('idOriginal', idOriginal).set('idNuevo', idNuevo);
+    return this.pedir(firstValueFrom(this.http.get<ComparacionTalla>(`${API_URL}/api/returns/comparar-tallas`, { params })), '', false);
+  }
+
   // --- CU6 ------------------------------------------------------------------
 
+  // [CU6] GET /api/returns/reembolsos-pendientes
   async reembolsosPendientes(): Promise<DevolucionOut[]> {
     return (
       (await this.pedir(
@@ -346,6 +405,7 @@ export class ReturnsService {
     );
   }
 
+  // [CU6] PasarelaDePagos.reembolsar() otra vez -> POST /api/returns/{id}/reembolso/reintentar
   reintentarReembolso(idDevolucion: number): Promise<DevolucionOut | null> {
     return this.pedir(
       firstValueFrom(this.http.post<DevolucionOut>(`${API_URL}/api/returns/${idDevolucion}/reembolso/reintentar`, {})),
@@ -353,6 +413,7 @@ export class ReturnsService {
     );
   }
 
+  // [CU6] ControlDevoluciones.marcarReembolso() -> POST /api/returns/{id}/reembolso/confirmar
   confirmarTransferencia(idDevolucion: number, comprobante: string): Promise<DevolucionOut | null> {
     return this.pedir(
       firstValueFrom(this.http.post<DevolucionOut>(`${API_URL}/api/returns/${idDevolucion}/reembolso/confirmar`, { comprobante })),
@@ -362,6 +423,9 @@ export class ReturnsService {
 
   // --- CU9 / CU10 -------------------------------------------------------------
 
+  // [CU9] ControlDevoluciones.obtenerPoliticaVigente() -> GET /api/returns/politica
+  // Robustez CU9: control "ObtenerPolitica"
+  // Secuencia CU9: obtenerPoliticaVigente() -> "ObtenerPolitica"
   politica(idTenant?: number): Promise<PoliticaDevolucion | null> {
     return this.pedir(
       firstValueFrom(this.http.get<PoliticaDevolucion>(`${API_URL}/api/returns/politica`, { params: this.params({ idTenant }) })),
@@ -375,6 +439,9 @@ export class ReturnsService {
   }
 
   /** Devuelve la nueva versión, o el detalle de errores por campo. */
+  // [CU9] ControlDevoluciones.guardarPolitica() -> PUT /api/returns/politica
+  // Robustez CU9: controles "ValidarPolitica" y "GuardarVersionPolitica"
+  // Secuencia CU9: guardarPolitica(valores) -> "ValidarPolitica" -> crearNuevaVersion(valores) -> "GuardarVersionPolitica"
   async guardarPolitica(politica: PoliticaDevolucion): Promise<PoliticaDevolucion | Record<string, string>> {
     const { idTenant: _a, version: _b, idPolitica: _c, vigenteDesde: _d, creadoEn: _e, creadoPor: _f, ...cuerpo } = politica;
     try {
@@ -391,6 +458,7 @@ export class ReturnsService {
     }
   }
 
+  // [CU10] GET /api/returns/inventario
   inventario(fechaDesde?: string, fechaHasta?: string): Promise<InventarioDevolucion | null> {
     return this.pedir(
       firstValueFrom(
@@ -402,6 +470,7 @@ export class ReturnsService {
     );
   }
 
+  // [CU10] InventarioNoVendible -> PATCH /api/returns/no-vendible/{id}
   actualizarNoVendible(idNoVendible: number, estado: NoVendible['estado'], observaciones?: string): Promise<NoVendible | null> {
     return this.pedir(
       firstValueFrom(this.http.patch<NoVendible>(`${API_URL}/api/returns/no-vendible/${idNoVendible}`, { estado, observaciones })),

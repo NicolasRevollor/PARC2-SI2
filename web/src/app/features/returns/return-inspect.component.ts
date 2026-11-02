@@ -99,6 +99,14 @@ import type { ChecklistInspeccion, DevolucionOut, PoliticaDevolucion, ResultadoI
     </div>
   `,
 })
+// ==== DIAGRAMA <-> CODIGO (informe Parcial 2) ====================
+// [CU3] Inspeccionar estado de la prenda devuelta
+// Diagramas del informe: "Robustez CU3" y "Clases CU3"
+// Pantalla (boundary) que lo usa: InspeccionarDevolucionUI (esta clase)
+// En palabras simples: pantalla donde el Encargado revisa la prenda devuelta (checklist, codigo, fotos, resultado).
+// Robustez CU3: boundary "Inspeccionar Devolución" (mensajes 1, 6, 7 y 15 con el Encargado de sucursal)
+// Secuencia CU3: lifeline "Inspeccionar Devolución" (la pantalla del Encargado de sucursal)
+// ==================================================================
 export class ReturnInspectComponent implements OnInit {
   @Input({ required: true }) caso!: DevolucionOut;
   @Input() politica: PoliticaDevolucion | null = null;
@@ -166,6 +174,7 @@ export class ReturnInspectComponent implements OnInit {
     return (ETIQUETA_TIPO[this.caso.tipo] ?? this.caso.tipo).toLowerCase();
   }
 
+  // [CU3] InspeccionarDevolucionUI.completarChecklist()
   marcar(item: keyof ChecklistInspeccion, valor: boolean): void {
     const nuevo = { ...this.checklist(), [item]: valor };
     this.checklist.set(nuevo);
@@ -175,6 +184,7 @@ export class ReturnInspectComponent implements OnInit {
     }
   }
 
+  // [CU3] InspeccionarDevolucionUI: foto de la prenda (paso 3)
   async subir(evento: Event): Promise<void> {
     const archivo = (evento.target as HTMLInputElement).files?.[0];
     if (!archivo) return;
@@ -182,6 +192,10 @@ export class ReturnInspectComponent implements OnInit {
     if (url) this.fotos.update((f) => [...f, url]);
   }
 
+  // [CU3] InspeccionarDevolucionUI.seleccionarResultado() -> ControlDevoluciones.registrarInspeccion() (backend POST /api/returns/{id}/inspeccion)
+  // Robustez CU3: mensaje 7 (escanea, completa la lista y elige el resultado) -> 8: evaluarPrenda() a "EvaluarCondicion"
+  //   -> 15: muestra el resultado y deriva al CU4, CU5 o CU6
+  // Secuencia CU3: Encargado -> registrarRevision(SKU escaneado, checklist, fotos, resultado) -> evaluarPrenda(...) -> mostrarResultado()
   async confirmar(): Promise<void> {
     this.guardando.set(true);
     const casos = await this.returnsService.inspeccionar(this.caso.idDevolucion, {

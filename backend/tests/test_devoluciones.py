@@ -1,7 +1,7 @@
 """Tests de las reglas del modulo de devoluciones (CU1 a CU11 de
 docs/iconix/2do parcial SI2.md) que no necesitan base: elegibilidad,
 recargo por demora, inspeccion, diferencias de precio, saldo a favor,
-politica y notas de credito."""
+politica, distincion entre tallas y nota de devolucion."""
 
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
@@ -131,15 +131,30 @@ def test_respetar_precio_original_no_cobra_el_aumento_general():
     assert con == Decimal("0.00") and sin == Decimal("30.00")
 
 
-def test_saldo_a_favor_segun_la_politica():
-    assert dv.destino_saldo_a_favor(dv.Politica(saldoAFavor="nota_credito"), "reembolso", False) == "nota_credito"
-    assert dv.destino_saldo_a_favor(dv.Politica(saldoAFavor="reembolso"), None, False) == "reembolso"
-    assert dv.destino_saldo_a_favor(dv.Politica(saldoAFavor="cliente_elige"), "reembolso", False) == "reembolso"
-    # Si la politica no devuelve dinero, el saldo va a nota de credito...
-    sin_dinero = dv.Politica(saldoAFavor="cliente_elige", permiteReembolso=False)
-    assert dv.destino_saldo_a_favor(sin_dinero, "reembolso", False) == "nota_credito"
-    # ...salvo un defecto de fabrica (CU3 flujo alternativo 3).
-    assert dv.destino_saldo_a_favor(sin_dinero, "reembolso", True) == "reembolso"
+# --- Distincion entre tallas (correccion: "L mas grande o L menos grande") ----------------
+
+def _prenda(talla, pecho=None, largo=None, cintura=None):
+    return SimpleNamespace(talla=talla, medidaPechoCm=pecho, medidaLargoCm=largo, medidaCinturaCm=cintura)
+
+
+def test_la_talla_nueva_es_mas_grande_por_centimetros():
+    r = dv.comparar_tallas(_prenda("M", 118, 72), _prenda("L", 124, 74))
+    assert r["direccion"] == "mas_grande"
+    assert r["diferenciasCm"] == {"pecho": 6, "largo": 2}
+    assert "MAS GRANDE" in r["texto"]
+
+
+def test_una_l_puede_ser_mas_chica_que_otra_l():
+    # Misma letra, distinto modelo: la "L" normal es mas chica que la "L" oversize.
+    r = dv.comparar_tallas(_prenda("L", 124, 74), _prenda("L", 104, 70))
+    assert r["direccion"] == "mas_chica"
+    assert r["diferenciasCm"]["pecho"] == -20
+
+
+def test_sin_medidas_se_usa_el_orden_de_las_tallas():
+    assert dv.comparar_tallas(_prenda("S"), _prenda("XL"))["direccion"] == "mas_grande"
+    assert dv.comparar_tallas(_prenda("34"), _prenda("30"))["direccion"] == "mas_chica"
+    assert dv.comparar_tallas(_prenda("?"), _prenda("M"))["direccion"] == "sin_datos"
 
 
 # --- CU6: medio de reembolso ----------------------------------------------------------
@@ -147,7 +162,8 @@ def test_saldo_a_favor_segun_la_politica():
 def test_el_reembolso_usa_el_medio_de_la_venta():
     assert dv.medio_de_pago(SimpleNamespace(origen="tarjeta_stripe", stripePaymentIntentId="pi_1", tipo="Tarjeta (Stripe)")) == "tarjeta"
     assert dv.medio_de_pago(SimpleNamespace(origen=None, stripePaymentIntentId=None, tipo="QR / Transferencia")) == "qr"
-    assert dv.medio_de_pago(SimpleNamespace(origen="nota_credito", stripePaymentIntentId=None, tipo="Nota de credito NC-1")) == "nota_credito"
+    # Ya no hay notas de credito: una venta vieja pagada con nota se devuelve en efectivo.
+    assert dv.medio_de_pago(SimpleNamespace(origen="nota_credito", stripePaymentIntentId=None, tipo="Nota de credito NC-1")) == "efectivo"
     assert dv.medio_de_pago(SimpleNamespace(origen=None, stripePaymentIntentId=None, tipo="Efectivo")) == "efectivo"
     assert dv.medio_de_pago(None) == "efectivo"
 
@@ -166,26 +182,28 @@ def test_la_garantia_no_puede_ser_menor_que_el_plazo_de_cambio():
     assert dv.errores_politica(POLITICA) == {}
 
 
-def test_sin_dinero_el_saldo_no_puede_ser_reembolso():
-    assert "saldoAFavor" in dv.errores_politica(dv.Politica(saldoAFavor="reembolso", permiteReembolso=False))
-
-
 def test_valores_invalidos_se_marcan_por_campo():
     errores = dv.errores_politica(dv.Politica(recargoValor=Decimal("150"), descuentoDeterioroPct=Decimal("-1"), maxCambiosPorPrenda=0))
     assert {"recargoValor", "descuentoDeterioroPct", "maxCambiosPorPrenda"} <= set(errores)
 
 
-# --- CU7: notas de credito -------------------------------------------------------------
+# --- CU7: nota de devolucion -------------------------------------------------------------
 
 def test_codigos():
-    assert dv.codigo_nota(7) == "NC-000007"
     assert dv.codigo_caso(123) == "DEV-000123"
     assert dv.codigo_de_producto(42) == "YS-000042"
 
 
-def test_una_nota_vigente_vencida_se_muestra_como_vencida():
-    assert dv.estado_nota("Vigente", AHORA + timedelta(days=1), AHORA) == "Vigente"
-    assert dv.estado_nota("Vigente", AHORA - timedelta(seconds=1), AHORA) == "Vencida"
-    assert dv.estado_nota("Usada", AHORA - timedelta(days=1), AHORA) == "Usada"
-    naive = (AHORA + timedelta(hours=1)).replace(tzinfo=None)
-    assert dv.estado_nota("Vigente", naive, AHORA) == "Vigente"
+def test_la_nota_de_devolucion_dice_cuanto_y_por_que_medio():
+    caso = SimpleNamespace(codigo="DEV-000123", montoDevuelto=Decimal("80"), metodoReembolso="efectivo",
+                           estadoReembolso="Completado", referenciaReembolso=None)
+    nota = dv.nota_de_devolucion(caso)
+    assert nota[0] == "Nota de devolucion N DEV-000123"
+    assert "Bs 80.00 en efectivo" in nota[1]
+
+
+def test_la_nota_avisa_si_el_reembolso_sigue_pendiente():
+    caso = SimpleNamespace(codigo="DEV-000124", montoDevuelto=Decimal("50"), metodoReembolso="tarjeta",
+                           estadoReembolso="Pendiente", referenciaReembolso="La pasarela no respondio")
+    nota = dv.nota_de_devolucion(caso)
+    assert "Estado del reembolso: Pendiente" in nota

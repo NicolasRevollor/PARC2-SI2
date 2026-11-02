@@ -6,12 +6,11 @@ import { DevolucionOut, PoliticaDevolucion } from '../../core/models';
 import { ReturnNewComponent } from './return-new.component';
 import { ReturnTrayComponent } from './return-tray.component';
 import { ReturnHistoryComponent } from './return-history.component';
-import { CreditNotesComponent } from './credit-notes.component';
 import { ReturnRefundsComponent } from './return-refunds.component';
 import { ReturnInventoryComponent } from './return-inventory.component';
 import { ReturnPolicyComponent } from './return-policy.component';
 
-type Pestana = 'bandeja' | 'historial' | 'notas' | 'reembolsos' | 'inventario' | 'politica';
+type Pestana = 'bandeja' | 'historial' | 'reembolsos' | 'inventario' | 'politica';
 
 /**
  * Módulo "Devoluciones y Cambios" (CU1–CU11 de docs/iconix/2do parcial SI2.md).
@@ -19,7 +18,7 @@ type Pestana = 'bandeja' | 'historial' | 'notas' | 'reembolsos' | 'inventario' |
  * Las reglas no se calculan acá: el backend valida cada paso contra la
  * política vigente de la venta. Esta pantalla organiza el trabajo: nueva
  * solicitud (CU1), bandeja de casos abiertos (CU2/CU3/CU8 y resolución
- * CU4–CU7), historial y análisis (CU11), notas de crédito (CU7), reembolsos
+ * CU4–CU7), historial y análisis (CU11), notas de devolución (CU7), reembolsos
  * pendientes (CU6), inventario devuelto (CU10) y política (CU9).
  */
 @Component({
@@ -30,7 +29,6 @@ type Pestana = 'bandeja' | 'historial' | 'notas' | 'reembolsos' | 'inventario' |
     ReturnNewComponent,
     ReturnTrayComponent,
     ReturnHistoryComponent,
-    CreditNotesComponent,
     ReturnRefundsComponent,
     ReturnInventoryComponent,
     ReturnPolicyComponent,
@@ -73,7 +71,6 @@ type Pestana = 'bandeja' | 'historial' | 'notas' | 'reembolsos' | 'inventario' |
 
       <app-return-tray #bandeja *ngIf="pestana() === 'bandeja'" [politica]="politica()" (cambio)="refrescar()"></app-return-tray>
       <app-return-history *ngIf="pestana() === 'historial'"></app-return-history>
-      <app-credit-notes *ngIf="pestana() === 'notas'" [esAdmin]="puede('tenant.admin')"></app-credit-notes>
       <app-return-refunds *ngIf="pestana() === 'reembolsos'" (cambio)="refrescar()"></app-return-refunds>
       <app-return-inventory *ngIf="pestana() === 'inventario'" [puedeGestionar]="puede('devolucion.inspeccionar')"></app-return-inventory>
       <app-return-policy *ngIf="pestana() === 'politica'" [politica]="politica()" [editable]="puede('tenant.admin')"
@@ -83,6 +80,20 @@ type Pestana = 'bandeja' | 'historial' | 'notas' | 'reembolsos' | 'inventario' |
     <app-return-new *ngIf="mostrarNueva()" (cerrar)="mostrarNueva.set(false)" (creados)="creados($event)"></app-return-new>
   `,
 })
+// ==== DIAGRAMA <-> CODIGO (informe Parcial 2) ====================
+// [CU1] Registrar solicitud de devolucion o cambio en tienda
+// [CU2] Solicitar devolucion o cambio desde la tienda en linea
+// [CU3] Inspeccionar estado de la prenda devuelta
+// [CU4] Procesar cambio de talla, color o medida
+// [CU5] Procesar cambio por un producto diferente
+// [CU6] Procesar reembolso de dinero
+// [CU7] Emitir nota de devolucion
+// [CU8] Gestionar cambio sin stock disponible
+// [CU9] Configurar politica de devoluciones y cambios
+// [CU10] Actualizar inventario por devolucion o cambio
+// Diagramas del informe: "Robustez CU1" y "Clases CU1", "Robustez CU2" y "Clases CU2", "Robustez CU3" y "Clases CU3", "Robustez CU4" y "Clases CU4", "Robustez CU5" y "Clases CU5", "Robustez CU6" y "Clases CU6", "Robustez CU7" y "Clases CU7", "Robustez CU8" y "Clases CU8", "Robustez CU9" y "Clases CU9", "Robustez CU10" y "Clases CU10"
+// En palabras simples: pantalla principal "Devoluciones y Cambios" del personal: desde aca se abren las demas pantallas del modulo.
+// ==================================================================
 export class ReturnsComponent implements OnInit {
   @ViewChild('bandeja') bandeja?: ReturnTrayComponent;
 
@@ -97,7 +108,6 @@ export class ReturnsComponent implements OnInit {
   readonly pestanas = computed(() => [
     { id: 'bandeja' as Pestana, etiqueta: 'Bandeja', icono: 'inbox' },
     { id: 'historial' as Pestana, etiqueta: 'Historial y análisis', icono: 'query_stats' },
-    { id: 'notas' as Pestana, etiqueta: 'Notas de crédito', icono: 'receipt_long' },
     { id: 'reembolsos' as Pestana, etiqueta: 'Reembolsos pendientes', icono: 'currency_exchange' },
     { id: 'inventario' as Pestana, etiqueta: 'Inventario devuelto', icono: 'inventory_2' },
     { id: 'politica' as Pestana, etiqueta: 'Política', icono: 'policy' },

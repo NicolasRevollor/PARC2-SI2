@@ -107,6 +107,14 @@ async def obtener_payment_intent(payment_intent_id: str) -> dict:
     }
 
 
+# ==== DIAGRAMA <-> CODIGO (informe Parcial 2) ====================
+# [CU6] Procesar reembolso de dinero
+# Diagramas del informe: "Robustez CU6" y "Clases CU6"
+# Diagrama de clases: <<interface>> PasarelaDePagos.reembolsar()
+# En palabras simples: esta es la "pasarela de pagos" del diagrama de clases CU6: le pide el reembolso a Stripe.
+# Robustez CU6: boundary "Pasarela de Pagos : Stripe" -> mensajes 11 (pedido de reembolso) y 12 (estado del reembolso)
+# Secuencia CU6: lifeline "Stripe" -> recibe solicitarReembolso(paymentIntent, monto) y responde estado del reembolso()
+# ==================================================================
 async def reembolsar_payment_intent(
     *,
     payment_intent_id: str,

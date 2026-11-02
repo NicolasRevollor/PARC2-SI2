@@ -48,6 +48,11 @@ class ProductoIn(BaseModel):
     idColeccion: int
     imagen_url: Optional[str] = None
     imagenes_secundarias: Optional[list[str]] = []
+    # Medidas REALES de la prenda en cm (migracion 025). Con ellas el sistema dice si una talla
+    # es mas grande o mas chica que otra al hacer un cambio (una "L" oversize no mide como una "L" normal).
+    medidaPechoCm: Optional[int] = Field(default=None, ge=1, le=300)
+    medidaLargoCm: Optional[int] = Field(default=None, ge=1, le=300)
+    medidaCinturaCm: Optional[int] = Field(default=None, ge=1, le=300)
 
 
 class ProductoUpdate(BaseModel):
@@ -62,6 +67,11 @@ class ProductoUpdate(BaseModel):
     idColeccion: Optional[int] = None
     imagen_url: Optional[str] = None
     imagenes_secundarias: Optional[list[str]] = None
+    # Medidas REALES de la prenda en cm (migracion 025). Con ellas el sistema dice si una talla
+    # es mas grande o mas chica que otra al hacer un cambio (una "L" oversize no mide como una "L" normal).
+    medidaPechoCm: Optional[int] = Field(default=None, ge=1, le=300)
+    medidaLargoCm: Optional[int] = Field(default=None, ge=1, le=300)
+    medidaCinturaCm: Optional[int] = Field(default=None, ge=1, le=300)
 
 
 class ProductoOut(BaseModel):
@@ -81,6 +91,10 @@ class ProductoOut(BaseModel):
     imagenes_secundarias: list[str] = []
     # Modelo al que pertenece esta variante (migracion 023).
     idModelo: Optional[int] = None
+    # Medidas reales en cm (migracion 025).
+    medidaPechoCm: Optional[int] = None
+    medidaLargoCm: Optional[int] = None
+    medidaCinturaCm: Optional[int] = None
 
     model_config = ConfigDict(from_attributes=True)
 

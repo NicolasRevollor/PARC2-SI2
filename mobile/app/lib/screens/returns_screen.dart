@@ -32,7 +32,7 @@ String _textoElegibilidad(Elegibilidad e) {
 
 /// Devoluciones y cambios desde la app (CU2, CU7, CU9, CU11 del lado del
 /// cliente): la politica de la tienda, cada compra con la elegibilidad de sus
-/// prendas, el estado y el QR de cada solicitud y las notas de credito.
+/// prendas, el estado y el QR de cada solicitud y sus avisos (notificaciones).
 class ReturnsScreen extends StatefulWidget {
   const ReturnsScreen({super.key});
 
@@ -40,6 +40,16 @@ class ReturnsScreen extends StatefulWidget {
   State<ReturnsScreen> createState() => _ReturnsScreenState();
 }
 
+// ==== DIAGRAMA <-> CODIGO (informe Parcial 2) ====================
+// [CU2] Solicitar devolucion o cambio desde la tienda en linea
+// [CU7] Emitir nota de devolucion
+// [CU9] Configurar politica de devoluciones y cambios
+// Diagramas del informe: "Robustez CU2" y "Clases CU2", "Robustez CU7" y "Clases CU7", "Robustez CU9" y "Clases CU9"
+// Pantalla (boundary) que lo usa: MisComprasUI (CU2), version movil
+// En palabras simples: pantalla del cliente en la app movil: sus compras, sus solicitudes, sus avisos y la politica. La version web es web/src/app/features/customer/returns/customer-returns.component.ts
+// Robustez CU2: boundary "Mis Compras / Solicitar Cambio" (version movil)
+// Secuencia CU2: lifeline "Mis Compras / Solicitar Cambio" (version movil)
+// ==================================================================
 class _ReturnsScreenState extends State<ReturnsScreen> {
   final ApiClient _api = ApiClient();
   late final ReturnsService _service = ReturnsService(_api);
@@ -49,7 +59,8 @@ class _ReturnsScreenState extends State<ReturnsScreen> {
   PoliticaDevolucion? _politica;
   List<CompraDevolucion> _compras = [];
   List<CasoDevolucion> _casos = [];
-  List<NotaCreditoCliente> _notas = [];
+  // Avisos "tipo push" del cliente (correccion de la ingeniera).
+  List<Notificacion> _avisos = [];
 
   @override
   void initState() {
@@ -66,7 +77,7 @@ class _ReturnsScreenState extends State<ReturnsScreen> {
       final compras = await _service.getMisCompras();
       final resultados = await Future.wait([
         _service.getMisCasos(),
-        _service.getMisNotas(),
+        _service.getNotificaciones(),
         // La politica es la de la empresa que vendio.
         _service.getPolitica(idTenant: compras.isEmpty ? null : compras.first.idTenant),
       ]);
@@ -74,7 +85,7 @@ class _ReturnsScreenState extends State<ReturnsScreen> {
       setState(() {
         _compras = compras;
         _casos = resultados[0] as List<CasoDevolucion>;
-        _notas = resultados[1] as List<NotaCreditoCliente>;
+        _avisos = resultados[1] as List<Notificacion>;
         _politica = resultados[2] as PoliticaDevolucion;
         _loading = false;
       });
@@ -140,6 +151,7 @@ class _ReturnsScreenState extends State<ReturnsScreen> {
     }
   }
 
+  // [CU2] flujo alternativo 3: el cliente anula su solicitud
   Future<void> _cancelar(CasoDevolucion caso) async {
     final confirmar = await showDialog<bool>(
       context: context,
@@ -177,6 +189,7 @@ class _ReturnsScreenState extends State<ReturnsScreen> {
     if (caso != null) _verCaso(caso);
   }
 
+  // [CU2] MisComprasUI.seleccionarPrenda()
   Future<void> _abrirSolicitud(CompraDevolucion compra, LineaDevolucion linea) async {
     final caso = await showModalBottomSheet<CasoDevolucion>(
       context: context,
@@ -289,7 +302,7 @@ class _ReturnsScreenState extends State<ReturnsScreen> {
             if (c.montoDevuelto > 0)
               Text('Reembolso de Bs ${c.montoDevuelto.toStringAsFixed(2)} (${c.metodoReembolso ?? ''}'
                   '${c.estadoReembolso != null && c.estadoReembolso != 'Completado' ? ' · ${c.estadoReembolso}' : ''})', style: ok),
-            if (c.notaCodigo != null) Text('Nota de crédito ${c.notaCodigo}', style: ok),
+            if (c.montoDevuelto > 0) Text('Nota de devolución ${c.codigo}', style: ok),
             Row(
               children: [
                 _boton('QR Y SEGUIMIENTO', () => _verCaso(c)),
@@ -302,32 +315,31 @@ class _ReturnsScreenState extends State<ReturnsScreen> {
     );
   }
 
-  Widget _notaCard(NotaCreditoCliente n) => Padding(
+  // AVISO "TIPO PUSH" (correccion de la ingeniera): tarjeta de un aviso, por ejemplo
+  //   "Su prenda sera enviada el viernes 06/11" o "Nota de devolucion DEV-000123: le devolvimos Bs 80".
+  Widget _avisoCard(Notificacion a) => Padding(
         padding: const EdgeInsets.only(bottom: 10),
         child: Container(
           padding: const EdgeInsets.all(14),
           decoration: _tarjeta,
-          child: Column(
+          child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(n.codigo, style: GoogleFonts.robotoMono(fontSize: 13, fontWeight: FontWeight.bold)),
-                  Text(n.estado.toUpperCase(),
-                      style: GoogleFonts.outfit(
-                          fontSize: 10, fontWeight: FontWeight.bold, color: n.estado == 'Vigente' ? Colors.green.shade700 : _gris)),
-                ],
+              Icon(
+                a.tipo == 'envio' ? Icons.local_shipping : a.tipo == 'reembolso' ? Icons.payments : Icons.assignment_return,
+                size: 20,
+                color: a.leida ? _gris : AetherTheme.bronze,
               ),
-              Text('Bs ${n.saldo.toStringAsFixed(2)}', style: GoogleFonts.sourceSerif4(fontSize: 20, fontWeight: FontWeight.bold)),
-              Text('de Bs ${n.monto.toStringAsFixed(2)} · vence ${_fecha(n.fechaVencimiento)}'
-                  '${n.codigoDevolucion != null ? ' · caso ${n.codigoDevolucion}' : ''}',
-                  style: GoogleFonts.outfit(fontSize: 11, color: _gris)),
-              Text('Canjeala en cualquier sucursal de ${n.empresa ?? 'la tienda'} mostrando este código.',
-                  style: GoogleFonts.outfit(fontSize: 11, color: _gris)),
-              ...n.movimientos.map(
-                (m) => Text('${_fecha(m.fecha)} · ${m.tipo} Bs ${m.monto.toStringAsFixed(2)} → saldo ${m.saldoResultante.toStringAsFixed(2)}',
-                    style: GoogleFonts.outfit(fontSize: 10, color: _gris)),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(a.titulo, style: GoogleFonts.outfit(fontSize: 13, fontWeight: FontWeight.bold)),
+                    Text(a.mensaje, style: GoogleFonts.outfit(fontSize: 11, color: _gris)),
+                    Text(_fecha(a.fecha), style: GoogleFonts.outfit(fontSize: 10, color: _gris)),
+                  ],
+                ),
               ),
             ],
           ),
@@ -372,9 +384,9 @@ class _ReturnsScreenState extends State<ReturnsScreen> {
                       _titulo('Mis solicitudes'),
                       if (_casos.isEmpty) _vacio('Todavía no pediste devoluciones ni cambios.'),
                       ..._casos.map(_casoCard),
-                      _titulo('Mis notas de crédito'),
-                      if (_notas.isEmpty) _vacio('No tenés notas de crédito.'),
-                      ..._notas.map(_notaCard),
+                      _titulo('Mis avisos'),
+                      if (_avisos.isEmpty) _vacio('No tenés avisos.'),
+                      ..._avisos.map(_avisoCard),
                     ],
                   ),
                 ),
@@ -515,6 +527,7 @@ class _SolicitudSheet extends StatefulWidget {
   State<_SolicitudSheet> createState() => _SolicitudSheetState();
 }
 
+// [CU2] formulario de solicitud (motivo, resolucion, variante, sucursal) = MisComprasUI
 class _SolicitudSheetState extends State<_SolicitudSheet> {
   static const _variantes = ['cambio_talla', 'cambio_color'];
 
@@ -524,6 +537,8 @@ class _SolicitudSheetState extends State<_SolicitudSheet> {
   late String _motivoCategoria = widget.linea.elegibilidad.puede ? 'talla' : 'defecto';
   String _tipo = 'cambio_talla';
   int? _idProductoNuevo;
+  // Correccion de la ingeniera: si la talla elegida es mas grande o mas chica (en cm).
+  ComparacionTalla? _comparacion;
   int? _sucursal;
   int _cantidad = 1;
   final _detalle = TextEditingController();
@@ -535,7 +550,6 @@ class _SolicitudSheetState extends State<_SolicitudSheet> {
         'cambio_color',
         'cambio_producto',
         if (widget.politica?.permiteReembolso != false || _motivoCategoria == 'defecto') 'devolucion',
-        'nota_credito',
       ];
 
   bool get _esVariante => _variantes.contains(_tipo);
@@ -592,6 +606,7 @@ class _SolicitudSheetState extends State<_SolicitudSheet> {
     }
   }
 
+  // [CU2] MisComprasUI.mostrarVariantes() -> ControlDevoluciones.consultarStock()
   Future<void> _cargarStock(int idProducto) async {
     if (_stock.containsKey(idProducto)) return;
     try {
@@ -610,8 +625,25 @@ class _SolicitudSheetState extends State<_SolicitudSheet> {
     return con.isEmpty ? 'Sin stock por ahora' : 'Disponible en ${con.join(', ')}';
   }
 
+  /// Elige la prenda nueva y le pregunta al backend si es mas grande o mas chica que la devuelta.
+  Future<void> _elegirVariante(int idProducto) async {
+    setState(() {
+      _idProductoNuevo = idProducto;
+      _comparacion = null;
+    });
+    try {
+      final c = await widget.service.compararTallas(widget.linea.idProducto, idProducto);
+      if (mounted && _idProductoNuevo == idProducto) setState(() => _comparacion = c);
+    } on ApiException {
+      // Sin comparacion: igual se puede pedir el cambio.
+    }
+  }
+
   bool get _puedeEnviar => !_enviando && _sucursal != null && (!_esVariante || _idProductoNuevo != null);
 
+  // [CU2] MisComprasUI.elegirSucursalYConfirmar() -> ControlDevoluciones.enviarSolicitud()
+  // Robustez CU2: mensaje 16: elegirSucursalYConfirmar() -> 17: enviarSolicitud(...) -> 23: mostrarCodigoQR(fecha limite)
+  // Secuencia CU2: enviarSolicitud(compra, prenda, motivo, sucursal) -> mostrarCodigoQR(fecha limite)
   Future<void> _enviar() async {
     setState(() {
       _enviando = true;
@@ -625,7 +657,7 @@ class _SolicitudSheetState extends State<_SolicitudSheet> {
         motivoCategoria: _motivoCategoria,
         motivo: _detalle.text.trim().isEmpty ? null : _detalle.text.trim(),
         tipo: _tipo,
-        idProductoNuevo: _tipo == 'devolucion' || _tipo == 'nota_credito' ? null : _idProductoNuevo,
+        idProductoNuevo: _tipo == 'devolucion' ? null : _idProductoNuevo,
         codigoSucursal: _sucursal!,
       );
       if (!mounted) return;
@@ -699,7 +731,7 @@ class _SolicitudSheetState extends State<_SolicitudSheet> {
                 ),
               ..._reemplazos.map(
                 (p) => ListTile(
-                  onTap: () => setState(() => _idProductoNuevo = p.idProducto),
+                  onTap: () => _elegirVariante(p.idProducto),
                   leading: Icon(
                     _idProductoNuevo == p.idProducto ? Icons.radio_button_checked : Icons.radio_button_unchecked,
                     color: AetherTheme.charcoalDark,
@@ -713,6 +745,21 @@ class _SolicitudSheetState extends State<_SolicitudSheet> {
                 ),
               ),
             ],
+            // "L mas grande o L menos grande": cuanto mas grande o mas chica es la talla elegida, en cm.
+            if (_esVariante && _comparacion != null)
+              Container(
+                margin: const EdgeInsets.only(top: 6),
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: _comparacion!.direccion == 'mas_grande' ? Colors.lightBlue.shade50 : Colors.amber.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(children: [
+                  const Icon(Icons.straighten, size: 16),
+                  const SizedBox(width: 6),
+                  Expanded(child: Text(_comparacion!.texto, style: GoogleFonts.outfit(fontSize: 11))),
+                ]),
+              ),
             if (_tipo == 'cambio_producto') ...[
               const SizedBox(height: 12),
               DropdownButtonFormField<int?>(

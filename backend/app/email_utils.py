@@ -10,6 +10,29 @@ settings = get_settings()
 BREVO_API_URL = "https://api.brevo.com/v3/smtp/email"
 
 
+def send_email(to_email: str, subject: str, text: str) -> bool:
+    """Correo generico (lo usan los avisos al cliente: "su prenda sera enviada el
+    viernes", "le devolvimos Bs 120"...). Igual que el de recuperacion: es
+    SINCRONO, el llamador lo corre en un hilo aparte. Devuelve True si Brevo lo
+    acepto; False si Brevo no esta configurado o fallo (el aviso igual queda en la app)."""
+    if not settings.BREVO_API_KEY or not settings.BREVO_SENDER_EMAIL:
+        return False
+    payload = {
+        "sender": {"name": settings.BREVO_SENDER_NAME, "email": settings.BREVO_SENDER_EMAIL},
+        "to": [{"email": to_email}],
+        "subject": subject,
+        "textContent": text,
+    }
+    headers = {"accept": "application/json", "api-key": settings.BREVO_API_KEY, "content-type": "application/json"}
+    try:
+        response = httpx.post(BREVO_API_URL, json=payload, headers=headers, timeout=10)
+        response.raise_for_status()
+        return True
+    except Exception:
+        logger.exception("No se pudo enviar el correo (Brevo) a %s", to_email)
+        return False
+
+
 def send_reset_email(to_email: str, reset_link: str) -> bool:
     """Envia el correo de recuperacion de contrasena via la API
     transaccional de Brevo (https://api.brevo.com/v3/smtp/email) — ya no

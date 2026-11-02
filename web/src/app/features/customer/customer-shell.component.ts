@@ -7,13 +7,14 @@ import { CatalogComponent } from './catalog/catalog.component';
 import { CustomerReservationsComponent } from './reservations/customer-reservations.component';
 import { CustomerReturnsComponent } from './returns/customer-returns.component';
 import { ChatWidgetComponent } from '../../shared/components/chat-widget.component';
+import { NotificacionesBellComponent } from '../../shared/components/notificaciones-bell.component';
 
 export type CustomerView = 'catalog' | 'reservations' | 'returns' | 'profile';
 
 @Component({
   selector: 'app-customer-shell',
   standalone: true,
-  imports: [CommonModule, CustomerProfileComponent, CatalogComponent, CustomerReservationsComponent, CustomerReturnsComponent, ChatWidgetComponent],
+  imports: [CommonModule, CustomerProfileComponent, CatalogComponent, CustomerReservationsComponent, CustomerReturnsComponent, ChatWidgetComponent, NotificacionesBellComponent],
   template: `
     <div class="flex flex-col h-screen w-screen overflow-hidden bg-gray-50 text-gray-900 font-sans">
 
@@ -86,6 +87,8 @@ export type CustomerView = 'catalog' | 'reservations' | 'returns' | 'profile';
             <p class="text-xs font-bold text-gray-900 leading-tight">{{ user.nombre }}</p>
             <p class="text-[10px] text-gray-500 font-medium">{{ user.rol }}</p>
           </div>
+          <!-- Avisos "tipo push": "Su prenda sera enviada el viernes", "Le devolvimos Bs 80"... -->
+          <app-notificaciones-bell></app-notificaciones-bell>
           <div class="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-xs border border-indigo-200">
             {{ user.nombre.substring(0, 2).toUpperCase() }}
           </div>

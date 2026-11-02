@@ -325,7 +325,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           const SizedBox(height: 10),
 
           // Devoluciones y cambios (CU2): solicitar, seguir el estado y ver
-          // las notas de credito.
+          // los avisos (nota de devolucion, envio de la prenda).
           SizedBox(
             width: double.infinity,
             height: 40,

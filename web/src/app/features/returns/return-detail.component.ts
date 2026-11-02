@@ -57,7 +57,6 @@ import { QrCodeComponent } from '../../shared/components/qr-code.component';
             <p *ngIf="c.diferencia !== 0">Diferencia {{ c.diferencia > 0 ? 'cobrada' : 'a favor' }}: Bs {{ (c.diferencia > 0 ? c.diferencia : -c.diferencia).toFixed(2) }}</p>
             <p *ngIf="c.montoDevuelto > 0">Reembolso: Bs {{ c.montoDevuelto.toFixed(2) }} · {{ c.metodoReembolso }} · {{ etiqueta(reembolsos, c.estadoReembolso || '') }}
               <span *ngIf="c.referenciaReembolso" class="font-mono"> · {{ c.referenciaReembolso }}</span></p>
-            <p *ngIf="c.nota_codigo">Nota de crédito: <span class="font-mono font-semibold">{{ c.nota_codigo }}</span></p>
             <p *ngIf="c.estado === 'CambioPendiente'" class="text-amber-700">
               {{ c.opcionSinStock === 'espera' ? 'En lista de espera' : 'Apartada en ' + (c.sucursal_entrega_nombre || '—') }}
               <span *ngIf="c.fechaLimiteRetiro"> · retirar hasta el {{ c.fechaLimiteRetiro | date: 'dd/MM/yyyy' }}</span>

@@ -8,6 +8,7 @@ from app.models import (
     DetalleVenta,
     Historial,
     Inventario,
+    MetodoPago,
     Movimiento,
     Producto,
     Sucursal,
@@ -20,6 +21,7 @@ from app.services.recomendaciones_gemini import generar_recomendaciones_post_ven
 from app.services.metodo_pago_guard import exigir_metodo_pago_consumible
 from app.services.bitacora import registrar_bitacora
 from app.services import sincronizacion as sync
+from app.services import notificaciones as notif
 from app.services.tenancy import tenant_actual
 
 router = APIRouter(prefix="/api/sales", tags=["sales"])
@@ -181,8 +183,43 @@ async def create_sale(
             detalle=str(exc.detail), fecha_operacion=payload.fechaOperacion, request=request,
             id_usuario=id_usuario, id_tenant=tenant_actual(auth),
         )
+        # CORRECCION DE LA INGENIERA: "se le devuelve el dinero, si es que compro algo sin internet".
+        # En palabras simples: el cliente ya pago en efectivo cuando no habia internet, pero al volver
+        # la conexion el servidor no pudo confirmar la venta (por ejemplo, ya no habia stock).
+        # Entonces: (1) al cliente le llega un aviso (app + correo) diciendo que se le devuelve su dinero,
+        # y (2) al personal le llega un aviso para que se lo entregue.
+        await _avisar_devolucion_venta_sin_conexion(session, payload, auth, str(exc.detail))
         await session.commit()
+        notif.programar_correos(background_tasks)
         raise
+
+
+# ==== Compra sin internet que no se pudo confirmar: se devuelve el dinero =====
+# Correccion de la ingeniera (avisos tipo push o correo + devolver el dinero de una compra hecha sin internet).
+# ==================================================================
+async def _avisar_devolucion_venta_sin_conexion(session: AsyncSession, payload: VentaIn, auth: dict, motivo: str) -> None:
+    id_tenant = tenant_actual(auth)
+    # Paso 1: cuanto pago el cliente (el pago en efectivo que se registro sin internet).
+    pago = await session.get(MetodoPago, payload.idMetPago)
+    monto = float(pago.monto) if pago is not None and pago.monto is not None else 0.0
+    # Paso 2: quien es el cliente (si la compro el mismo, sale de su sesion).
+    id_cliente = payload.idCliente
+    if id_cliente is None:
+        propio = await _cliente_del_caller(session, auth)
+        id_cliente = propio.idCliente if propio else None
+    # Paso 3: aviso al cliente (app + correo).
+    await notif.notificar_cliente(
+        session, id_cliente, id_tenant, tipo="venta_sin_conexion", referencia=str(payload.uuidOperacion)[:40],
+        titulo=f"Le devolvemos Bs {monto:.2f} de su compra",
+        mensaje=(f"Su compra hecha sin conexion no se pudo confirmar ({motivo}). "
+                 f"Le devolvemos Bs {monto:.2f}: puede retirarlo en la sucursal donde compro."),
+    )
+    # Paso 4: aviso al personal para que le entregue el dinero.
+    await notif.notificar_personal(
+        session, id_tenant, tipo="venta_sin_conexion", referencia=str(payload.uuidOperacion)[:40],
+        titulo=f"Devolver Bs {monto:.2f} de una venta sin conexion",
+        mensaje=f"Una venta registrada sin internet fue rechazada al sincronizar ({motivo}). Devuelva Bs {monto:.2f} al cliente.",
+    )
 
 
 async def _crear_venta(

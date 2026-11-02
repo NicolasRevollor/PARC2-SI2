@@ -19,7 +19,6 @@ class PoliticaDevolucion {
   final bool permiteReembolso;
   final bool permiteSolicitudEnLinea;
   final int diasEntregaEnLinea;
-  final int vigenciaNotaCreditoDias;
   final String condiciones;
 
   const PoliticaDevolucion({
@@ -33,7 +32,6 @@ class PoliticaDevolucion {
     required this.permiteReembolso,
     required this.permiteSolicitudEnLinea,
     required this.diasEntregaEnLinea,
-    required this.vigenciaNotaCreditoDias,
     required this.condiciones,
   });
 
@@ -56,7 +54,6 @@ class PoliticaDevolucion {
         permiteReembolso: json['permiteReembolso'] as bool,
         permiteSolicitudEnLinea: json['permiteSolicitudEnLinea'] as bool,
         diasEntregaEnLinea: json['diasEntregaEnLinea'] as int,
-        vigenciaNotaCreditoDias: json['vigenciaNotaCreditoDias'] as int,
         condiciones: json['condiciones'] as String,
       );
 }
@@ -192,7 +189,6 @@ class CasoDevolucion {
   final double montoDevuelto;
   final String? metodoReembolso;
   final String? estadoReembolso;
-  final String? notaCodigo;
 
   const CasoDevolucion({
     required this.idDevolucion,
@@ -213,7 +209,6 @@ class CasoDevolucion {
     required this.montoDevuelto,
     this.metodoReembolso,
     this.estadoReembolso,
-    this.notaCodigo,
   });
 
   factory CasoDevolucion.fromJson(Map<String, dynamic> json) => CasoDevolucion(
@@ -235,7 +230,6 @@ class CasoDevolucion {
         montoDevuelto: _num(json['montoDevuelto']),
         metodoReembolso: json['metodoReembolso'] as String?,
         estadoReembolso: json['estadoReembolso'] as String?,
-        notaCodigo: json['nota_codigo'] as String?,
       );
 }
 
@@ -267,63 +261,45 @@ class QrDevolucion {
       );
 }
 
-/// Movimiento de una nota de credito (emision, uso, anulacion, ...).
-class MovimientoNota {
+/// Aviso "tipo push" del cliente (`GET /api/notificaciones`): correccion de la ingeniera.
+/// Ej.: "Su prenda sera enviada el viernes 06/11", "Le devolvimos Bs 80 (nota de devolucion)".
+class Notificacion {
+  final int idNotificacion;
   final String tipo;
-  final double monto;
-  final double saldoResultante;
-  final String? detalle;
+  final String titulo;
+  final String mensaje;
+  final bool leida;
   final String fecha;
 
-  const MovimientoNota({
+  const Notificacion({
+    required this.idNotificacion,
     required this.tipo,
-    required this.monto,
-    required this.saldoResultante,
-    this.detalle,
+    required this.titulo,
+    required this.mensaje,
+    required this.leida,
     required this.fecha,
   });
 
-  factory MovimientoNota.fromJson(Map<String, dynamic> json) => MovimientoNota(
+  factory Notificacion.fromJson(Map<String, dynamic> json) => Notificacion(
+        idNotificacion: json['idNotificacion'] as int,
         tipo: json['tipo'] as String,
-        monto: _num(json['monto']),
-        saldoResultante: _num(json['saldoResultante']),
-        detalle: json['detalle'] as String?,
+        titulo: json['titulo'] as String,
+        mensaje: json['mensaje'] as String,
+        leida: json['leida'] as bool? ?? false,
         fecha: json['fecha'] as String,
       );
 }
 
-/// `GET /api/credit-notes` (CU7).
-class NotaCreditoCliente {
-  final String codigo;
-  final double monto;
-  final double saldo;
-  final String estado;
-  final String fechaVencimiento;
-  final String? empresa;
-  final String? codigoDevolucion;
-  final List<MovimientoNota> movimientos;
+/// "L mas grande o L menos grande" (`GET /api/returns/comparar-tallas`): correccion de la ingeniera.
+/// Dice si la talla elegida es mas grande o mas chica que la devuelta, y por cuantos cm.
+class ComparacionTalla {
+  final String direccion; // mas_grande | mas_chica | igual | sin_datos
+  final String texto;
 
-  const NotaCreditoCliente({
-    required this.codigo,
-    required this.monto,
-    required this.saldo,
-    required this.estado,
-    required this.fechaVencimiento,
-    this.empresa,
-    this.codigoDevolucion,
-    required this.movimientos,
-  });
+  const ComparacionTalla({required this.direccion, required this.texto});
 
-  factory NotaCreditoCliente.fromJson(Map<String, dynamic> json) => NotaCreditoCliente(
-        codigo: json['codigo'] as String,
-        monto: _num(json['monto']),
-        saldo: _num(json['saldo']),
-        estado: json['estado'] as String,
-        fechaVencimiento: json['fechaVencimiento'] as String,
-        empresa: json['empresa'] as String?,
-        codigoDevolucion: json['codigoDevolucion'] as String?,
-        movimientos: (json['movimientos'] as List? ?? []).cast<Map<String, dynamic>>().map(MovimientoNota.fromJson).toList(),
-      );
+  factory ComparacionTalla.fromJson(Map<String, dynamic> json) =>
+      ComparacionTalla(direccion: json['direccion'] as String, texto: json['texto'] as String);
 }
 
 /// Existencia de una variante en una sucursal (`GET /api/returns/stock/{id}`).
@@ -374,8 +350,7 @@ const etiquetasTipoDevolucion = <String, String>{
   'cambio_color': 'Cambio de color',
   'cambio_medida': 'Ajuste de medida',
   'cambio_producto': 'Cambio por otro producto',
-  'devolucion': 'Reembolso',
-  'nota_credito': 'Nota de crédito',
+  'devolucion': 'Devolución del dinero',
 };
 
 const etiquetasEstadoDevolucion = <String, String>{

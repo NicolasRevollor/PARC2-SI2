@@ -119,12 +119,20 @@ import { DevolucionOut, LineaDevolucion, MotivoDevolucion, TipoDevolucion, Venta
     </div>
   `,
 })
+// ==== DIAGRAMA <-> CODIGO (informe Parcial 2) ====================
+// [CU1] Registrar solicitud de devolucion o cambio en tienda
+// Diagramas del informe: "Robustez CU1" y "Clases CU1"
+// Pantalla (boundary) que lo usa: RegistrarDevolucionUI (esta clase)
+// En palabras simples: pantalla "Nueva solicitud" en la tienda.
+// Robustez CU1: boundary "Registrar Devolución o Cambio" (mensajes 1, 5, 6 y 14 con el Empleado)
+// Secuencia CU1: lifeline "Registrar Devolución o Cambio" (la pantalla del Empleado)
+// ==================================================================
 export class ReturnNewComponent implements OnInit {
   @Output() cerrar = new EventEmitter<void>();
   @Output() creados = new EventEmitter<DevolucionOut[]>();
 
   readonly motivos = Object.entries(ETIQUETA_MOTIVO) as [MotivoDevolucion, string][];
-  readonly tipos: TipoDevolucion[] = ['cambio_talla', 'cambio_color', 'cambio_medida', 'cambio_producto', 'devolucion', 'nota_credito'];
+  readonly tipos: TipoDevolucion[] = ['cambio_talla', 'cambio_color', 'cambio_medida', 'cambio_producto', 'devolucion'];
 
   busqueda = '';
   detalle = '';
@@ -152,6 +160,9 @@ export class ReturnNewComponent implements OnInit {
     return ETIQUETA_TIPO[tipo] ?? tipo;
   }
 
+  // [CU1] RegistrarDevolucionUI.ingresarBusqueda() -> ControlDevoluciones.buscarVenta()
+  // Robustez CU1: mensaje 1 (busca la venta) -> 2: buscarVenta() al control "BuscarVenta" -> 5: muestra las prendas
+  // Secuencia CU1: Empleado -> buscarVenta(comprobante | QR | cliente) -> mostrarVenta(prendas, precio pagado)
   async buscar(): Promise<void> {
     this.buscando.set(true);
     const ventas = (await this.returnsService.buscarVentas(this.busqueda.trim())) ?? [];
@@ -161,6 +172,7 @@ export class ReturnNewComponent implements OnInit {
     if (ventas.length === 1) this.elegir(ventas[0]);
   }
 
+  // [CU1] RegistrarDevolucionUI.mostrarDetalleVenta()
   elegir(venta: VentaDevolucion): void {
     this.venta.set(venta);
     this.seleccion.set({});
@@ -177,6 +189,8 @@ export class ReturnNewComponent implements OnInit {
     return linea.idProducto in this.seleccion();
   }
 
+  // [CU1] RegistrarDevolucionUI.seleccionarPrendas()
+  // Secuencia CU1: Empleado -> seleccionarPrendas(cantidad, motivo, resolucion)
   alternar(linea: LineaDevolucion): void {
     const actual = { ...this.seleccion() };
     if (linea.idProducto in actual) delete actual[linea.idProducto];
@@ -189,6 +203,9 @@ export class ReturnNewComponent implements OnInit {
     this.seleccion.set({ ...this.seleccion(), [linea.idProducto]: n });
   }
 
+  // [CU1] RegistrarDevolucionUI -> ControlDevoluciones.registrarSolicitud() (backend POST /api/returns)
+  // Robustez CU1: mensaje 6 (elige prendas) -> 7: validarSolicitud() a "ValidarElegibilidad" -> 14: muestra el codigo
+  // Secuencia CU1: validarSolicitud(...) -> mostrarCodigoSolicitud(codigo) o mostrarRechazo(motivo)
   async registrar(venta: VentaDevolucion): Promise<void> {
     if (this.sucursal === null) return;
     this.guardando.set(true);

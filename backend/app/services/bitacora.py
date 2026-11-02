@@ -12,6 +12,25 @@ from app.services.horario import HORA_BOLIVIA
 MAX_ACCION = 150
 
 
+# ==== DIAGRAMA <-> CODIGO (informe Parcial 2) ====================
+# [CU1] Registrar solicitud de devolucion o cambio en tienda
+# [CU2] Solicitar devolucion o cambio desde la tienda en linea
+# [CU3] Inspeccionar estado de la prenda devuelta
+# [CU4] Procesar cambio de talla, color o medida
+# [CU5] Procesar cambio por un producto diferente
+# [CU6] Procesar reembolso de dinero
+# [CU7] Emitir nota de devolucion
+# [CU8] Gestionar cambio sin stock disponible
+# [CU9] Configurar politica de devoluciones y cambios
+# [CU10] Actualizar inventario por devolucion o cambio
+# Diagramas del informe: "Robustez CU1" y "Clases CU1", "Robustez CU2" y "Clases CU2", "Robustez CU3" y "Clases CU3", "Robustez CU4" y "Clases CU4", "Robustez CU5" y "Clases CU5", "Robustez CU6" y "Clases CU6", "Robustez CU7" y "Clases CU7", "Robustez CU8" y "Clases CU8", "Robustez CU9" y "Clases CU9", "Robustez CU10" y "Clases CU10"
+# Diagrama de clases: Bitacora.registrarBitacora()
+# En palabras simples: guarda en la bitacora quien hizo que, cuando y desde que IP. Aparece en casi todos los diagramas de robustez.
+# Robustez: entidad "Bitacora" -> CU1 msj 11 (REGISTRAR), CU2 msj 21 (SOLICITAR), CU3 msj 12 (INSPECCIONAR),
+#   CU4 msj 17, CU5 msj 19, CU6 msj 15 (RESOLVER), CU8 msj 12, CU9 msj 10, CU10 msj 15
+# Secuencia: lifeline "Bitacora" -> registrarBitacora(...) en CU1 (REGISTRAR), CU2 (SOLICITAR), CU3 (INSPECCIONAR), CU4/CU5/CU6/CU8/CU10 (RESOLVER),
+#   CU9 (version de la politica)
+# ==================================================================
 async def registrar_bitacora(session: AsyncSession, accion: str, idUser: int, ip: str) -> None:
     # "hora" y "fecha" son columnas sin zona que se muestran tal cual.
     now = datetime.now(HORA_BOLIVIA)

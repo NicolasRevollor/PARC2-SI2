@@ -63,7 +63,6 @@ import { ReturnDetailComponent } from './return-detail.component';
           <div class="ys-tarjeta p-4"><p class="ys-mini">Casos</p><p class="text-2xl font-bold text-gray-900">{{ a.casos }}</p><p class="text-[11px] text-gray-500">{{ a.rechazadas }} rechazados</p></div>
           <div class="ys-tarjeta p-4"><p class="ys-mini">Prendas devueltas</p><p class="text-2xl font-bold text-gray-900">{{ a.unidadesDevueltas }}</p><p class="text-[11px] text-gray-500">{{ a.cambios }} cambios</p></div>
           <div class="ys-tarjeta p-4"><p class="ys-mini">Reembolsado</p><p class="text-2xl font-bold text-gray-900">{{ a.montoReembolsado.toLocaleString() }} Bs</p></div>
-          <div class="ys-tarjeta p-4"><p class="ys-mini">Notas de crédito</p><p class="text-2xl font-bold text-gray-900">{{ a.notasEmitidas }}</p><p class="text-[11px] text-gray-500">{{ a.montoNotas.toLocaleString() }} Bs</p></div>
           <div class="ys-tarjeta p-4"><p class="ys-mini">Clientes frecuentes</p><p class="text-2xl font-bold text-gray-900">{{ a.clientesFrecuentes.length }}</p><p class="text-[11px] text-gray-500">2 o más casos</p></div>
         </div>
         <div class="grid grid-cols-1 lg:grid-cols-3 gap-3">
@@ -200,7 +199,6 @@ export class ReturnHistoryComponent implements OnInit {
     const partes: string[] = [];
     if (d.montoDevuelto > 0) partes.push(`−${d.montoDevuelto.toFixed(2)} Bs`);
     if (d.diferencia > 0) partes.push(`+${d.diferencia.toFixed(2)} Bs`);
-    if (d.nota_codigo) partes.push(d.nota_codigo);
     return partes.join(' · ') || '—';
   }
 }

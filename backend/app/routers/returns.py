@@ -1,3 +1,20 @@
+# ==== DIAGRAMA <-> CODIGO (informe Parcial 2) ====================
+# [CU1] Registrar solicitud de devolucion o cambio en tienda
+# [CU2] Solicitar devolucion o cambio desde la tienda en linea
+# [CU3] Inspeccionar estado de la prenda devuelta
+# [CU4] Procesar cambio de talla, color o medida
+# [CU5] Procesar cambio por un producto diferente
+# [CU6] Procesar reembolso de dinero
+# [CU7] Emitir nota de devolucion
+# [CU8] Gestionar cambio sin stock disponible
+# [CU9] Configurar politica de devoluciones y cambios
+# [CU10] Actualizar inventario por devolucion o cambio
+# Diagramas del informe: "Robustez CU1" y "Clases CU1", "Robustez CU2" y "Clases CU2", "Robustez CU3" y "Clases CU3", "Robustez CU4" y "Clases CU4", "Robustez CU5" y "Clases CU5", "Robustez CU6" y "Clases CU6", "Robustez CU7" y "Clases CU7", "Robustez CU8" y "Clases CU8", "Robustez CU9" y "Clases CU9", "Robustez CU10" y "Clases CU10"
+# Diagrama de clases: ControlDevoluciones (la parte que recibe los pedidos de las pantallas)
+# En palabras simples: este archivo es la API del modulo Devoluciones y Cambios. Cada funcion de aca abajo dice que metodo del diagrama de clases implementa. Busca [CU4] (con corchetes) para ver todo el CU4.
+# Las reglas puras (calculos) estan en backend/app/services/devoluciones.py
+# ==================================================================
+
 """Devoluciones y cambios (CU1 a CU11 de docs/iconix/2do parcial SI2.md).
 
   CU1  POST /api/returns                    solicitud en tienda -> "EnInspeccion"
@@ -10,7 +27,8 @@
   CU4  POST /{id}/resolver                  cambio de talla, color o medida
   CU5                                       cambio por otro producto (nueva venta enlazada)
   CU6                                       reembolso (+ /reembolso/reintentar y /confirmar)
-  CU7                                       nota de credito (ver credit_notes.py)
+  CU7  GET  /{id}/comprobante.pdf            nota de devolucion (cuanto dinero se devolvio)
+       GET  /comparar-tallas                 una talla es mas grande o mas chica (medidas en cm)
   CU8  POST /{id}/completar-cambio          cambio pendiente por falta de stock
   CU9  GET/PUT /api/returns/politica        politica versionada
   CU10 GET /api/returns/inventario          inventario vendible y no vendible por devolucion
@@ -25,7 +43,7 @@ import io
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Request, UploadFile
 from fastapi.responses import Response
 from sqlalchemy import case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -40,8 +58,6 @@ from app.models import (
     InventarioNoVendible,
     MetodoPago,
     Movimiento,
-    NotaCredito,
-    NotaCreditoMovimiento,
     PoliticaDevolucion,
     Producto,
     Proveedor,
@@ -51,6 +67,7 @@ from app.models import (
     Venta,
 )
 from app.schemas.returns import (
+    ComparacionTallaOut,
     AlcanceOut,
     AnalisisOut,
     AutorizacionIn,
@@ -81,6 +98,7 @@ from app.schemas.returns import (
 )
 from app.security import get_current_payload, require_permiso
 from app.services import devoluciones as dv
+from app.services import notificaciones as notif
 from app.services.alcance import alcance_sucursales, recortar
 from app.services.excel import libro_excel
 from app.services.bitacora import registrar_bitacora
@@ -145,7 +163,6 @@ def _consulta_casos():
             Registrador.nombre,
             Inspector.nombre,
             Autorizador.nombre,
-            NotaCredito.codigo,
             PoliticaDevolucion.version,
         )
         .join(Producto, Producto.idProducto == Devolucion.idProducto)
@@ -156,14 +173,13 @@ def _consulta_casos():
         .outerjoin(Registrador, Registrador.idUser == Devolucion.idUsuario)
         .outerjoin(Inspector, Inspector.idUser == Devolucion.idInspector)
         .outerjoin(Autorizador, Autorizador.idUser == Devolucion.idAutorizador)
-        .outerjoin(NotaCredito, NotaCredito.idNotaCredito == Devolucion.idNotaCredito)
         .outerjoin(PoliticaDevolucion, PoliticaDevolucion.idPolitica == Devolucion.idPolitica)
     )
 
 
 def _fila_a_out(fila) -> DevolucionOut:
     (d, prod, prod_nuevo, color_nuevo, cliente, sucursal, sucursal_entrega,
-     registrador, inspector, autorizador, nota, version) = fila
+     registrador, inspector, autorizador, version) = fila
     precio = Decimal(str(d.precioPagado)) if d.precioPagado is not None else Decimal("0")
     valor = dv.dinero(precio * d.cantidad)
     return DevolucionOut(
@@ -195,8 +211,6 @@ def _fila_a_out(fila) -> DevolucionOut:
         diferencia=float(d.diferencia),
         idMetPagoDiferencia=d.idMetPagoDiferencia,
         idVentaCambio=d.idVentaCambio,
-        idNotaCredito=d.idNotaCredito,
-        nota_codigo=nota,
         condicion=d.condicion,
         checklist=d.checklist,
         codigoEscaneado=d.codigoEscaneado,
@@ -287,6 +301,17 @@ async def _politica_out(session: AsyncSession, id_tenant: int, politica: dv.Poli
     )
 
 
+# ==== DIAGRAMA <-> CODIGO (informe Parcial 2) ====================
+# [CU9] Configurar politica de devoluciones y cambios
+# Diagramas del informe: "Robustez CU9" y "Clases CU9"
+# Diagrama de clases: ControlDevoluciones.obtenerPoliticaVigente()
+# Pantalla (boundary) que lo usa: PoliticaDevolucionesUI.mostrarPolitica() -> web/src/app/features/returns/return-policy.component.ts
+# En palabras simples: devuelve la politica de devoluciones que esta vigente hoy en la empresa.
+# Robustez CU9: control "ObtenerPolitica" -> mensaje 2: obtenerPoliticaVigente(),
+#   3: consultar la ultima version de la empresa (o la de la plataforma) en PoliticaDevolucion, 4: politica vigente
+# Secuencia CU9: lifeline "ObtenerPolitica" -> obtenerPoliticaVigente(), consultarUltimaVersion(idTenant) a "PoliticaDevolucion"
+#   [opt la empresa no tiene una version guardada -> usarPoliticaDePlataforma()] -> mostrarPolitica(plazos, recargo, categorias, limites)
+# ==================================================================
 @router.get("/politica", response_model=PoliticaOut)
 async def ver_politica(
     idTenant: int | None = None,
@@ -300,6 +325,12 @@ async def ver_politica(
     return await _politica_out(session, objetivo, politica, fila)
 
 
+# ==== DIAGRAMA <-> CODIGO (informe Parcial 2) ====================
+# [CU9] Configurar politica de devoluciones y cambios
+# Diagramas del informe: "Robustez CU9" y "Clases CU9"
+# Diagrama de clases: PoliticaDevolucion.version (historial de versiones)
+# En palabras simples: lista todas las versiones guardadas de la politica (CU9 flujo alternativo 2).
+# ==================================================================
 @router.get("/politica/versiones", response_model=list[PoliticaOut])
 async def versiones_politica(
     session: AsyncSession = Depends(get_db),
@@ -314,6 +345,21 @@ async def versiones_politica(
     return [await _politica_out(session, id_tenant, dv.politica_desde_fila(f), f) for f in filas]
 
 
+# ==== DIAGRAMA <-> CODIGO (informe Parcial 2) ====================
+# [CU9] Configurar politica de devoluciones y cambios
+# Diagramas del informe: "Robustez CU9" y "Clases CU9"
+# Diagrama de clases: ControlDevoluciones.guardarPolitica() (+ validarPolitica() y Bitacora.registrarBitacora())
+# Pantalla (boundary) que lo usa: PoliticaDevolucionesUI.guardar() -> return-policy.component.ts
+# En palabras simples: valida los valores y guarda la politica como una NUEVA version.
+# Robustez CU9: control "ValidarPolitica" -> mensaje 7: guardarPolitica(valores)
+# Robustez CU9: control "GuardarVersionPolitica" -> mensaje 8: crearNuevaVersion(valores validos),
+#   9: guardar nueva version vigente desde ahora (PoliticaDevolucion), 10: registrar el cambio de la politica (Bitacora),
+#   11-12: nueva version y desde cuando rige
+# Secuencia CU9: lifeline "ValidarPolitica" -> guardarPolitica(valores), validarPolitica(valores positivos, garantia >= plazo de cambio)
+# Secuencia CU9: lifeline "GuardarVersionPolitica" -> crearNuevaVersion(valores), obtenerNumeroDeVersion(idTenant),
+#   insertarPolitica(version n + 1, vigenteDesde = ahora), registrarBitacora(version, plazo de cambio, garantia)
+#   -> politica(nueva version, vigente desde) -> mostrarConfirmacion(version, vigente desde)
+# ==================================================================
 @router.put("/politica", response_model=PoliticaOut)
 async def guardar_politica(
     payload: PoliticaIn,
@@ -324,17 +370,23 @@ async def guardar_politica(
 ):
     """CU9 pasos 3-5: valida y guarda una NUEVA version vigente desde ahora;
     las ventas anteriores conservan la version que regia al venderse."""
+    # Paso 1: tomamos los valores del formulario y los limpiamos.
     datos = payload.model_dump()
     datos["categoriasNoRetornables"] = tuple(sorted({c.strip() for c in datos["categoriasNoRetornables"] if c.strip()}))
     for campo in ("recargoValor", "umbralAutorizacion", "descuentoDeterioroPct", "costoAjusteMedida"):
         datos[campo] = Decimal(str(datos[campo]))
     politica = dv.Politica(**datos)
+    # Secuencia CU9: validarPolitica(valores positivos, garantia >= plazo de cambio)
+    #   [alt hay valores invalidos] -> 422 (campos con error) -> marcarCamposConError(campos)
+    # Paso 2: si algun valor esta mal, se responde error 422 diciendo que campo marcar en rojo.
     errores = dv.errores_politica(politica)
     if errores:
         raise HTTPException(status_code=422, detail={"mensaje": "Revise los valores marcados", "campos": errores})
     ultima = await session.scalar(
+        # Secuencia CU9: [alt los valores son validos] obtenerNumeroDeVersion(idTenant) -> n() -> insertarPolitica(version n + 1, vigenteDesde = ahora)
         select(func.coalesce(func.max(PoliticaDevolucion.version), 0)).where(PoliticaDevolucion.idTenant == id_tenant)
     )
+    # Paso 3: se guarda como una version NUEVA. La anterior no se borra: las ventas viejas siguen usando la version de su dia.
     fila = PoliticaDevolucion(
         idTenant=id_tenant,
         version=int(ultima or 0) + 1,
@@ -357,6 +409,12 @@ async def guardar_politica(
 
 # --- CU1 / CU2: ventas y elegibilidad -------------------------------------------------------
 
+# ==== DIAGRAMA <-> CODIGO (informe Parcial 2) ====================
+# [CU1] Registrar solicitud de devolucion o cambio en tienda
+# Diagramas del informe: "Robustez CU1" y "Clases CU1"
+# Diagrama de clases: Devolucion.consultarDevueltas() (cuantos cambios ya tuvo la prenda)
+# En palabras simples: cuenta cuantas veces ya se cambio esta prenda, para el maximo de cambios de la politica.
+# ==================================================================
 async def _cambios_previos(session: AsyncSession, id_venta: int, id_producto: int) -> int:
     """Cambios que ya tuvo esta prenda fisica: se recorre la cadena de cambios
     de variante de la venta hacia atras (la prenda recibida en un cambio hereda
@@ -384,7 +442,9 @@ async def _venta_para_devolucion(session: AsyncSession, venta: Venta, ahora: dat
     lineas = await dv.lineas_de_venta(session, venta)
     if not lineas:
         return None
+    # Ya tenemos las prendas de la venta; de ellas sacamos a que empresa pertenece.
     id_tenant = lineas[0].producto.idTenant
+    # Usamos la politica que regia EL DIA DE LA VENTA, no la de hoy (si la empresa la cambio despues, al cliente no lo afecta).
     politica, fila_pol = await dv.politica_vigente(session, id_tenant, venta.fecha)
     abiertas = {
         p: c
@@ -403,6 +463,7 @@ async def _venta_para_devolucion(session: AsyncSession, venta: Venta, ahora: dat
     )
     salida: list[LineaDevolucionOut] = []
     for l in lineas:
+        # Cuantas unidades de esta prenda ya se devolvieron o estan en tramite: no se puede devolver dos veces lo mismo.
         ocupadas = await dv.cantidad_ocupada(session, venta.idVenta, l.idProducto)
         disponibles = max(l.cantidad - ocupadas, 0)
         reglas = dict(
@@ -414,6 +475,7 @@ async def _venta_para_devolucion(session: AsyncSession, venta: Venta, ahora: dat
             cambios_realizados=await _cambios_previos(session, venta.idVenta, l.idProducto),
             disponibles=disponibles,
         )
+        # Secuencia CU2: [loop por cada prenda de las compras] calcularElegibilidad(plazo, cantidades)
         eleg = dv.evaluar_elegibilidad(es_defecto=False, **reglas)
         solo_defecto = (
             not eleg.puede
@@ -448,6 +510,7 @@ async def _venta_para_devolucion(session: AsyncSession, venta: Venta, ahora: dat
         )
     vendidas = sum(l.cantidad for l in lineas if not l.recibida_por_cambio)
     completadas = int(completadas or 0)
+    # Estado de la venta: "Sin devoluciones", "Parcialmente devuelta" o "Devuelta".
     estado = "Sin devoluciones" if completadas == 0 else ("Devuelta" if completadas >= vendidas else "Parcialmente devuelta")
     cliente = await session.get(Cliente, venta.idCliente)
     pago = await session.get(MetodoPago, venta.idMetPago)
@@ -471,6 +534,17 @@ async def _venta_para_devolucion(session: AsyncSession, venta: Venta, ahora: dat
     )
 
 
+# ==== DIAGRAMA <-> CODIGO (informe Parcial 2) ====================
+# [CU1] Registrar solicitud de devolucion o cambio en tienda
+# Diagramas del informe: "Robustez CU1" y "Clases CU1"
+# Diagrama de clases: ControlDevoluciones.buscarVenta()  (usa Venta.consultarVenta())
+# Pantalla (boundary) que lo usa: RegistrarDevolucionUI.ingresarBusqueda() -> web/src/app/features/returns/return-new.component.ts
+# En palabras simples: busca la venta por numero de comprobante, QR o datos del cliente.
+# Robustez CU1: control "BuscarVenta" -> mensaje 2: buscarVenta(dato de busqueda),
+#   3: consultar la venta de la empresa (idTenant) en Venta, 4: venta con prendas, precio pagado y ya devuelto
+# Secuencia CU1: lifeline "BuscarVenta" -> buscarVenta(dato), consultarVenta(dato, idTenant) a "Venta",
+#   devuelve venta(prendas, precio pagado, ya devuelto)  [break: la venta no existe o es de otra empresa -> 404 "Venta no encontrada"]
+# ==================================================================
 @router.get("/ventas", response_model=list[VentaDevolucionOut])
 async def buscar_ventas(
     q: str,
@@ -480,11 +554,13 @@ async def buscar_ventas(
 ):
     """CU1 pasos 2-4: la venta por numero de comprobante (o su QR) o por el
     cliente (nombre, telefono o correo). Una venta de otra empresa no aparece."""
+    # Paso 1: limpiamos lo que escribio el empleado (le sacamos los espacios).
     texto = q.strip()
     if not texto:
         return []
     # El cliente es de la plataforma y compra en varias empresas: el filtro por
     # empresa va en la consulta, antes del limite, para no perder sus ventas.
+    # Paso 2: filtro para traer SOLO ventas de NUESTRA empresa. Asi nunca se ve una venta de otra tienda (multiempresa).
     de_la_empresa = (
         select(DetalleVenta.idVenta)
         .join(Producto, Producto.idProducto == DetalleVenta.idProducto)
@@ -497,6 +573,8 @@ async def buscar_ventas(
         .where(de_la_empresa)
         .order_by(Venta.fecha.desc())
     )
+    # Paso 3: si escribio un numero buscamos por numero de venta (el del comprobante o QR);
+    #   si escribio letras buscamos por nombre, telefono o correo del cliente (ultimos 120 dias).
     numero = texto.upper().removeprefix("VENTA").removeprefix("#").strip()
     if numero.isdigit():
         stmt = stmt.where(Venta.idVenta == int(numero))
@@ -508,22 +586,37 @@ async def buscar_ventas(
             .where(Venta.fecha >= datetime.now(timezone.utc) - timedelta(days=120))
             .limit(60)
         )
+    # Paso 4: recien aca se consulta la base de datos.
     ventas = (await session.execute(stmt)).scalars().all()
     ahora = datetime.now(timezone.utc)
     salida = []
     for venta in ventas:
+        # Paso 5: por cada venta armamos lo que ve el empleado: prendas, precio pagado, cuanto ya se devolvio y si se puede devolver.
         datos = await _venta_para_devolucion(session, venta, ahora)
         if datos is not None and datos.idTenant == id_tenant:
             salida.append(datos)
         if len(salida) >= 15:
             break
+    # Secuencia CU1: [break] la venta no existe o es de otra empresa -> 404 "Venta no encontrada" -> mostrarMensaje()
     if numero.isdigit() and not salida:
         raise HTTPException(status_code=404, detail="Venta no encontrada")
     return salida
 
 
+# ==== DIAGRAMA <-> CODIGO (informe Parcial 2) ====================
+# [CU2] Solicitar devolucion o cambio desde la tienda en linea
+# Diagramas del informe: "Robustez CU2" y "Clases CU2"
+# Diagrama de clases: ControlDevoluciones.listarMisCompras()  (usa Venta.consultarComprasDelCliente())
+# Pantalla (boundary) que lo usa: MisComprasUI.abrirMisCompras() -> web: customer-returns.component.ts / movil: returns_screen.dart
+# En palabras simples: lista las compras del cliente con cuanto tiempo le queda para cambiar o devolver.
+# Robustez CU2: control "ControlDevoluciones" -> mensaje 2: listarMisCompras(),
+#   3: consultarComprasDelCliente(idCliente) en Venta, 4: retornarCompras(prendas, precio pagado), 8: retornarCompras(elegibilidad)
+# Secuencia CU2: lifeline "ListarComprasElegibles" -> listarMisCompras(idCliente), consultarComprasDelCliente(idCliente) a "Venta",
+#   obtenerPoliticaVigente(idTenant), calcularElegibilidad(plazo, cantidades) -> compras(prendas elegibles, tiempo restante)
+# ==================================================================
 @router.get("/mis-compras", response_model=list[VentaDevolucionOut])
 async def mis_compras(
+    background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_db),
     auth: dict = Depends(get_current_payload),
 ):
@@ -533,9 +626,11 @@ async def mis_compras(
     if propio is None:
         return []
     await dv.aplicar_vencimientos(session, id_cliente=propio.idCliente)
+    notif.programar_correos(background_tasks)  # si algo vencio, al cliente le llega el aviso por correo
     ventas = (
         await session.execute(
             select(Venta)
+            # Paso 2: solo las compras de este cliente de los ultimos 90 dias.
             .where(Venta.idCliente == propio.idCliente, Venta.fecha >= datetime.now(timezone.utc) - timedelta(days=90))
             .order_by(Venta.fecha.desc())
             .limit(30)
@@ -545,6 +640,21 @@ async def mis_compras(
     return [d for v in ventas if (d := await _venta_para_devolucion(session, v, ahora)) is not None]
 
 
+# ==== DIAGRAMA <-> CODIGO (informe Parcial 2) ====================
+# [CU2] Solicitar devolucion o cambio desde la tienda en linea
+# [CU4] Procesar cambio de talla, color o medida
+# [CU8] Gestionar cambio sin stock disponible
+# Diagramas del informe: "Robustez CU2" y "Clases CU2", "Robustez CU4" y "Clases CU4", "Robustez CU8" y "Clases CU8"
+# Diagrama de clases: ControlDevoluciones.consultarStock() / obtenerVariantes()  (usa Inventario.consultarStockPorSucursal())
+# Pantalla (boundary) que lo usa: MisComprasUI.mostrarVariantes() y ResolverCambioUI.mostrarVariantes()
+# En palabras simples: dice cuantas unidades hay de una talla/color en cada sucursal.
+# Robustez CU2: control "ControlDevoluciones" -> mensaje 11: consultarStock(idVariante), 12: consultarStockPorSucursal(idVariante)
+# Robustez CU4: control "ConsultarVariantes" -> mensaje 2: obtenerVariantes(solicitud),
+#   3: consultar variantes del mismo modelo y su precio (Producto), 4: consultar stock de las variantes en la sucursal (Inventario)
+# Robustez CU8: control "BuscarStockSucursales" -> mensaje 2: buscarStock(variante nueva), 3: buscar stock en esta y en las demas sucursales
+# Secuencia CU4: lifeline "ConsultarVariantes" -> obtenerVariantes(idDevolucion), consultarVariantesDelModelo(idProducto), consultarStock(variantes, sucursal)
+# Secuencia CU8: lifeline "BuscarStockSucursales" -> buscarStock(idProductoNuevo), consultarStockPorSucursal(variante) -> sinStock(sucursales con existencia)
+# ==================================================================
 @router.get("/stock/{idProducto}", response_model=list[StockSucursalOut])
 async def stock_reemplazo(
     idProducto: int,
@@ -556,11 +666,52 @@ async def stock_reemplazo(
     producto = await session.get(Producto, idProducto)
     if producto is None or (_tiene(auth, PERMISO_VER) and producto.idTenant != id_tenant):
         raise HTTPException(status_code=404, detail="El producto no existe")
+    # Devuelve por cada sucursal cuantas unidades LIBRES hay (stock menos lo que esta apartado).
     return await dv.stock_por_sucursal(session, idProducto, producto.idTenant)
+
+
+# ==== DIAGRAMA <-> CODIGO (informe Parcial 2) ====================
+# [CU2] Solicitar devolucion o cambio desde la tienda en linea
+# [CU4] Procesar cambio de talla, color o medida
+# Correccion de la ingeniera: "distincion entre tallas, L mas grande o L menos grande".
+# Pantallas que lo usan: return-resolve.component.ts (empleado) y customer-returns.component.ts (cliente)
+# En palabras simples: cuando el cliente elige otra talla, el sistema le dice si la nueva es MAS GRANDE o
+#   MAS CHICA que la que devuelve y por cuantos centimetros (pecho, largo, cintura). La comparacion la hace
+#   services/devoluciones.py -> comparar_tallas() con las medidas reales de cada prenda.
+# ==================================================================
+@router.get("/comparar-tallas", response_model=ComparacionTallaOut)
+async def comparar_tallas(
+    idOriginal: int,
+    idNuevo: int,
+    session: AsyncSession = Depends(get_db),
+    auth: dict = Depends(get_current_payload),
+    id_tenant: int = Depends(tenant_actual),
+):
+    original = await session.get(Producto, idOriginal)
+    nueva = await session.get(Producto, idNuevo)
+    # Las dos prendas tienen que existir y ser de la MISMA empresa.
+    if original is None or nueva is None or original.idTenant != nueva.idTenant:
+        raise HTTPException(status_code=404, detail="El producto no existe")
+    # El personal solo compara prendas de su empresa (el cliente puede comprar en varias empresas).
+    if _tiene(auth, PERMISO_VER) and original.idTenant != id_tenant:
+        raise HTTPException(status_code=404, detail="El producto no existe")
+    resultado = dv.comparar_tallas(original, nueva)
+    return ComparacionTallaOut(
+        idProductoOriginal=idOriginal, idProductoNuevo=idNuevo,
+        tallaOriginal=original.talla, tallaNueva=nueva.talla, **resultado,
+    )
 
 
 # --- CU10: inventario por devolucion -----------------------------------------------------------
 
+# ==== DIAGRAMA <-> CODIGO (informe Parcial 2) ====================
+# [CU10] Actualizar inventario por devolucion o cambio
+# Diagramas del informe: "Robustez CU10" y "Clases CU10"
+# Diagrama de clases: ResolverDevolucionUI.mostrarInventarioActualizado()  (lee Movimiento e InventarioNoVendible)
+# Pantalla (boundary) que lo usa: web/src/app/features/returns/return-inventory.component.ts
+# En palabras simples: muestra que prendas devueltas volvieron al stock y cuales fueron a merma.
+# Robustez CU10: mensaje 17: muestra el inventario actualizado (boundary "Resolver Devolución")
+# ==================================================================
 @router.get("/inventario", response_model=InventarioDevolucionOut)
 async def inventario_por_devolucion(
     fecha_desde: date | None = None,
@@ -641,6 +792,13 @@ async def inventario_por_devolucion(
     )
 
 
+# ==== DIAGRAMA <-> CODIGO (informe Parcial 2) ====================
+# [CU10] Actualizar inventario por devolucion o cambio
+# Diagramas del informe: "Robustez CU10" y "Clases CU10"
+# Diagrama de clases: InventarioNoVendible (reclamo al proveedor / merma)
+# Pantalla (boundary) que lo usa: return-inventory.component.ts -> actualizar()
+# En palabras simples: cambia el estado de una prenda defectuosa (reclamada al proveedor, descartada, etc.).
+# ==================================================================
 @router.patch("/no-vendible/{idNoVendible}", response_model=NoVendibleOut)
 async def actualizar_no_vendible(
     idNoVendible: int,
@@ -803,7 +961,7 @@ async def analisis(
     id_tenant: int = Depends(tenant_actual),
 ):
     """CU11 paso 4: tasa de devolucion por producto y talla, motivos mas
-    frecuentes, monto reembolsado, notas emitidas y clientes frecuentes, con
+    frecuentes, monto reembolsado y clientes frecuentes, con
     los mismos filtros que la lista."""
     return await _calcular_analisis(session, auth, id_tenant, parametros)
 
@@ -823,12 +981,6 @@ async def _calcular_analisis(session: AsyncSession, auth: dict, id_tenant: int, 
             ).where(*filtros)
         )
     ).one()
-    # Notas emitidas por los casos filtrados (misma sucursal, periodo, tipo...).
-    nota_filtros = [
-        NotaCredito.idTenant == id_tenant,
-        NotaCredito.idDevolucion.in_(select(Devolucion.idDevolucion).where(*filtros)),
-    ]
-    notas = (await session.execute(select(func.count(), func.coalesce(func.sum(NotaCredito.monto), 0)).where(*nota_filtros))).one()
 
     # Vendidas en el mismo periodo, para la tasa.
     venta_filtros = [Producto.idTenant == id_tenant]
@@ -912,8 +1064,6 @@ async def _calcular_analisis(session: AsyncSession, auth: dict, id_tenant: int, 
         montoReembolsado=float(resumen[2]),
         cambios=int(resumen[3]),
         rechazadas=int(resumen[4]),
-        notasEmitidas=int(notas[0]),
-        montoNotas=float(notas[1]),
         porProducto=sorted(por_producto, key=lambda t: (-t.devueltas, -t.tasa))[:12],
         porTalla=sorted(
             (
@@ -935,7 +1085,7 @@ async def _filas_export(session: AsyncSession, auth: dict, id_tenant: int, param
 
 
 ENCABEZADOS_EXPORT = ["Codigo", "Fecha", "Cliente", "Venta", "Prenda", "Talla", "Tipo", "Motivo", "Inspeccion",
-                      "Estado", "Reembolsado", "Diferencia", "Nota", "Responsable", "Sucursal"]
+                      "Estado", "Reembolsado", "Diferencia", "Medio del reembolso", "Responsable", "Sucursal"]
 COLUMNAS_MONTO = (10, 11)
 
 
@@ -945,7 +1095,7 @@ def _valores_export(d: DevolucionOut) -> list:
         d.codigo or "", d.fecha.astimezone(HORA_BOLIVIA).replace(tzinfo=None), d.cliente_nombre or "",
         d.idVenta, d.producto_nombre or "", d.tallaOriginal or "", dv.ETIQUETAS.get(d.tipo, d.tipo),
         dv.MOTIVOS.get(d.motivoCategoria or "", ""), d.condicion or "", d.estado, round(d.montoDevuelto, 2),
-        round(d.diferencia, 2), d.nota_codigo or "", d.usuario_nombre or "", d.sucursal_nombre or "",
+        round(d.diferencia, 2), d.metodoReembolso or "", d.usuario_nombre or "", d.sucursal_nombre or "",
     ]
 
 
@@ -1016,8 +1166,7 @@ async def exportar_excel(
             ("Resumen", ["Indicador", "Valor"], [
                 ["Casos", resumen.casos], ["Prendas devueltas", resumen.unidadesDevueltas],
                 ["Cambios", resumen.cambios], ["Rechazados", resumen.rechazadas],
-                ["Monto reembolsado (Bs)", resumen.montoReembolsado], ["Notas de credito emitidas", resumen.notasEmitidas],
-                ["Monto en notas (Bs)", resumen.montoNotas],
+                ["Monto reembolsado (Bs)", resumen.montoReembolsado],
             ]),
             ("Tasa de devolucion por producto", ["Producto", "Vendidas", "Devueltas", "Tasa %"],
              [[t.clave, t.vendidas, t.devueltas, t.tasa] for t in resumen.porProducto]),
@@ -1089,6 +1238,13 @@ async def exportar_pdf(
     )
 
 
+# ==== DIAGRAMA <-> CODIGO (informe Parcial 2) ====================
+# [CU6] Procesar reembolso de dinero
+# Diagramas del informe: "Robustez CU6" y "Clases CU6"
+# Diagrama de clases: ControlDevoluciones.marcarReembolso() (lista los que quedaron "Pendiente")
+# Pantalla (boundary) que lo usa: ProcesarReembolsoUI -> web/src/app/features/returns/return-refunds.component.ts
+# En palabras simples: reembolsos que la pasarela no confirmo o transferencias que faltan hacer.
+# ==================================================================
 @router.get("/reembolsos-pendientes", response_model=list[DevolucionOut])
 async def reembolsos_pendientes(
     session: AsyncSession = Depends(get_db),
@@ -1104,6 +1260,18 @@ async def reembolsos_pendientes(
     return [_fila_a_out(f) for f in (await session.execute(stmt)).all()]
 
 
+# ==== DIAGRAMA <-> CODIGO (informe Parcial 2) ====================
+# [CU3] Inspeccionar estado de la prenda devuelta
+# Diagramas del informe: "Robustez CU3" y "Clases CU3"
+# Diagrama de clases: ControlDevoluciones.buscarSolicitud()
+# Pantalla (boundary) que lo usa: InspeccionarDevolucionUI.abrirSolicitud() -> return-tray.component.ts / return-inspect.component.ts
+# En palabras simples: abre una solicitud escribiendo o escaneando su codigo (QR).
+# Robustez CU3: control "BuscarSolicitud" -> mensaje 2: buscarSolicitud(codigo),
+#   3: consultar solicitud "En inspeccion" o "Pendiente de entrega" (Devolucion),
+#   4: consultar prenda vendida (SKU, talla, color) en Producto, 5: solicitud con la prenda vendida
+# Secuencia CU3: lifeline "BuscarSolicitud" -> buscarSolicitud(codigo), consultarSolicitud(codigo, idTenant) a "Devolucion",
+#   consultarPrendaVendida(idProducto) a "Producto" -> solicitud(prenda vendida, cantidad) -> mostrarPrendaYChecklist(SKU, talla, color)
+# ==================================================================
 @router.get("/codigo/{codigo}", response_model=DevolucionOut)
 async def buscar_por_codigo(
     codigo: str,
@@ -1112,7 +1280,9 @@ async def buscar_por_codigo(
     id_tenant: int = Depends(tenant_actual),
 ):
     """CU3 paso 1: abrir la solicitud por su codigo o QR."""
+    # Buscamos la solicitud por su codigo (el mismo que tiene el QR).
     caso = (await session.execute(select(Devolucion).where(Devolucion.codigo == codigo.strip().upper()))).scalars().first()
+    # Si la solicitud es de otra empresa, hacemos como si no existiera (no se revela informacion).
     if caso is not None and not await _puede_ver(session, caso, auth, id_tenant):
         caso = None
     if caso is None:
@@ -1120,6 +1290,14 @@ async def buscar_por_codigo(
     return await _caso_out(session, caso.idDevolucion)
 
 
+# ==== DIAGRAMA <-> CODIGO (informe Parcial 2) ====================
+# [CU2] Solicitar devolucion o cambio desde la tienda en linea
+# [CU3] Inspeccionar estado de la prenda devuelta
+# Diagramas del informe: "Robustez CU2" y "Clases CU2", "Robustez CU3" y "Clases CU3"
+# Diagrama de clases: Devolucion.fotos
+# Pantalla (boundary) que lo usa: MisComprasUI.seleccionarPrenda() (fotos opcionales) e InspeccionarDevolucionUI.completarChecklist()
+# En palabras simples: sube una foto de la prenda al almacenamiento (Supabase).
+# ==================================================================
 @router.post("/fotos", response_model=FotoOut, status_code=201)
 async def subir_foto(
     archivo: UploadFile = File(...),
@@ -1165,6 +1343,19 @@ async def _validar_sucursal(session: AsyncSession, codigo: int | None, id_tenant
         raise HTTPException(status_code=400, detail="Sucursal inexistente")
 
 
+# ==== DIAGRAMA <-> CODIGO (informe Parcial 2) ====================
+# [CU1] Registrar solicitud de devolucion o cambio en tienda
+# [CU2] Solicitar devolucion o cambio desde la tienda en linea
+# Diagramas del informe: "Robustez CU1" y "Clases CU1", "Robustez CU2" y "Clases CU2"
+# Diagrama de clases: ControlDevoluciones.validarElegibilidad() + calcularElegibilidad()
+# En palabras simples: revisa si la prenda todavia se puede devolver (plazo, cantidad, categoria, maximo de cambios).
+# Robustez CU1: control "ValidarElegibilidad" -> mensaje 7: validarSolicitud(venta, prendas, motivo, resolucion),
+#   8: obtener politica vigente y validar plazo, categoria y cantidad (PoliticaDevolucion)
+# Robustez CU2: control "ControlDevoluciones" -> mensaje 18: validarElegibilidad(plazo, cantidad, categoria)
+# Secuencia CU1: lifeline "ValidarElegibilidad" -> validarSolicitud(venta, prendas, motivo, resolucion),
+#   validarElegibilidad(plazo, categoria, cantidad), calcularRecargo(horas de demora)
+# Secuencia CU2: lifeline "ValidarSolicitud" -> obtenerPoliticaVigente(idTenant), validacion de plazo y categoria
+# ==================================================================
 async def _nuevo_caso(
     session: AsyncSession,
     *,
@@ -1178,11 +1369,13 @@ async def _nuevo_caso(
     ahora: datetime,
 ) -> tuple[Devolucion, dv.Elegibilidad]:
     """Valida la elegibilidad (CU1 paso 6) y arma el caso sin guardarlo."""
+    # Paso 1: si la empresa no devuelve dinero, el cliente no puede pedir reembolso (salvo defecto de fabrica).
     if tipo == "devolucion" and not politica.permiteReembolso and motivo_categoria != "defecto":
         raise HTTPException(
             status_code=400,
-            detail="La politica de la empresa solo admite cambios o nota de credito (el reembolso es solo por defecto de fabrica)",
+            detail="La politica de la empresa solo admite cambios (devolver el dinero es solo por defecto de fabrica)",
         )
+    # Paso 2: no se puede devolver mas de lo que compro menos lo que ya devolvio.
     ocupadas = await dv.cantidad_ocupada(session, venta.idVenta, linea.idProducto)
     disponibles = linea.cantidad - ocupadas
     if cantidad > max(disponibles, 0):
@@ -1201,8 +1394,12 @@ async def _nuevo_caso(
         cambios_realizados=await _cambios_previos(session, venta.idVenta, linea.idProducto),
         disponibles=disponibles,
     )
+    # Secuencia CU1: [alt no elegible (fuera de plazo, categoria no retornable o sin unidades)] -> 400 (motivo, fecha limite) -> mostrarRechazo()
+    # Secuencia CU2: [alt fuera de plazo o categoria no retornable] -> 400 (motivo, fecha limite) -> mostrarRechazo()
+    # Paso 3: revisamos plazo, categoria y maximo de cambios (las reglas estan en services/devoluciones.py). Si no cumple, se rechaza.
     if not eleg.puede:
         raise HTTPException(status_code=409, detail=eleg.mensaje)
+    # Paso 4: armamos la solicitud en memoria con todos sus datos (todavia NO se guarda en la base de datos).
     caso = Devolucion(
         tipo=tipo,
         cantidad=cantidad,
@@ -1223,6 +1420,12 @@ async def _nuevo_caso(
     return caso, eleg
 
 
+# ==== DIAGRAMA <-> CODIGO (informe Parcial 2) ====================
+# [CU1] Registrar solicitud de devolucion o cambio en tienda
+# Diagramas del informe: "Robustez CU1" y "Clases CU1"
+# Diagrama de clases: ControlDevoluciones.marcarRequiereAutorizacion()
+# En palabras simples: si el cliente ya devolvio demasiado este mes, pide autorizacion del Encargado.
+# ==================================================================
 async def _controlar_limite_mensual(
     session: AsyncSession, caso: Devolucion, politica: dv.Politica, auth: dict, ahora: datetime
 ) -> None:
@@ -1237,6 +1440,19 @@ async def _controlar_limite_mensual(
             caso.fechaAutorizacion = ahora
 
 
+# ==== DIAGRAMA <-> CODIGO (informe Parcial 2) ====================
+# [CU1] Registrar solicitud de devolucion o cambio en tienda
+# Diagramas del informe: "Robustez CU1" y "Clases CU1"
+# Diagrama de clases: ControlDevoluciones.registrarSolicitud()  (usa Devolucion.insertarSolicitud() y Bitacora.registrarBitacora())
+# Pantalla (boundary) que lo usa: RegistrarDevolucionUI.seleccionarPrendas() -> return-new.component.ts -> registrar()
+# En palabras simples: guarda la solicitud en estado "EnInspeccion" y pasa al CU3.
+# Robustez CU1: control "RegistrarSolicitud" -> mensaje 9: registrarSolicitud(prendas elegibles, recargo),
+#   10: guardar solicitud con codigo, sucursal, usuario y estado "En inspeccion" (Devolucion),
+#   11: registrar accion REGISTRAR con usuario y fecha (Bitacora), 12-13: codigo de la solicitud
+# Secuencia CU1: lifeline "RegistrarSolicitud" -> registrarSolicitud(venta, prendas, recargo),
+#   guardarSolicitud(codigo, "En inspeccion", sucursal, usuario) a "Devolucion" -> idDevolucion(),
+#   registrarBitacora(REGISTRAR, codigo) a "Bitacora", solicitud(codigo) -> mostrarCodigoSolicitud(codigo) -> continua en CU3
+# ==================================================================
 @router.post("", response_model=list[DevolucionOut], status_code=201)
 async def registrar_en_tienda(
     payload: RegistroTiendaIn,
@@ -1247,12 +1463,14 @@ async def registrar_en_tienda(
 ):
     """CU1: registra una solicitud por prenda en estado "EnInspeccion" y
     deriva al CU3."""
+    # Paso 1: traemos la venta y comprobamos que sea de nuestra empresa (si no, responde "Venta no encontrada").
     venta, lineas = await _venta_de_la_empresa(session, payload.idVenta, id_tenant)
     await _validar_sucursal(session, payload.codigoSucursal, id_tenant)
     politica, fila_politica = await dv.politica_vigente(session, id_tenant, venta.fecha)
     ahora = datetime.now(timezone.utc)
     yo = int(auth["sub"])
     casos: list[Devolucion] = []
+    # Secuencia CU1: [loop por cada prenda seleccionada]
     for item in payload.items:
         linea = next((l for l in lineas if l.idProducto == item.idProducto), None)
         if linea is None:
@@ -1261,6 +1479,7 @@ async def registrar_en_tienda(
             session, venta=venta, linea=linea, cantidad=item.cantidad, politica=politica, fila_politica=fila_politica,
             motivo_categoria=payload.motivoCategoria, tipo=payload.tipo, ahora=ahora,
         )
+        # Paso 2: la solicitud queda "En inspeccion", con su codigo (DEV-000123) y el usuario que la registro.
         caso.estado = "EnInspeccion"
         caso.origen = "tienda"
         caso.motivo = payload.motivo
@@ -1280,15 +1499,32 @@ async def registrar_en_tienda(
 
 # --- CU2: solicitud desde la tienda en linea ---------------------------------------------------
 
+# ==== DIAGRAMA <-> CODIGO (informe Parcial 2) ====================
+# [CU2] Solicitar devolucion o cambio desde la tienda en linea
+# Diagramas del informe: "Robustez CU2" y "Clases CU2"
+# Diagrama de clases: ControlDevoluciones.enviarSolicitud()  (usa Devolucion.buscarSolicitudAbierta(), Inventario.apartarVariante() y Bitacora.registrarBitacora())
+# Pantalla (boundary) que lo usa: MisComprasUI.elegirSucursalYConfirmar() -> customer-returns.component.ts -> enviar() / movil: returns_screen.dart -> _enviar()
+# En palabras simples: el cliente pide el cambio desde la web/app; queda "PendienteEntrega" con QR y fecha limite.
+# Robustez CU2: control "ControlDevoluciones" -> mensaje 17: enviarSolicitud(idVenta, prenda, sucursal, fotos),
+#   19: insertarSolicitud(estado = "Pendiente de entrega", codigo), 20: apartarVariante(cantidad, hasta fecha limite),
+#   21: registrarBitacora(SOLICITAR, solicitud), 22: retornarSolicitud(codigo, QR, fecha limite)
+# Secuencia CU2: lifeline "ValidarSolicitud" -> enviarSolicitud(compra, prenda, motivo, sucursal), buscarSolicitudAbierta(idVenta, idProducto),
+#   obtenerPoliticaVigente(idTenant)
+# Secuencia CU2: lifeline "RegistrarSolicitudEnLinea" -> registrarSolicitud(prenda, motivo, sucursal),
+#   guardarSolicitud(codigo, "Pendiente de entrega", fecha limite), apartarVariante(cantidad, hasta la fecha limite),
+#   registrarBitacora(SOLICITAR, codigo) -> solicitud(codigo, QR, fecha limite) -> mostrarCodigoQR(fecha limite)
+# ==================================================================
 @router.post("/solicitudes", response_model=DevolucionOut, status_code=201)
 async def solicitar_en_linea(
     payload: SolicitudIn,
     request: Request,
+    background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_db),
     auth: dict = Depends(get_current_payload),
 ):
     propio = await _cliente_del_caller(session, auth)
     if propio is None:
+        # Paso 1: solo un cliente con sesion iniciada puede pedir por internet.
         raise HTTPException(status_code=403, detail="Solo un cliente puede solicitar una devolucion en linea")
     venta = await session.get(Venta, payload.idVenta)
     if venta is None or venta.idCliente != propio.idCliente:
@@ -1299,6 +1535,7 @@ async def solicitar_en_linea(
         raise HTTPException(status_code=400, detail="La prenda no pertenece a esa compra")
     id_tenant = linea.producto.idTenant
     politica, fila_politica = await dv.politica_vigente(session, id_tenant, venta.fecha)
+    # Paso 2: la empresa tiene que permitir pedir devoluciones por internet.
     if not politica.permiteSolicitudEnLinea:
         raise HTTPException(status_code=400, detail="La tienda no recibe solicitudes en linea: acerquese a una sucursal")
 
@@ -1309,6 +1546,7 @@ async def solicitar_en_linea(
             Devolucion.estado.in_(dv.ESTADOS_ABIERTOS),
         )
     )
+    # Secuencia CU2: [alt la prenda ya tiene una solicitud abierta] -> 409 (codigo de la solicitud abierta) -> mostrarSolicitudExistente(codigo)
     if abierta:
         raise HTTPException(status_code=409, detail=f"Ya tenes la solicitud {abierta} abierta para esta prenda")
     await _validar_sucursal(session, payload.codigoSucursal, id_tenant)
@@ -1326,6 +1564,7 @@ async def solicitar_en_linea(
         error = dv.error_de_clasificacion(payload.tipo, linea.producto, nuevo)
         if error:
             raise HTTPException(status_code=400, detail=error)
+    # Paso 3: queda "Pendiente de entrega": el cliente tiene hasta la fecha limite para llevar la prenda a la sucursal elegida.
     caso.estado = "PendienteEntrega"
     caso.origen = "en_linea"
     caso.motivo = payload.motivo
@@ -1340,6 +1579,7 @@ async def solicitar_en_linea(
     await _nuevo_codigo(session, caso)
     # CU2 paso 6: la variante pedida se aparta a su nombre hasta la fecha limite.
     if nuevo is not None:
+        # Secuencia CU2: [opt pidio una variante con stock en la sucursal] apartarVariante(cantidad, hasta la fecha limite) a "Inventario"
         inv = await resolver_inventario(session, nuevo.idProducto, caso.cantidad, payload.codigoSucursal)
         if inv is not None:
             await dv.reservar(session, caso, inv)
@@ -1348,7 +1588,16 @@ async def solicitar_en_linea(
     await registrar_bitacora(
         session, f"Solicitud {caso.codigo} en linea sobre la venta {venta.idVenta}", int(auth["sub"]), _ip(request)
     )
+    # Aviso al cliente (app + correo): recibimos su solicitud y hasta cuando tiene para llevar la prenda.
+    sucursal = await session.get(Sucursal, payload.codigoSucursal)
+    await notif.notificar_cliente(
+        session, caso.idCliente, id_tenant, tipo="devolucion", referencia=caso.codigo,
+        titulo=f"Recibimos su solicitud {caso.codigo}",
+        mensaje=(f"Lleve la prenda a la sucursal {sucursal.nombre if sucursal else ''} hasta el "
+                 f"{notif.fecha_texto(caso.fechaLimiteEntrega)} y muestre el codigo {caso.codigo} (o su QR)."),
+    )
     await session.commit()
+    notif.programar_correos(background_tasks)
     return await _caso_out(session, caso.idDevolucion)
 
 
@@ -1395,15 +1644,6 @@ async def _linea_tiempo(session: AsyncSession, caso: Devolucion, out: Devolucion
         eventos.append(EventoOut(fecha=mov.fecha, etapa="Inventario", detalle=f"{mov.motivo} ({mov.cantidad:+d})"))
     for nv in (await session.execute(select(InventarioNoVendible).where(InventarioNoVendible.idDevolucion == caso.idDevolucion))).scalars().all():
         eventos.append(EventoOut(fecha=nv.fecha, etapa="Inventario", detalle=f"Inventario no vendible ({nv.motivo}): {nv.cantidad} u., {nv.estado}"))
-    for mov in (
-        await session.execute(
-            select(NotaCreditoMovimiento, NotaCredito.codigo)
-            .join(NotaCredito, NotaCredito.idNotaCredito == NotaCreditoMovimiento.idNotaCredito)
-            .where(NotaCreditoMovimiento.idDevolucion == caso.idDevolucion)
-        )
-    ).all():
-        m, codigo = mov
-        eventos.append(EventoOut(fecha=m.fecha, etapa="Nota de credito", detalle=f"{codigo}: {m.tipo} Bs {m.monto:.2f}"))
     if caso.fechaResolucion:
         detalle = f"{caso.estado}: {dv.ETIQUETAS.get(caso.tipo, caso.tipo)}"
         if caso.motivoRechazo:
@@ -1430,6 +1670,12 @@ async def ver_caso(
     return DevolucionDetalleOut(**datos, lineaTiempo=await _linea_tiempo(session, caso, out))
 
 
+# ==== DIAGRAMA <-> CODIGO (informe Parcial 2) ====================
+# [CU2] Solicitar devolucion o cambio desde la tienda en linea
+# Diagramas del informe: "Robustez CU2" y "Clases CU2"
+# Diagrama de clases: MisComprasUI.mostrarCodigoQR()
+# En palabras simples: devuelve el QR de la solicitud para mostrarlo en la tienda.
+# ==================================================================
 @router.get("/{idDevolucion:int}/qr", response_model=QrOut)
 async def qr_del_caso(
     idDevolucion: int,
@@ -1448,6 +1694,14 @@ async def qr_del_caso(
     return QrOut(codigo=caso.codigo, modulos=["".join("1" if qr.isDark(f, c) else "0" for c in range(n)) for f in range(n)])
 
 
+# ==== DIAGRAMA <-> CODIGO (informe Parcial 2) ====================
+# [CU4] Procesar cambio de talla, color o medida
+# [CU5] Procesar cambio por un producto diferente
+# [CU6] Procesar reembolso de dinero
+# Diagramas del informe: "Robustez CU4" y "Clases CU4", "Robustez CU5" y "Clases CU5", "Robustez CU6" y "Clases CU6"
+# Diagrama de clases: ResolverCambioUI.mostrarComprobanteDeCambio() / CambioOtroProductoUI.mostrarComprobante() / ProcesarReembolsoUI.mostrarNotaDeDevolucion()
+# En palabras simples: genera el PDF del comprobante de cambio o de la nota de devolucion.
+# ==================================================================
 @router.get("/{idDevolucion:int}/comprobante.pdf")
 async def comprobante(
     idDevolucion: int,
@@ -1470,7 +1724,8 @@ async def comprobante(
         "EnInspeccion": "Solicitud de devolucion",
         "Rechazada": "Devolucion rechazada",
     }.get(d.estado) or (
-        "Nota de devolucion" if d.tipo == "devolucion" else "Nota de credito" if d.tipo == "nota_credito" else "Comprobante de cambio"
+        # Si se le devolvio plata (reembolso o saldo a favor), el papel es la NOTA DE DEVOLUCION (CU7).
+        "Nota de devolucion" if (d.tipo == "devolucion" or d.montoDevuelto) else "Comprobante de cambio"
     )
     buffer = io.BytesIO()
     pdf = canvas.Canvas(buffer, pagesize=A5)
@@ -1503,8 +1758,9 @@ async def comprobante(
         lineas.append(f"Diferencia {'cobrada' if d.diferencia > 0 else 'a favor'}: Bs {abs(d.diferencia):.2f}")
     if d.montoDevuelto:
         lineas.append(f"Reembolso: Bs {d.montoDevuelto:.2f} por {d.metodoReembolso} ({d.estadoReembolso})")
-    if d.nota_codigo:
-        lineas.append(f"Nota de credito: {d.nota_codigo}")
+    if d.montoDevuelto:
+        # CU7: la nota de devolucion deja por escrito cuanto se devolvio, por que medio y en que estado esta.
+        lineas.extend(dv.nota_de_devolucion(caso)[1:])
     if d.motivoRechazo:
         lineas.append(f"Motivo del rechazo: {d.motivoRechazo}")
     for texto in lineas:
@@ -1529,6 +1785,15 @@ async def comprobante(
 
 # --- Autorizacion del Encargado ---------------------------------------------------------------
 
+# ==== DIAGRAMA <-> CODIGO (informe Parcial 2) ====================
+# [CU1] Registrar solicitud de devolucion o cambio en tienda
+# [CU4] Procesar cambio de talla, color o medida
+# [CU6] Procesar reembolso de dinero
+# Diagramas del informe: "Robustez CU1" y "Clases CU1", "Robustez CU4" y "Clases CU4", "Robustez CU6" y "Clases CU6"
+# Diagrama de clases: ControlDevoluciones.exigirAutorizacion() (la respuesta del Encargado)
+# Pantalla (boundary) que lo usa: ResolverCambioUI.solicitarAutorizacionDelEncargado() / ProcesarReembolsoUI.solicitarAutorizacionDelEncargado() -> return-tray.component.ts -> autorizar()
+# En palabras simples: el Encargado de sucursal da permiso para seguir cuando el monto supera el umbral.
+# ==================================================================
 @router.post("/{idDevolucion:int}/autorizar", response_model=DevolucionOut)
 async def autorizar(
     idDevolucion: int,
@@ -1561,11 +1826,28 @@ def _exigir_autorizacion_previa(caso: Devolucion, auth: dict) -> None:
 
 # --- CU3: inspeccion ---------------------------------------------------------------------------
 
+# ==== DIAGRAMA <-> CODIGO (informe Parcial 2) ====================
+# [CU3] Inspeccionar estado de la prenda devuelta
+# Diagramas del informe: "Robustez CU3" y "Clases CU3"
+# Diagrama de clases: ControlDevoluciones.registrarInspeccion()  (usa compararSKU(), decidirInspeccion(), validarEstado() y Devolucion.guardarInspeccion())
+# Pantalla (boundary) que lo usa: InspeccionarDevolucionUI.seleccionarResultado() -> web/src/app/features/returns/return-inspect.component.ts -> confirmar()
+# En palabras simples: guarda el resultado de revisar la prenda: Aprobada, Rechazada o EnRevision.
+# Robustez CU3: control "EvaluarCondicion" -> mensaje 8: evaluarPrenda(codigo escaneado, lista, resultado, fotos),
+#   9: validar SKU y aplicar politica de deterioro y defecto (PoliticaDevolucion)
+# Robustez CU3: control "RegistrarInspeccion" -> mensaje 10: registrarInspeccion(condicion, resultado),
+#   11: guardar inspeccion y estado "Aprobada" o "Rechazada" (Devolucion), 12: registrar accion INSPECCIONAR (Bitacora)
+# Secuencia CU3: lifeline "EvaluarCondicion" -> evaluarPrenda(codigoEscaneado, checklist, resultado), compararSKU(escaneado, vendido),
+#   obtenerPoliticaDelCaso(idPolitica), calcularDescuentoDeterioro(% de la politica)
+# Secuencia CU3: lifeline "RegistrarInspeccion" -> registrarInspeccion(condicion, descuento, estado),
+#   guardarInspeccion(condicion, checklist, fotos, estado) a "Devolucion", registrarBitacora(INSPECCIONAR, codigo, resultado)
+#   -> resultado(estado, resolucion pedida) -> mostrarResultado() -> CU4 / CU5 / CU6 si quedo "Aprobada"
+# ==================================================================
 @router.post("/{idDevolucion:int}/inspeccion", response_model=list[DevolucionOut])
 async def inspeccionar(
     idDevolucion: int,
     payload: InspeccionIn,
     request: Request,
+    background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_db),
     auth: dict = Depends(require_permiso(PERMISO_INSPECCIONAR)),
     id_tenant: int = Depends(tenant_actual),
@@ -1573,15 +1855,21 @@ async def inspeccionar(
     """Devuelve el caso inspeccionado y, con aprobacion parcial, tambien el
     caso nuevo con las unidades rechazadas."""
     caso = await _caso_de_la_empresa(session, idDevolucion, id_tenant)
+    # Secuencia CU3: [break la solicitud no esta "En inspeccion" ni "Pendiente de entrega"] -> 409 (estado actual) -> mostrarMensaje(estado actual)
     if caso.estado not in ("EnInspeccion", "PendienteEntrega"):
         raise HTTPException(status_code=409, detail=f"El caso esta {caso.estado}: solo se inspecciona una solicitud pendiente")
+    # Paso 1: si la solicitud necesitaba permiso del Encargado, se exige antes de inspeccionar.
     _exigir_autorizacion_previa(caso, auth)
     politica = await _politica_del_caso(session, caso)
     ahora = datetime.now(timezone.utc)
+    # Secuencia CU3: compararSKU(escaneado, vendido)
     coincide = dv.codigo_coincide(payload.codigoEscaneado, caso.idProducto)
+    # Paso 2: si el codigo escaneado no es el de la prenda vendida, el resultado es "no corresponde".
     resultado = payload.resultado if coincide else "no_corresponde"
+    # Paso 3: segun el estado de la prenda y la politica se decide si se aprueba o se rechaza.
     decision = dv.decidir_inspeccion(resultado, politica, coincide=coincide, acepta_descuento=payload.aceptaDescuento)
 
+    # Paso 4: guardamos lo que reviso el Encargado: estado, checklist, codigo, notas, fotos, quien y cuando.
     caso.condicion = resultado
     caso.checklist = payload.checklist.model_dump()
     caso.codigoEscaneado = payload.codigoEscaneado
@@ -1593,17 +1881,20 @@ async def inspeccionar(
         caso.codigoSucursal = await dv.sucursal_de_venta(session, caso.idVenta, caso.idProducto)
 
     casos = [caso]
+    # Paso 5: cuantas unidades pasaron la revision (pueden ser solo algunas).
     aprobadas = caso.cantidad if payload.cantidadAprobada is None else min(payload.cantidadAprobada, caso.cantidad)
     if payload.disconforme:
         # CU3 flujo alternativo 5: el Administrador decide.
         caso.estado = "EnRevision"
         caso.motivoRechazo = payload.motivoRechazo or decision.motivo_rechazo
+    # Secuencia CU3: [alt el SKU no coincide ("No corresponde") / deteriorada y la politica la rechaza] -> registrarInspeccion("Rechazada", ...)
     elif decision.estado == "Rechazada" or aprobadas == 0:
         caso.estado = "Rechazada"
         caso.motivoRechazo = payload.motivoRechazo or decision.motivo_rechazo or "Ninguna unidad paso la inspeccion"
         caso.fechaResolucion = ahora
         await dv.liberar_reserva(session, caso)
     else:
+        # Aprobacion parcial: las unidades que no pasaron se separan en otro caso "Rechazada".
         if aprobadas < caso.cantidad:
             # CU3 flujo alternativo 4: aprobacion parcial.
             rechazadas = caso.cantidad - aprobadas
@@ -1630,6 +1921,8 @@ async def inspeccionar(
             await _nuevo_codigo(session, rechazo)
             casos.append(rechazo)
         caso.estado = "Aprobada"
+        # Secuencia CU3: [alt apta, defecto de fabrica o deterioro con descuento] [opt deteriorada y la politica aplica descuento]
+        #   -> calcularDescuentoDeterioro(% de la politica) -> registrarInspeccion(condicion, descuento, "Aprobada")
         if decision.descuento_pct > 0:
             valor = Decimal(str(caso.precioPagado or 0)) * caso.cantidad
             caso.descuentoDeterioro = dv.dinero(valor * decision.descuento_pct / 100)
@@ -1637,10 +1930,26 @@ async def inspeccionar(
     await registrar_bitacora(
         session, f"Inspeccion de {caso.codigo}: {resultado}, {caso.estado}", int(auth["sub"]), _ip(request)
     )
+    # Aviso al cliente con el resultado de la revision de su prenda.
+    if caso.estado in ("Aprobada", "Rechazada"):
+        await notif.notificar_cliente(
+            session, caso.idCliente, id_tenant, tipo="devolucion", referencia=caso.codigo,
+            titulo=f"Su prenda fue {'aprobada' if caso.estado == 'Aprobada' else 'rechazada'} ({caso.codigo})",
+            mensaje=("La prenda paso la revision; ahora se procesa su cambio o la devolucion de su dinero."
+                     if caso.estado == "Aprobada" else f"Motivo: {caso.motivoRechazo or 'no paso la revision'}."),
+        )
     await session.commit()
+    notif.programar_correos(background_tasks)
     return [await _caso_out(session, c.idDevolucion) for c in casos]
 
 
+# ==== DIAGRAMA <-> CODIGO (informe Parcial 2) ====================
+# [CU3] Inspeccionar estado de la prenda devuelta
+# Diagramas del informe: "Robustez CU3" y "Clases CU3"
+# Diagrama de clases: CU3 flujo alternativo 5 (el Administrador resuelve la disconformidad)
+# Pantalla (boundary) que lo usa: return-tray.component.ts -> revisar()
+# En palabras simples: el cliente no acepto la inspeccion y el Administrador decide.
+# ==================================================================
 @router.post("/{idDevolucion:int}/revision", response_model=DevolucionOut)
 async def revisar(
     idDevolucion: int,
@@ -1684,7 +1993,6 @@ def _resolucion(payload) -> dv.Resolucion:
         metodo_reembolso=payload.metodoReembolso,
         cuenta_destino=payload.cuentaDestino,
         id_met_pago_diferencia=payload.idMetPagoDiferencia,
-        saldo_a_favor=payload.saldoAFavor,
         sin_stock=getattr(payload, "sinStock", None),
         sucursal_origen=getattr(payload, "sucursalOrigen", None),
         medida_original=getattr(payload, "medidaOriginal", None),
@@ -1710,20 +2018,50 @@ def _resumen(caso: Devolucion) -> str:
     return texto
 
 
+# ==== DIAGRAMA <-> CODIGO (informe Parcial 2) ====================
+# [CU4] Procesar cambio de talla, color o medida
+# [CU5] Procesar cambio por un producto diferente
+# [CU6] Procesar reembolso de dinero
+# [CU7] Emitir nota de devolucion
+# [CU8] Gestionar cambio sin stock disponible
+# [CU10] Actualizar inventario por devolucion o cambio
+# Diagramas del informe: "Robustez CU4" y "Clases CU4", "Robustez CU5" y "Clases CU5", "Robustez CU6" y "Clases CU6", "Robustez CU7" y "Clases CU7", "Robustez CU8" y "Clases CU8", "Robustez CU10" y "Clases CU10"
+# Diagrama de clases: ControlDevoluciones.resolver()  (CU10: iniciarTransaccion() / confirmarTransaccion() / revertirTransaccion())
+# Pantalla (boundary) que lo usa: ResolverCambioUI.confirmarCambio() / CambioOtroProductoUI.confirmarCambio() / ProcesarReembolsoUI.confirmarReembolso() / ResolverDevolucionUI.confirmarCambioOReembolso() -> web/src/app/features/returns/return-resolve.component.ts -> confirmar()
+# En palabras simples: ejecuta lo que se decidio (cambio de talla, otro producto o devolver el dinero) y mueve el inventario.
+# La logica de cada caso esta en services/devoluciones.py -> resolver_caso()
+# Robustez CU4: control "ConfirmarCambio" -> mensaje 13: confirmarCambio(variante, metodo de pago), 18: comprobante de cambio
+# Robustez CU5: control "ControlDevoluciones" -> mensaje 14: confirmarCambio(productos, metodo de pago), 20: comprobante
+# Robustez CU6: control "EjecutarReembolso" -> mensaje 9: confirmarReembolso(medio), 16: nota de devolucion
+# CU7 (Emitir nota de devolucion): si se devolvio dinero, la nota sale en GET /{id}/comprobante.pdf (dv.nota_de_devolucion())
+# Robustez CU8: control "Backend : GestionarTraslado" -> mensaje 7: resolver(traslado, sucursal de origen)
+# Robustez CU10: control "ResolverDevolucion" -> mensaje 2: resolver(solicitud), 15: registrar el destino en Bitacora, 16: destino de cada prenda
+# Secuencia CU4: lifeline "ConfirmarCambio" -> confirmarCambio(idVariante, idMetPago), registrarPagoDiferencia, actualizarInventario (CU10),
+#   actualizarDevolucion(tallaNueva, diferencia, "Completada"), registrarBitacora(RESOLVER, codigo, cambio_talla) -> comprobante de cambio
+# Secuencia CU5: lifeline "ConfirmarCambio" -> resolver("cambio_producto", productos, idMetPago) ... registrarBitacora(RESOLVER, codigo, cambio_producto)
+# Secuencia CU6: lifeline "EjecutarReembolso" -> resolver("devolucion", medio)  [opt el monto supera el umbral -> 403 requiere autorizacion]
+#   y al cliente le llega el aviso "Nota de devolucion DEV-...: le devolvimos Bs ..." (dv.avisar_resultado())
+# Secuencia CU8: lifeline "GestionarTraslado" -> resolver(opcion, sucursalOrigen)
+# Secuencia CU10: lifeline "ResolverDevolucion" -> resolver(idDevolucion, resolucion), iniciarTransaccion(), ... confirmarTransaccion() o revertirTransaccion()
+# ==================================================================
 @router.post("/{idDevolucion:int}/resolver", response_model=DevolucionOut)
 async def resolver(
     idDevolucion: int,
     payload: ResolucionIn,
     request: Request,
+    background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_db),
     auth: dict = Depends(require_permiso(PERMISO_REGISTRAR)),
     id_tenant: int = Depends(tenant_actual),
 ):
     caso = await _caso_de_la_empresa(session, idDevolucion, id_tenant)
     if caso.estado != "Aprobada":
+        # Solo se resuelve una solicitud que ya paso la inspeccion (estado "Aprobada").
         raise HTTPException(status_code=409, detail=f"El caso esta {caso.estado}: primero hay que inspeccionar la prenda (CU3)")
     await _validar_sucursal(session, payload.codigoSucursal, id_tenant)
     venta = await session.get(Venta, caso.idVenta)
+    # [CU10] ControlDevoluciones.iniciarTransaccion(): la sesion de base de datos ya
+    # abrio una transaccion; todo lo de abajo (inventario, pagos, notas) va junto.
     try:
         await dv.resolver_caso(
             session,
@@ -1736,25 +2074,45 @@ async def resolver(
             puede_autorizar=_tiene(auth, PERMISO_AUTORIZAR),
         )
     except dv.AutorizacionRequerida as exc:
+        # [CU4] [CU6] ControlDevoluciones.exigirAutorizacion(): falta el permiso del Encargado.
+        # [CU10] ControlDevoluciones.revertirTransaccion(): al salir con error no se hace
+        # commit y la base de datos deshace todo (CU10 flujo alternativo 1).
         await _marcar_autorizacion(session, idDevolucion, exc.motivo)
         raise HTTPException(status_code=403, detail=exc.motivo)
     await session.flush()
+    # Bitacora.registrarBitacora() (aparece en los diagramas de robustez)
     await registrar_bitacora(session, f"Devolucion resuelta: {_resumen(caso)}", int(auth["sub"]), _ip(request))
+    # [CU10] ControlDevoluciones.confirmarTransaccion(): se guarda todo de una sola vez.
     await session.commit()
+    # Recien despues de guardar se mandan los correos de los avisos (envio, nota de devolucion...).
+    notif.programar_correos(background_tasks)
     return await _caso_out(session, caso.idDevolucion)
 
 
+# ==== DIAGRAMA <-> CODIGO (informe Parcial 2) ====================
+# [CU8] Gestionar cambio sin stock disponible
+# Diagramas del informe: "Robustez CU8" y "Clases CU8"
+# Diagrama de clases: ControlDevoluciones.completarCambio()
+# Pantalla (boundary) que lo usa: ResolverCambioUI.completarCambio() -> return-tray.component.ts -> completar()
+# En palabras simples: el cliente vuelve a retirar la prenda que se trajo de otra sucursal.
+# Robustez CU8: control "CompletarCambio" -> mensaje 16: completarCambio(solicitud),
+#   17: entregar la variante apartada (Inventario), 18: marcar la solicitud "Completada" (Devolucion), 19: comprobante de cambio
+# Secuencia CU8: [opt la prenda llego y el cliente la retira] lifeline "CompletarCambio" -> completarCambio(idDevolucion, "entregar"),
+#   entregarVariante() (CU10), actualizarDevolucion("Completada") -> comprobante de cambio()
+# ==================================================================
 @router.post("/{idDevolucion:int}/completar-cambio", response_model=DevolucionOut)
 async def completar_cambio(
     idDevolucion: int,
     payload: CompletarCambioIn,
     request: Request,
+    background_tasks: BackgroundTasks,
     session: AsyncSession = Depends(get_db),
     auth: dict = Depends(require_permiso(PERMISO_REGISTRAR)),
     id_tenant: int = Depends(tenant_actual),
 ):
-    """CU8 paso 5: el cliente retira el cambio pendiente (o prefiere nota o dinero)."""
+    """CU8 paso 5: el cliente retira el cambio pendiente (o prefiere que le devuelvan el dinero)."""
     caso = await _caso_de_la_empresa(session, idDevolucion, id_tenant)
+    # Solo se completa un cambio que estaba esperando la prenda (CU8).
     if caso.estado != "CambioPendiente":
         raise HTTPException(status_code=409, detail=f"El caso esta {caso.estado}: no hay un cambio pendiente")
     await _validar_sucursal(session, payload.codigoSucursal, id_tenant)
@@ -1772,9 +2130,17 @@ async def completar_cambio(
     await session.flush()
     await registrar_bitacora(session, f"Cambio pendiente cerrado: {_resumen(caso)}", int(auth["sub"]), _ip(request))
     await session.commit()
+    notif.programar_correos(background_tasks)
     return await _caso_out(session, caso.idDevolucion)
 
 
+# ==== DIAGRAMA <-> CODIGO (informe Parcial 2) ====================
+# [CU2] Solicitar devolucion o cambio desde la tienda en linea
+# Diagramas del informe: "Robustez CU2" y "Clases CU2"
+# Diagrama de clases: CU2 flujo alternativo 3 (anular y liberar la variante apartada)
+# Pantalla (boundary) que lo usa: customer-returns.component.ts -> cancelar() / return-tray.component.ts -> cancelar()
+# En palabras simples: anula una solicitud que todavia no se entrego y libera la prenda apartada.
+# ==================================================================
 @router.post("/{idDevolucion:int}/cancelar", response_model=DevolucionOut)
 async def cancelar(
     idDevolucion: int,
@@ -1786,6 +2152,7 @@ async def cancelar(
     """El cliente desiste de una solicitud que todavia no entrego; el personal
     cancela una solicitud abierta devolviendole la prenda (CU4 alternativo 2)."""
     caso = await session.get(Devolucion, idDevolucion, with_for_update=True)
+    # El cliente solo puede cancelar si todavia no llevo la prenda; el personal puede cancelar en mas estados.
     permitidos: tuple[str, ...] = ("PendienteEntrega",)
     if caso is not None and _tiene(auth, PERMISO_REGISTRAR):
         if caso.idTenant != id_tenant:
@@ -1800,6 +2167,7 @@ async def cancelar(
     if caso.estado not in permitidos:
         raise HTTPException(status_code=409, detail=f"Un caso en estado {caso.estado} ya no se puede cancelar")
     await dv.liberar_reserva(session, caso)
+    # Se suelta la prenda que estaba apartada y la solicitud queda "Cancelada".
     caso.estado = "Cancelada"
     caso.fechaResolucion = datetime.now(timezone.utc)
     await registrar_bitacora(session, f"Caso {caso.codigo} cancelado", int(auth["sub"]), _ip(request))
@@ -1807,6 +2175,13 @@ async def cancelar(
     return await _caso_out(session, caso.idDevolucion)
 
 
+# ==== DIAGRAMA <-> CODIGO (informe Parcial 2) ====================
+# [CU6] Procesar reembolso de dinero
+# Diagramas del informe: "Robustez CU6" y "Clases CU6"
+# Diagrama de clases: PasarelaDePagos.reembolsar() (otro intento)
+# Pantalla (boundary) que lo usa: return-refunds.component.ts -> reintentar()
+# En palabras simples: vuelve a pedirle el reembolso a Stripe si la primera vez fallo.
+# ==================================================================
 @router.post("/{idDevolucion:int}/reembolso/reintentar", response_model=DevolucionOut)
 async def reintentar_reembolso(
     idDevolucion: int,
@@ -1827,6 +2202,13 @@ async def reintentar_reembolso(
     return await _caso_out(session, caso.idDevolucion)
 
 
+# ==== DIAGRAMA <-> CODIGO (informe Parcial 2) ====================
+# [CU6] Procesar reembolso de dinero
+# Diagramas del informe: "Robustez CU6" y "Clases CU6"
+# Diagrama de clases: ControlDevoluciones.marcarReembolso() (transferencia hecha)
+# Pantalla (boundary) que lo usa: return-refunds.component.ts -> confirmar()
+# En palabras simples: marca como hecha una devolucion de dinero por transferencia/QR.
+# ==================================================================
 @router.post("/{idDevolucion:int}/reembolso/confirmar", response_model=DevolucionOut)
 async def confirmar_transferencia(
     idDevolucion: int,
@@ -1836,10 +2218,13 @@ async def confirmar_transferencia(
     auth: dict = Depends(require_permiso(PERMISO_REGISTRAR)),
     id_tenant: int = Depends(tenant_actual),
 ):
-    """CU6 flujo alternativo 4: se adjunta el comprobante de la transferencia."""
+    """CU6 flujo alternativo 4: se adjunta el comprobante de la transferencia.
+    Tambien confirma un reembolso pendiente en efectivo o QR (por ejemplo, el de un
+    cambio que el cliente no retiro a tiempo): el comprobante es lo que se le entrego."""
     caso = await _caso_de_la_empresa(session, idDevolucion, id_tenant)
-    if caso.estadoReembolso != "TransferenciaPendiente":
-        raise HTTPException(status_code=409, detail="No hay una transferencia pendiente")
+    pendiente_manual = caso.estadoReembolso == "Pendiente" and caso.metodoReembolso in ("efectivo", "qr")
+    if caso.estadoReembolso != "TransferenciaPendiente" and not pendiente_manual:
+        raise HTTPException(status_code=409, detail="No hay una transferencia ni un reembolso en efectivo pendiente")
     caso.estadoReembolso = "Completado"
     caso.referenciaReembolso = payload.comprobante
     await registrar_bitacora(session, f"Transferencia del reembolso {caso.codigo} confirmada", int(auth["sub"]), _ip(request))
