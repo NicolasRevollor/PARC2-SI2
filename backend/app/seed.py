@@ -29,6 +29,9 @@ PERMISOS = [
     "tenant.admin",
     "devolucion.ver",
     "devolucion.crear",
+    "caja.operar",
+    "caja.aprobar",
+    "sync.resolver",
 ]
 
 # Mismos nombres de rol y asignaciones que base.sql + migraciones 005, 007,
@@ -53,11 +56,17 @@ ROLES_PERMISOS = {
         "tenant.ver",
         "devolucion.ver",
         "devolucion.crear",
+        "caja.operar",
+        "caja.aprobar",
+        "sync.resolver",
+        "venta.crear",
+        "reserva.crear",
     ],
     "Cajero": [
         "producto.listar",
         "inventario.ver",
         "venta.crear",
+        "caja.operar",
         "venta.ver",
         "reserva.crear",
         "cliente.ver",

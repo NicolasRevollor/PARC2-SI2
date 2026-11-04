@@ -5,6 +5,7 @@
     <!-- Mobile Fase 2 (checkout): sin esto, un build que no sea debug no
          puede garantizar acceso a red (debug lo auto-agrega, release no). -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <application
         android:label="app"
         android:name="${applicationName}"

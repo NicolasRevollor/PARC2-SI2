@@ -13,7 +13,13 @@ import {
 } from '../../core/services/returns.service';
 import { AlcanceDevoluciones, AnalisisDevoluciones, DevolucionOut } from '../../core/models';
 import { ReturnDetailComponent } from './return-detail.component';
+import { CuBadgeComponent } from '../../shared/components/cu-badge.component';
 
+// ==== DIAGRAMA <-> CODIGO (informe Parcial 2) ====================
+// [CU11] Consultar historial y analisis de devoluciones
+// Boundary: HistorialDevolucionesUI -> este componente
+// Control: backend/app/routers/returns.py -> listar_devoluciones, analisis, exportar_excel, exportar_pdf
+// ==================================================================
 /**
  * CU11 — Consultar historial y análisis de devoluciones: lista filtrable,
  * indicadores (tasa por producto y talla, motivos, montos, clientes
@@ -22,9 +28,10 @@ import { ReturnDetailComponent } from './return-detail.component';
 @Component({
   selector: 'app-return-history',
   standalone: true,
-  imports: [CommonModule, FormsModule, ReturnDetailComponent],
+  imports: [CommonModule, FormsModule, ReturnDetailComponent, CuBadgeComponent],
   template: `
     <div class="space-y-5">
+      <app-cu-badge cu="CU11" [conNombre]="true"></app-cu-badge>
       <div class="ys-tarjeta p-3.5 flex flex-wrap items-end gap-3">
         <div class="flex flex-col gap-1"><span class="ys-mini">Desde</span><input type="date" [(ngModel)]="f.fecha_desde" class="ys-filtro" /></div>
         <div class="flex flex-col gap-1"><span class="ys-mini">Hasta</span><input type="date" [(ngModel)]="f.fecha_hasta" class="ys-filtro" /></div>

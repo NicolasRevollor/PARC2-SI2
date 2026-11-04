@@ -126,7 +126,9 @@ async def enviar_correos_pendientes(limite: int = 30) -> int:
             )
         ).all()
         for aviso, correo in filas:
-            if not correo:
+            if not correo or correo.endswith(".invalid"):
+                # [CU14]: cliente registrado en tienda sin correo real.
+                aviso.correoEnviado = True
                 continue
             # El envio es una llamada HTTP lenta: se hace en un hilo aparte para no trabar el servidor.
             ok = await asyncio.to_thread(send_email, correo, aviso.titulo, aviso.mensaje)

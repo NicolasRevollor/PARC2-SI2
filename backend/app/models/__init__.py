@@ -1,6 +1,6 @@
 # ==== DIAGRAMA <-> CODIGO (informe Parcial 2) ====================
 # Este archivo = las ENTIDADES del "Modelo de dominio" (seccion 3.1 del informe)
-# y del diagrama de clases de la base de datos (32 clases = 32 tablas).
+# y del diagrama de clases de la base de datos (36 clases = 36 tablas).
 # Cada clase de abajo dice en que paquete del modelo de dominio esta.
 # En los diagramas de robustez son los circulos con raya abajo (entity).
 # ==================================================================
@@ -94,6 +94,8 @@ class Suscripcion(Base):
     estado: Mapped[str] = mapped_column(String(12), default="Activa", nullable=False)
     precioMensual: Mapped[float] = mapped_column(Numeric(10, 2), default=0.00, nullable=False)
     creadoEn: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=_ahora_utc, nullable=False)
+    # Migracion 026 ([CU17] alternativo 5): las operaciones sin conexion anteriores se aceptan.
+    fechaSuspension: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
 
 
 # [Modelo de dominio] Paquete "Ubicacion" -> entidad Ciudad  (tabla "Ciudad")
@@ -314,6 +316,8 @@ class Cliente(Base):
     pecho: Mapped[int | None] = mapped_column(Integer)
     cintura: Mapped[int | None] = mapped_column(Integer)
     tiro: Mapped[int | None] = mapped_column(Integer)
+    # Migracion 026 ([CU14] paso 4): cliente registrado en tienda con nombre y CI.
+    ci: Mapped[str | None] = mapped_column(String(20))
 
 
 # [Modelo de dominio] Paquete "Stock" -> entidad Inventario  (tabla "Inventario")
@@ -450,6 +454,8 @@ class Venta(Base):
     estadoSincronizacion: Mapped[str] = mapped_column(String(12), default="Sincronizada", nullable=False)
     fechaOperacion: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
     fechaSincronizacion: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+    # Migracion 026 ([CU18] paso 5): diferencia al respetar el precio cobrado sin conexion.
+    descuentoAutorizado: Mapped[float] = mapped_column(Numeric(12, 2), default=0.00, nullable=False)
 
 
 # [Modelo de dominio] Paquete "Sincronizacion" -> entidad RegistroSincronizacion  (tabla "registro_sincronizacion")
@@ -460,9 +466,9 @@ class RegistroSincronizacion(Base):
 
     idRegistro: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     uuidOperacion: Mapped[str] = mapped_column(UUID(as_uuid=False), nullable=False)
-    # venta | reserva | devolucion
-    tipoOperacion: Mapped[str] = mapped_column(String(12), nullable=False)
-    # Aplicada | Duplicada | Rechazada
+    # venta | reserva | devolucion | cancelar_reserva | cambio | custodia | caja_apertura | caja_cierre
+    tipoOperacion: Mapped[str] = mapped_column(String(20), nullable=False)
+    # Aplicada | Duplicada | Rechazada | Conflicto
     resultado: Mapped[str] = mapped_column(String(12), nullable=False)
     detalle: Mapped[str | None] = mapped_column(String(255))
     idReferencia: Mapped[int | None] = mapped_column(Integer)
@@ -471,6 +477,104 @@ class RegistroSincronizacion(Base):
     dispositivo: Mapped[str | None] = mapped_column(String(120))
     idUsuario: Mapped[int | None] = mapped_column(ForeignKey("Usuario.idUser", ondelete="SET NULL", onupdate="CASCADE"))
     idTenant: Mapped[int | None] = mapped_column(ForeignKey("tenant.idTenant", ondelete="CASCADE", onupdate="CASCADE"))
+    codigoSucursal: Mapped[int | None] = mapped_column(Integer)
+
+
+# [Modelo de dominio] Paquete "Sincronizacion" -> entidad ConflictoSincronizacion  (tabla "conflicto_sincronizacion")
+# [CU18] Resolver conflictos de sincronizacion
+class ConflictoSincronizacion(Base):
+    """Operacion sin conexion que el servidor no pudo confirmar sola. Mientras
+    este "Pendiente" no mueve stock ni crea la venta: lo hace la decision del
+    Encargado (services/conflictos.py)."""
+
+    __tablename__ = "conflicto_sincronizacion"
+
+    idConflicto: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    uuidOperacion: Mapped[str] = mapped_column(UUID(as_uuid=False), unique=True, nullable=False)
+    tipoOperacion: Mapped[str] = mapped_column(String(12), nullable=False)
+    # stock_insuficiente | precio_desactualizado | producto_desactivado | cliente_duplicado
+    # | reserva_sin_existencia | politica_incumplida | dependencia_pendiente | recepcion_custodia
+    tipoConflicto: Mapped[str] = mapped_column(String(30), nullable=False)
+    motivo: Mapped[str] = mapped_column(String(255), nullable=False)
+    datosDispositivo: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    datosServidor: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+    monto: Mapped[float] = mapped_column(Numeric(12, 2), default=0.00, nullable=False)
+    estado: Mapped[str] = mapped_column(String(10), default="Pendiente", nullable=False)
+    resultado: Mapped[str | None] = mapped_column(String(12))  # Confirmada | Anulada
+    decision: Mapped[str | None] = mapped_column(String(30))
+    observaciones: Mapped[str | None] = mapped_column(String(255))
+    alertaDiscrepancia: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    idReferencia: Mapped[int | None] = mapped_column(Integer)
+    codigoSucursal: Mapped[int | None] = mapped_column(ForeignKey("Sucursal.codigoSucursal", onupdate="CASCADE"))
+    idUsuario: Mapped[int | None] = mapped_column(ForeignKey("Usuario.idUser", ondelete="SET NULL", onupdate="CASCADE"))
+    idTenant: Mapped[int] = mapped_column(ForeignKey("tenant.idTenant", ondelete="CASCADE", onupdate="CASCADE"), nullable=False)
+    fechaOperacion: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+    fechaRegistro: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=_ahora_utc, nullable=False)
+    idResolvio: Mapped[int | None] = mapped_column(ForeignKey("Usuario.idUser", ondelete="SET NULL", onupdate="CASCADE"))
+    fechaResolucion: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+
+
+# [Modelo de dominio] Paquete "Sincronizacion" -> entidad ConfiguracionOperacion  (tabla "configuracion_operacion")
+# [CU13] [CU14] [CU18] [CU20]: tiempos y umbrales de cada empresa.
+class ConfiguracionOperacion(Base):
+    __tablename__ = "configuracion_operacion"
+
+    idTenant: Mapped[int] = mapped_column(ForeignKey("tenant.idTenant", ondelete="CASCADE", onupdate="CASCADE"), primary_key=True)
+    horasDatosVigentes: Mapped[int] = mapped_column(Integer, default=24, nullable=False)
+    horasSesionSinConexion: Mapped[int] = mapped_column(Integer, default=12, nullable=False)
+    permiteVentaSinStock: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    umbralDiferenciaCaja: Mapped[float] = mapped_column(Numeric(12, 2), default=50, nullable=False)
+    umbralConflicto: Mapped[float] = mapped_column(Numeric(12, 2), default=1000, nullable=False)
+    horasRetiroReserva: Mapped[int] = mapped_column(Integer, default=48, nullable=False)
+
+
+# [Modelo de dominio] Paquete "Caja" -> entidad Caja  (tabla "caja")
+# [CU20] Gestionar apertura y cierre de caja
+class Caja(Base):
+    """Turno de caja de una sucursal (migracion 026). Estados: "Abierta",
+    "CierreProvisional" (quedan operaciones sin confirmar), "PendienteAprobacion"
+    (la diferencia supera el umbral y falta el Encargado) y "Cerrada"."""
+
+    __tablename__ = "caja"
+    __mapper_args__ = {"eager_defaults": True}
+
+    idCaja: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    uuidOperacion: Mapped[str] = mapped_column(UUID(as_uuid=False), server_default=text("gen_random_uuid()"), unique=True, nullable=False)
+    origenRegistro: Mapped[str] = mapped_column(String(12), default="en_linea", nullable=False)
+    codigoSucursal: Mapped[int] = mapped_column(ForeignKey("Sucursal.codigoSucursal", onupdate="CASCADE"), nullable=False)
+    idTenant: Mapped[int] = mapped_column(ForeignKey("tenant.idTenant", ondelete="CASCADE", onupdate="CASCADE"), nullable=False)
+    idUsuarioApertura: Mapped[int] = mapped_column(ForeignKey("Usuario.idUser", onupdate="CASCADE"), nullable=False)
+    montoInicial: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
+    fechaApertura: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=_ahora_utc, nullable=False)
+    idUsuarioCierre: Mapped[int | None] = mapped_column(ForeignKey("Usuario.idUser", onupdate="CASCADE"))
+    fechaCierre: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+    efectivoContado: Mapped[float | None] = mapped_column(Numeric(12, 2))
+    montoEsperado: Mapped[float | None] = mapped_column(Numeric(12, 2))
+    diferencia: Mapped[float | None] = mapped_column(Numeric(12, 2))
+    justificacion: Mapped[str | None] = mapped_column(String(255))
+    estado: Mapped[str] = mapped_column(String(20), default="Abierta", nullable=False)
+    idAprobador: Mapped[int | None] = mapped_column(ForeignKey("Usuario.idUser", onupdate="CASCADE"))
+    fechaAprobacion: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+    operacionesPendientes: Mapped[list] = mapped_column(JSONB, default=list, nullable=False)
+
+
+# [Modelo de dominio] Paquete "Caja" -> entidad MovimientoCaja  (tabla "movimiento_caja")
+# [CU20] Gestionar apertura y cierre de caja
+class MovimientoCaja(Base):
+    """Ingreso o egreso en efectivo de una caja."""
+
+    __tablename__ = "movimiento_caja"
+
+    idMovimientoCaja: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    idCaja: Mapped[int] = mapped_column(ForeignKey("caja.idCaja", ondelete="CASCADE", onupdate="CASCADE"), nullable=False)
+    tipo: Mapped[str] = mapped_column(String(8), nullable=False)  # ingreso | egreso
+    # venta | diferencia_cambio | deposito_reserva | reembolso | devolucion_deposito | anulacion_venta
+    concepto: Mapped[str] = mapped_column(String(24), nullable=False)
+    monto: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
+    referencia: Mapped[str | None] = mapped_column(String(60))
+    uuidOperacion: Mapped[str | None] = mapped_column(UUID(as_uuid=False))
+    fecha: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=_ahora_utc, nullable=False)
+    idUsuario: Mapped[int | None] = mapped_column(ForeignKey("Usuario.idUser", ondelete="SET NULL", onupdate="CASCADE"))
 
 
 # [Modelo de dominio] Paquete "Venta y atencion" -> entidad DetalleVenta  (tabla "detalle_venta")
@@ -650,6 +754,9 @@ class Devolucion(Base):
     referenciaReembolso: Mapped[str | None] = mapped_column(String(150))
     cuentaDestino: Mapped[str | None] = mapped_column(String(120))
     fechaResolucion: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+    # Migracion 026 ([CU19]): cambio registrado sin conexion.
+    uuidOperacion: Mapped[str | None] = mapped_column(UUID(as_uuid=False), unique=True)
+    origenRegistro: Mapped[str] = mapped_column(String(12), default="en_linea", nullable=False)
 
 
 # [Modelo de dominio] Paquete "Posventa" -> entidad PoliticaDevolucion  (tabla "politica_devolucion")

@@ -3,7 +3,7 @@ import { CommonModule } from '@angular/common';
 import { OfflineSyncService } from '../../core/services/offline-sync.service';
 import { PwaService } from '../../core/services/pwa.service';
 import { TenantService, ILIMITADO } from '../../core/services/tenant.service';
-import { OperacionPendiente } from '../../core/services/local-db.service';
+import { OperacionLocal, estaPendiente } from '../../core/offline-rules';
 import { PlanOut } from '../../core/models';
 
 /**
@@ -147,8 +147,8 @@ import { PlanOut } from '../../core/models';
                  class="flex items-center justify-between p-3 rounded-lg bg-gray-50 border border-gray-200 text-xs">
               <div>
                 <span class="font-bold text-gray-900 uppercase">{{ op.tipo }}</span>
-                <span class="text-gray-500"> · creada {{ op.creadoEn | date: 'dd/MM HH:mm' }}</span>
-                <p *ngIf="op.ultimoError" class="text-rose-600 mt-0.5">{{ op.ultimoError }}</p>
+                <span class="text-gray-500"> · creada {{ op.fechaOperacion | date: 'dd/MM HH:mm' }}</span>
+                <p *ngIf="op.motivo" class="text-rose-600 mt-0.5">{{ op.motivo }}</p>
               </div>
               <span class="text-gray-400 font-mono">{{ op.intentos }} intento(s)</span>
             </div>
@@ -208,7 +208,7 @@ import { PlanOut } from '../../core/models';
 export class SubscriptionComponent implements OnInit {
   readonly ilimitado = ILIMITADO;
   readonly cambiando = signal<boolean>(false);
-  readonly pendientes = signal<OperacionPendiente[]>([]);
+  readonly pendientes = computed<OperacionLocal[]>(() => this.offlineSync.operaciones().filter(estaPendiente));
 
   readonly cupos = computed(() => {
     const plan = this.tenantService.plan();
@@ -241,11 +241,6 @@ export class SubscriptionComponent implements OnInit {
 
   async ngOnInit(): Promise<void> {
     await Promise.all([this.tenantService.cargarContexto(), this.tenantService.cargarPlanes()]);
-    await this.refrescarPendientes();
-  }
-
-  private async refrescarPendientes(): Promise<void> {
-    this.pendientes.set(await this.offlineSync.detallePendientes());
   }
 
   esActual(plan: PlanOut): boolean {
@@ -260,8 +255,6 @@ export class SubscriptionComponent implements OnInit {
 
   async sincronizar(): Promise<void> {
     await this.offlineSync.sincronizar();
-    await this.offlineSync.descargarSnapshot();
-    await this.refrescarPendientes();
   }
 
   async instalar(): Promise<void> {

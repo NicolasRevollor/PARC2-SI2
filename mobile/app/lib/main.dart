@@ -6,6 +6,8 @@ import 'config/api_config.dart';
 import 'theme/aether_theme.dart';
 import 'providers/app_state.dart';
 import 'screens/splash_screen.dart';
+import 'services/api_client.dart';
+import 'services/offline_sync_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -24,6 +26,8 @@ void main() async {
     MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => AppState()),
+        // [CU12] a [CU20]: modo tienda del personal.
+        ChangeNotifierProvider(create: (_) => OfflineSyncService(ApiClient())),
       ],
       child: const AetherApp(),
     ),

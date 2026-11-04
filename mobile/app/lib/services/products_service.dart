@@ -1,6 +1,7 @@
 import '../config/api_config.dart';
 import '../models/product_model.dart';
 import 'api_client.dart';
+import 'offline_db.dart';
 
 /// Mapeo aproximado nombre-de-color -> hex: el backend NO tiene un campo
 /// de color en hexadecimal, solo un nombre de texto libre (`color`). Esto
@@ -38,6 +39,11 @@ const Map<String, String> _colorHexAproximado = {
 /// como su propia tarjeta, con `sizes` conteniendo un unico valor.
 class ProductsService {
   final ApiClient _api;
+  final OfflineDb _db = OfflineDb();
+
+  /// [CU13] Actor Cliente: true si lo mostrado salio del dispositivo.
+  bool sinConexion = false;
+  String? actualizado;
 
   ProductsService(this._api);
 
@@ -49,20 +55,35 @@ class ProductsService {
     int page = 1,
     int size = 20,
   }) async {
-    final data = await _api.get(
-      '/api/products',
-      auth: false,
-      query: {
-        if (tipo != null) 'tipo': tipo,
-        if (talla != null) 'talla': talla,
-        if (color != null) 'color': color,
-        if (q != null) 'q': q,
-        'page': page,
-        'size': size,
-      },
-    ) as Map<String, dynamic>;
-
-    final items = (data['items'] as List).cast<Map<String, dynamic>>();
+    final List<Map<String, dynamic>> items;
+    try {
+      final data = await _api.get(
+        '/api/products',
+        auth: false,
+        query: {
+          if (tipo != null) 'tipo': tipo,
+          if (talla != null) 'talla': talla,
+          if (color != null) 'color': color,
+          if (q != null) 'q': q,
+          'page': page,
+          'size': size,
+        },
+      ) as Map<String, dynamic>;
+      items = (data['items'] as List).cast<Map<String, dynamic>>();
+      sinConexion = false;
+      // [CU13]: lo ultimo visto queda en el dispositivo (solo el catalogo sin filtros).
+      if (tipo == null && talla == null && color == null && q == null) {
+        await _db.setMeta('catalogoCliente', {'fecha': DateTime.now().toIso8601String(), 'items': items});
+      }
+    } on ApiException {
+      rethrow;
+    } catch (_) {
+      final guardado = await _db.getMeta('catalogoCliente');
+      if (guardado == null) rethrow;
+      sinConexion = true;
+      actualizado = (guardado['fecha'] as String).substring(0, 16).replaceFirst('T', ' ');
+      return (guardado['items'] as List).cast<Map>().map((m) => _fromApi(m.cast<String, dynamic>())).toList();
+    }
     return items.map(_fromApi).toList();
   }
 

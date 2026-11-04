@@ -141,7 +141,57 @@ Frases útiles:
 > Hay que rehacerlos como **"Emitir nota de devolución"**, y quitar `NotaCredito` y `NotaCreditoMovimiento`
 > del modelo de dominio y del diagrama de la base de datos (agregar `Notificacion`).
 
+## CU11 a CU20: dónde está cada caso de uso
+
+Busca `[CU14]` **con corchetes**, igual que en los demás. En la web cada pantalla muestra además una
+**marca visible** con el código del CU (`shared/components/cu-badge.component.ts`); en el menú y en las
+pestañas también aparece el código. En la app móvil la marca es `CuMarca` (`screens/offline/staff_shell.dart`).
+
+El módulo está en el menú **Operación sin conexión** (una pestaña por CU) y **Apertura y cierre de caja**.
+
+| CU | Pantalla web (`web/src/app/`) | Pantalla móvil | Control en el backend (`backend/app/`) |
+|---|---|---|---|
+| CU11 | `features/returns/return-history.component.ts` | no aplica (solo web) | `routers/returns.py` → `listar_devoluciones`, `analisis`, `exportar_excel`, `exportar_pdf` |
+| CU12 | `features/offline/prepare-device.component.ts` | `_PrepararPantalla` | `routers/sync.py` → `preparacion`, `snapshot` · `services/preparacion.py` |
+| CU13 | `features/offline/offline-catalog.component.ts`; Cliente: `features/customer/catalog/catalog.component.ts` | `_CatalogoPantalla`; Cliente: aviso en `main_navigation_shell.dart` | No usa el servidor: `core/offline-rules.ts` → `existenciaLocal` |
+| CU14 | `features/offline/offline-sale.component.ts` (también dentro del POS sin red) | `_VentaPantalla` | `services/operaciones_offline.py` → `aplicar_venta` |
+| CU15 | `features/offline/offline-reservation.component.ts` | `_ReservaPantalla` | `services/operaciones_offline.py` → `aplicar_reserva`, `aplicar_cancelacion` |
+| CU16 | `features/offline/pending-operations.component.ts` | `_OperacionesPantalla` | `routers/sync.py` → `estado_operaciones`, `registro_sincronizacion` |
+| CU17 | `core/services/offline-sync.service.ts` → `sincronizar()`; botón en `pending-operations.component.ts` | `services/offline_sync_service.dart` → `sincronizar()` | `routers/sync.py` → `sincronizar_lote` · `services/operaciones_offline.py` → `procesar_operacion` |
+| CU18 | `features/offline/conflicts.component.ts` | no aplica (solo web) | `routers/sync.py` → `resolver_conflicto` · `services/conflictos.py` → `resolver` |
+| CU19 | `features/offline/offline-exchange.component.ts` | `_CambioPantalla` | `services/operaciones_offline.py` → `aplicar_cambio`, `aplicar_custodia` |
+| CU20 | `features/caja/caja.component.ts` | `_CajaPantalla` | `routers/caja.py` · `services/caja.py` (y `aplicar_apertura`, `aplicar_cierre` sin conexión) |
+
+Los datos locales están en IndexedDB (`core/services/local-db.service.ts`) y en SQLite (`services/offline_db.dart`).
+Las reglas que corren en el dispositivo son las mismas en web y móvil: `core/offline-rules.ts` y `services/offline_rules.dart`.
+
+### Entidades nuevas (migración 026)
+
+| Entidad | Tabla | Para qué |
+|---|---|---|
+| `Caja` | `caja` | Turno de caja de una sucursal (CU20) |
+| `MovimientoCaja` | `movimiento_caja` | Cada ingreso o egreso en efectivo (CU20) |
+| `ConflictoSincronizacion` | `conflicto_sincronizacion` | Operación que espera la decisión del Encargado (CU18) |
+| `ConfiguracionOperacion` | `configuracion_operacion` | Tiempos y umbrales de cada empresa (CU13, CU14, CU18, CU20) |
+
+### Frases útiles para defender
+
+- "Una operación sin conexión **nunca se borra del dispositivo**: cambia de estado. Por eso, si se corta la red a mitad del envío, se reintenta sin riesgo."
+- "El **UUID** evita duplicados: si el servidor ya lo procesó, devuelve el resultado original sin registrar nada nuevo."
+- "Una operación **en conflicto no mueve stock**: lo mueve la decisión del Encargado."
+- "Cada operación del lote va **en su propia transacción**: si una falla, las demás siguen."
+
+### Diferencias con el informe (hay que actualizarlo)
+
+| Dónde | Dice el informe | Qué hace el sistema | Por qué |
+|---|---|---|---|
+| CU11 paso 4 | Indicador "notas de crédito emitidas" | No existe | La ingeniera eliminó las notas de crédito |
+| CU14 alternativo 2 | "Tarjeta, QR o nota de crédito" | El botón existe y explica que solo se acepta efectivo | Se dejó el texto del CU; la nota de crédito ya no existe en línea |
+| CU19 alternativo 1 | El saldo a favor "se emitirá como nota de crédito" | Queda como **reembolso en efectivo pendiente** con su **nota de devolución** (CU7); al entregarlo sale de caja | Misma corrección de la ingeniera |
+| CU4, CU5, CU6, CU14 | "La caja debe estar abierta" | Ahora se exige de verdad: cobrar o devolver efectivo con la caja cerrada responde error | Era precondición del informe y antes no existía la caja |
+| CU12 (permiso) | Encargado no tenía `venta.crear` ni `reserva.crear` | La migración 026 se los da | CU15, CU19 y CU20 lo nombran como actor |
+
 ## Modelo de dominio (sección 3.1) y diagrama de clases de la BD
 
-Las 32 entidades están en `backend/app/models/__init__.py`. Arriba de cada clase dice su paquete:
+Las 36 entidades están en `backend/app/models/__init__.py`. Arriba de cada clase dice su paquete:
 busca, por ejemplo, `entidad Devolucion` o `Paquete "Posventa"`.

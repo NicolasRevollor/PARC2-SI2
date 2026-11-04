@@ -1,4 +1,4 @@
-import { Component, OnInit, computed, signal } from '@angular/core';
+import { Component, OnDestroy, OnInit, computed, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ArchiveService } from '../../../core/services/archive.service';
@@ -32,6 +32,12 @@ const PAGE_SIZE = 12;
         <span class="text-[11px] font-bold uppercase tracking-wider text-indigo-600">Catálogo</span>
         <h1 class="text-2xl font-bold text-gray-900 tracking-tight mt-0.5">Explorar Productos</h1>
         <p class="text-xs text-gray-500 mt-1">Encuentre la prenda que busca y resérvela en su sucursal.</p>
+      </div>
+
+      <!-- [CU13] Actor Cliente: catalogo guardado por el Service Worker -->
+      <div *ngIf="sinConexion()" class="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800 flex items-center gap-2">
+        <span class="px-2 py-0.5 rounded-md border border-amber-300 text-[10px] font-bold">CU13</span>
+        Modo sin conexión: la información puede estar desactualizada{{ ultimaCarga() ? ' (última actualización ' + (ultimaCarga() | date: 'dd/MM/yyyy HH:mm') + ')' : '' }}.
       </div>
 
       <!-- Recomendado para vos (CU22, IA) -->
@@ -203,7 +209,14 @@ const PAGE_SIZE = 12;
     ></app-purchase-modal>
   `
 })
-export class CatalogComponent implements OnInit {
+export class CatalogComponent implements OnInit, OnDestroy {
+  sinConexion = signal<boolean>(!navigator.onLine);
+  ultimaCarga = signal<string | null>(localStorage.getItem('catalogo_actualizado'));
+  private actualizarConexion = () => {
+    this.sinConexion.set(!navigator.onLine);
+    if (navigator.onLine) this.fetchProducts();
+  };
+
   q = '';
   tipo = '';
   talla = '';
@@ -251,7 +264,14 @@ export class CatalogComponent implements OnInit {
     private recommendationsService: RecommendationsService,
   ) {}
 
+  ngOnDestroy() {
+    window.removeEventListener('online', this.actualizarConexion);
+    window.removeEventListener('offline', this.actualizarConexion);
+  }
+
   ngOnInit() {
+    window.addEventListener('online', this.actualizarConexion);
+    window.addEventListener('offline', this.actualizarConexion);
     this.archiveService.loadColecciones();
     this.archiveService.loadProveedores();
     this.fetchProducts();
@@ -337,6 +357,12 @@ export class CatalogComponent implements OnInit {
       idProveedor: this.idProveedor ?? undefined,
       page: this.page(),
       size: PAGE_SIZE,
+    }).then(() => {
+      if (navigator.onLine) {
+        const ahora = new Date().toISOString();
+        localStorage.setItem('catalogo_actualizado', ahora);
+        this.ultimaCarga.set(ahora);
+      }
     });
   }
 }

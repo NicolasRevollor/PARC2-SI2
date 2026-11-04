@@ -20,6 +20,7 @@ from app.services.disponibilidad import resolver_inventario
 from app.services.recomendaciones_gemini import generar_recomendaciones_post_venta
 from app.services.metodo_pago_guard import exigir_metodo_pago_consumible
 from app.services.bitacora import registrar_bitacora
+from app.services import caja as caja_srv
 from app.services import sincronizacion as sync
 from app.services import notificaciones as notif
 from app.services.tenancy import tenant_actual
@@ -376,6 +377,11 @@ async def _crear_venta(
         )
 
     venta.total = total
+    # [CU20] paso 3: la venta en efectivo del POS entra a la caja abierta de la sucursal.
+    if not es_autocompra and metodo.tipo == "Efectivo" and payload.uuidOperacion is None:
+        await caja_srv.efectivo_en_linea(
+            session, payload.codigoSucursal, concepto="venta", monto=total, referencia=f"Venta {venta.idVenta}", id_usuario=int(auth["sub"])
+        )
     if payload.uuidOperacion is not None:
         await sync.registrar(
             session, uuid_operacion=payload.uuidOperacion, tipo="venta", resultado="Aplicada",

@@ -11,6 +11,7 @@ from app.models import (
     DetalleVenta,
     Historial,
     Inventario,
+    MetodoPago,
     Movimiento,
     Producto,
     Reserva,
@@ -27,7 +28,9 @@ from app.security import get_current_payload, require_permiso
 from app.services.metodo_pago_guard import exigir_metodo_pago_consumible
 from app.services.tenancy import tenant_actual
 from app.services.bitacora import Actor, actor_actual, auditar, registrar_bitacora
+from app.services import caja as caja_srv
 from app.services import sincronizacion as sync
+from app.services.operaciones_offline import liberar_prendas_reserva
 
 router = APIRouter(prefix="/api/reservations", tags=["reservations"])
 
@@ -217,6 +220,12 @@ async def _crear_reserva(
         raise HTTPException(status_code=400, detail="No hay stock disponible para reservar")
 
     inv.cantidad_reservada += 1
+    # [CU20] paso 3: un anticipo en efectivo tomado por el personal entra a la caja si esta abierta.
+    if not exigir_tarjeta and metodo.tipo == "Efectivo" and payload.uuidOperacion is None:
+        await caja_srv.efectivo_en_linea(
+            session, payload.codigoSucursal, concepto="deposito_reserva", monto=metodo.monto,
+            referencia=f"Reserva {producto.nombre}", id_usuario=int(auth["sub"]), exigir=False,
+        )
 
     reserva = Reserva(
         fecha=payload.fecha,
@@ -296,65 +305,80 @@ async def confirm_reservation(
     # el saldo puede pagarse con cualquier origen, paridad POS.
     await exigir_metodo_pago_consumible(session, payload.idMetPago, int(auth["sub"]), False)
 
-    inv = (
-        await session.execute(
-            select(Inventario)
-            .where(
-                Inventario.codigoSucursal == reserva.codigoSucursal,
-                Inventario.idProducto == reserva.idProducto,
+    # [CU15]: una reserva sin conexion puede apartar varias prendas (detalle_reserva).
+    detalles = (
+        await session.execute(select(DetalleReserva).where(DetalleReserva.codigoReserva == codigoReserva))
+    ).scalars().all()
+    prendas = [(d.idProducto, d.cantidad) for d in detalles] or [(reserva.idProducto, 1)]
+    lineas: list[tuple[Producto, int, Inventario]] = []
+    for id_producto, cantidad in prendas:
+        inv = (
+            await session.execute(
+                select(Inventario)
+                .where(
+                    Inventario.codigoSucursal == reserva.codigoSucursal,
+                    Inventario.idProducto == id_producto,
+                )
+                .with_for_update()
             )
-            .with_for_update()
-        )
-    ).scalar_one_or_none()
-    if not inv:
-        raise HTTPException(status_code=400, detail="Inventario no encontrado para la reserva")
-    if inv.cantidad_reservada <= 0:
-        raise HTTPException(status_code=400, detail="La reserva no tiene stock reservado")
-
-    producto = await session.get(Producto, reserva.idProducto)
-    if producto is None:
-        raise HTTPException(status_code=400, detail="El producto de la reserva ya no existe")
-
-    inv.cantidad_reservada -= 1
-    inv.cantidad_actual -= 1
+        ).scalar_one_or_none()
+        if not inv:
+            raise HTTPException(status_code=400, detail="Inventario no encontrado para la reserva")
+        if inv.cantidad_reservada < cantidad:
+            raise HTTPException(status_code=400, detail="La reserva no tiene stock reservado")
+        producto = await session.get(Producto, id_producto)
+        if producto is None:
+            raise HTTPException(status_code=400, detail="El producto de la reserva ya no existe")
+        inv.cantidad_reservada -= cantidad
+        inv.cantidad_actual -= cantidad
+        lineas.append((producto, cantidad, inv))
 
     # Confirm Requires Preparada en Sucursal (delta staff-reservation-management):
     # el cliente nunca paga mas del 100% entre el anticipo y el saldo. Una
     # reserva pre-migracion 009 (montoDeposito NULL) mantiene el total previo
     # sin deduccion. Clampeado en 0 para nunca generar un total negativo.
+    precio_total = sum(float(p.venta) * c for p, c, _ in lineas)
     if reserva.montoDeposito is not None:
-        total_confirmacion = max(float(producto.venta) - float(reserva.montoDeposito), 0.0)
+        total_confirmacion = max(precio_total - float(reserva.montoDeposito), 0.0)
     else:
-        total_confirmacion = float(producto.venta)
+        total_confirmacion = precio_total
 
     venta = Venta(total=total_confirmacion, idCliente=reserva.idCliente, idMetPago=payload.idMetPago)
     session.add(venta)
     await session.flush()
 
-    detalle = DetalleVenta(
-        cantidad=1,
-        precio_unitario=float(producto.venta),
-        idProducto=reserva.idProducto,
-        idVenta=venta.idVenta,
-        codigoReserva=codigoReserva,
-    )
-    session.add(detalle)
-
-    session.add(
-        Movimiento(
-            tipo="venta_reserva",
-            cantidad=-1,
-            motivo=f"Confirmacion reserva {codigoReserva}",
-            idInv=inv.idInv,
+    for producto, cantidad, inv in lineas:
+        session.add(
+            DetalleVenta(
+                cantidad=cantidad,
+                precio_unitario=float(producto.venta),
+                idProducto=producto.idProducto,
+                idVenta=venta.idVenta,
+                codigoReserva=codigoReserva,
+            )
         )
-    )
-    session.add(
-        Historial(
-            idProducto=reserva.idProducto,
-            idCliente=reserva.idCliente,
-            idVenta=venta.idVenta,
+        session.add(
+            Movimiento(
+                tipo="venta_reserva",
+                cantidad=-cantidad,
+                motivo=f"Confirmacion reserva {codigoReserva}",
+                idInv=inv.idInv,
+            )
         )
-    )
+        session.add(
+            Historial(
+                idProducto=producto.idProducto,
+                idCliente=reserva.idCliente,
+                idVenta=venta.idVenta,
+            )
+        )
+    # [CU20] paso 3: el saldo en efectivo entra a la caja si esta abierta.
+    pago_saldo = await session.get(MetodoPago, payload.idMetPago)
+    if pago_saldo is not None and pago_saldo.tipo == "Efectivo":
+        await caja_srv.efectivo_en_linea(
+            session, reserva.codigoSucursal, concepto="venta", monto=total_confirmacion,
+            referencia=f"Reserva {codigoReserva}", id_usuario=int(auth["sub"]), exigir=False,
+        )
 
     reserva.estado = "Confirmada"
     await registrar_bitacora(session, f"Reserva {codigoReserva} confirmada", int(auth["sub"]), request.client.host if request.client else "0.0.0.0")
@@ -397,18 +421,7 @@ async def cancel_reservation(
             )
         raise HTTPException(status_code=400, detail="Solo se pueden cancelar reservas pendientes")
 
-    inv = (
-        await session.execute(
-            select(Inventario)
-            .where(
-                Inventario.codigoSucursal == reserva.codigoSucursal,
-                Inventario.idProducto == reserva.idProducto,
-            )
-            .with_for_update()
-        )
-    ).scalar_one_or_none()
-    if inv and inv.cantidad_reservada > 0:
-        inv.cantidad_reservada -= 1
+    await liberar_prendas_reserva(session, reserva)
 
     reserva.estado = "Cancelada"
     await auditar(session, actor, f"Reserva #{codigoReserva} cancelada")

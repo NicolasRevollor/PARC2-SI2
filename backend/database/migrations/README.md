@@ -222,6 +222,10 @@ docker exec ropaDocker psql -U yimysito -d ropaDB -c \
    FROM "rol" r LEFT JOIN "asignacion_permiso" ap ON ap."codigoRol" = r."codigoRol"
    GROUP BY r."codigoRol", r."nombreRol" ORDER BY r."codigoRol";'
 
+# Caja, conflictos y configuracion de la operacion sin conexion (migracion 026):
+docker exec ropaDocker psql -U yimysito -d ropaDB -c '\d "caja"'
+docker exec ropaDocker psql -U yimysito -d ropaDB -c '\d "conflicto_sincronizacion"'
+
 # El rol Cliente (5) debe tener venta.crear (migracion 007):
 docker exec ropaDocker psql -U yimysito -d ropaDB -c \
   'SELECT r."nombreRol", p."nombrePermiso"

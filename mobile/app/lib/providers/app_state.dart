@@ -37,6 +37,10 @@ class AppState extends ChangeNotifier {
   bool _productsLoading = false;
   bool get productsLoading => _productsLoading;
 
+  // [CU13] Actor Cliente: el catalogo salio del dispositivo.
+  bool get catalogoSinConexion => _productsService.sinConexion;
+  String? get catalogoActualizado => _productsService.actualizado;
+
   String? _productsError;
   String? get productsError => _productsError;
 

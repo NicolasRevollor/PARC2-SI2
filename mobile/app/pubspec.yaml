@@ -37,10 +37,16 @@ dependencies:
   # no habia ningun generador de UUID en el proyecto todavia.
   flutter_stripe: ^11.1.0
   uuid: ^4.4.0
+  # CU12 a CU20 (modo tienda): base local, deteccion de conexion y PIN local.
+  sqflite: ^2.3.3
+  path: ^1.9.0
+  connectivity_plus: ^6.1.0
+  crypto: ^3.0.3
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  sqflite_common_ffi: ^2.3.3
   flutter_lints: ^3.0.0
 
 flutter:

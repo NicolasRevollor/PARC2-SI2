@@ -39,6 +39,9 @@ def dispositivo(request: Request | None) -> str | None:
     return (request.headers.get("user-agent") or "")[:120] or None
 
 
+_dispositivo = dispositivo
+
+
 async def registrar(
     session: AsyncSession,
     *,
@@ -51,7 +54,10 @@ async def registrar(
     request: Request | None = None,
     id_usuario: int | None = None,
     id_tenant: int | None = None,
+    dispositivo: str | None = None,
+    codigo_sucursal: int | None = None,
 ) -> None:
+    nombre_dispositivo = dispositivo if dispositivo is not None else _dispositivo(request)
     session.add(
         RegistroSincronizacion(
             uuidOperacion=str(uuid_operacion),
@@ -60,7 +66,8 @@ async def registrar(
             detalle=(detalle or "")[:255] or None,
             idReferencia=id_referencia,
             fechaOperacion=fecha_operacion,
-            dispositivo=dispositivo(request),
+            dispositivo=nombre_dispositivo,
+            codigoSucursal=codigo_sucursal,
             idUsuario=id_usuario,
             idTenant=id_tenant,
         )

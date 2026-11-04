@@ -10,12 +10,13 @@ import {
   ProductOut,
   TicketLine,
   Venta,
-  VentaIn,
 } from '../../core/models';
 import { SalesService } from '../../core/services/sales.service';
 import { PaymentsService } from '../../core/services/payments.service';
 import { NotificationService } from '../../core/services/notification.service';
 import { OfflineSyncService } from '../../core/services/offline-sync.service';
+import { CajaService } from '../../core/services/caja.service';
+import { OfflineSaleComponent } from '../offline/offline-sale.component';
 import { CardPaymentComponent } from '../../shared/components/card-payment.component';
 import { ReceiptModalComponent } from '../../shared/components/receipt-modal.component';
 import { environment } from '../../../environments/environment';
@@ -39,9 +40,14 @@ type Modalidad = 'efectivo' | 'tarjeta';
 @Component({
   selector: 'app-pos',
   standalone: true,
-  imports: [CommonModule, FormsModule, CardPaymentComponent, ReceiptModalComponent],
+  imports: [CommonModule, FormsModule, CardPaymentComponent, ReceiptModalComponent, OfflineSaleComponent],
   template: `
-    <div class="p-6 md:p-8 space-y-6 animate-in fade-in duration-200 max-w-5xl">
+    <!-- [CU14] Sin conexion la venta presencial se registra en el dispositivo. -->
+    <div *ngIf="!offlineSync.enLinea()" class="p-6 md:p-8">
+      <app-offline-sale></app-offline-sale>
+    </div>
+
+    <div *ngIf="offlineSync.enLinea()" class="p-6 md:p-8 space-y-6 animate-in fade-in duration-200 max-w-5xl">
 
       <div class="pb-5 border-b border-gray-200">
         <span class="text-[11px] font-bold uppercase tracking-wider text-indigo-600">Caja</span>
@@ -82,6 +88,11 @@ type Modalidad = 'efectivo' | 'tarjeta';
             <option *ngFor="let c of customers()" [ngValue]="c.idCliente">{{ c.nombre }}</option>
           </select>
         </div>
+      </div>
+
+      <!-- [CU20] El efectivo del POS entra a la caja: sin caja abierta no se cobra en efectivo. -->
+      <div *ngIf="selectedBranch() !== null && cajaAbierta() === false" class="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800">
+        La caja de esta sucursal está cerrada: ábrala en "Caja: apertura y cierre" (CU20) antes de cobrar en efectivo.
       </div>
 
       <!-- Búsqueda de productos (solo con sucursal elegida) -->
@@ -281,6 +292,7 @@ export class PosComponent implements OnInit {
   searchQuery = signal<string>('');
 
   selectedBranch = signal<number | null>(null);
+  cajaAbierta = signal<boolean | null>(null);
   selectedCliente = signal<number | null>(null);
   branchPromptVisible = signal(false);
 
@@ -336,6 +348,7 @@ export class PosComponent implements OnInit {
     private paymentsService: PaymentsService,
     private notificationService: NotificationService,
     public offlineSync: OfflineSyncService,
+    private cajaService: CajaService,
   ) {}
 
   ngOnInit(): void {
@@ -361,6 +374,8 @@ export class PosComponent implements OnInit {
 
   onBranchChange(codigoSucursal: number): void {
     this.selectedBranch.set(codigoSucursal);
+    this.cajaAbierta.set(null);
+    this.cajaService.actual(codigoSucursal).then((c) => this.cajaAbierta.set(c !== null)).catch(() => undefined);
     this.branchPromptVisible.set(false);
     this.searchQuery.set('');
     firstValueFrom(
@@ -462,12 +477,9 @@ export class PosComponent implements OnInit {
     if (this.enviando() || !this.validarAntesDeCobrar()) {
       return;
     }
-
-    // Sin conexion solo se admite efectivo: la tarjeta necesita a Stripe en
-    // linea si o si. La venta se guarda en la base local del dispositivo
-    // (CU30) y se reenvia sola cuando vuelve la red.
-    if (!this.offlineSync.enLinea()) {
-      await this.registrarVentaSinConexion();
+    // [CU20]: se avisa antes de crear el pago; despues quedaria un cobro sin venta.
+    if (this.cajaAbierta() === false) {
+      this.notificationService.warning('Caja cerrada', 'Abra la caja de la sucursal (CU20) para cobrar en efectivo.');
       return;
     }
 
@@ -591,32 +603,6 @@ export class PosComponent implements OnInit {
 
   async onReintentarVenta(): Promise<void> {
     await this.intentarVenta();
-  }
-
-  /**
-   * Venta en efectivo registrada sin conexion: no hay `idMetPago` todavia
-   * (lo crea el servidor), asi que se encola monto + venta y el ticket se
-   * cierra en el acto. El cliente se lleva su prenda; la cola se vacia sola
-   * al reconectar.
-   */
-  private async registrarVentaSinConexion(): Promise<void> {
-    const idCliente = this.selectedCliente();
-    const codigoSucursal = this.selectedBranch();
-    if (idCliente === null || codigoSucursal === null) {
-      return;
-    }
-
-    this.enviando.set(true);
-    const encolada = await this.offlineSync.encolarVentaEfectivo(this.subtotalIndicativo(), {
-      idCliente,
-      codigoSucursal,
-      items: this.ticketLines().map(l => ({ idProducto: l.idProducto, cantidad: l.cantidad })),
-    } as VentaIn);
-    this.enviando.set(false);
-
-    if (encolada) {
-      this.resetearTicket();
-    }
   }
 
   onAbandonar(): void {

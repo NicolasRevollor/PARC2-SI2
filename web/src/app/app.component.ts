@@ -23,6 +23,7 @@ import { ReportsComponent } from './features/reports/reports.component';
 import { IndicadoresComponent } from './features/indicadores/indicadores.component';
 import { ReturnsComponent } from './features/returns/returns.component';
 import { SubscriptionComponent } from './features/subscription/subscription.component';
+import { OfflineComponent } from './features/offline/offline.component';
 import { PwaService } from './core/services/pwa.service';
 import { PlatformComponent } from './features/platform/platform.component';
 import { PlatformAuditComponent } from './features/platform/platform-audit.component';
@@ -57,6 +58,7 @@ import { PERMISO_PLATAFORMA } from './core/services/platform.service';
     IndicadoresComponent,
     ReturnsComponent,
     SubscriptionComponent,
+    OfflineComponent,
     BitacoraComponent,
     PlatformComponent,
     PlatformAuditComponent,
@@ -205,6 +207,15 @@ import { PERMISO_PLATAFORMA } from './core/services/platform.service';
               *ngIf="activeView() === 'subscription'"
             ></app-subscription>
 
+            <app-offline
+              *ngIf="activeView() === 'offline'"
+            ></app-offline>
+
+            <app-offline
+              *ngIf="activeView() === 'caja'"
+              inicial="caja"
+            ></app-offline>
+
             <app-bitacora
               *ngIf="activeView() === 'bitacora'"
             ></app-bitacora>
@@ -248,6 +259,11 @@ export class AppComponent {
     private pwaService: PwaService,
   ) {
     this.showLanding.set(!authService.isAuthenticated());
+    // [CU13] Sin red, el personal arranca en la operacion sin conexion: el dashboard
+    // solo mostraria errores de carga.
+    if (authService.isAuthenticated() && !navigator.onLine) {
+      this.activeView.set('offline');
+    }
     // El superadministrador solo tiene la consola de plataforma (empresas,
     // bitacora y respaldos): no importa como llegue (login, recarga con sesion
     // guardada, enlace), se lo deja en ella. Sin esto, al recargar arrancaria
@@ -333,6 +349,10 @@ export class AppComponent {
         return 'Devoluciones y Cambios de Talla';
       case 'subscription':
         return 'Suscripción y Operación Local';
+      case 'offline':
+        return 'Operación sin conexión';
+      case 'caja':
+        return 'Apertura y cierre de caja';
       case 'bitacora':
         return 'Bitácora de Actividad';
       case 'platform':

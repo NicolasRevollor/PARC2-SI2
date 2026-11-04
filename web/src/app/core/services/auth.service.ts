@@ -66,7 +66,19 @@ export class AuthService {
       await this.tenantService.cargarContexto();
     }
     if (permisos.includes('inventario.ver')) {
-      void this.offlineSync.iniciar();
+      void this.offlineSync.iniciar(this.currentUserSignal()!.id, this.tenantDelToken());
+    }
+  }
+
+  /** El tenant viaja en el JWT: se puede leer aunque no haya red (CU12). */
+  private tenantDelToken(): number | null {
+    const token = this.accessTokenSignal();
+    if (!token) return null;
+    try {
+      const valor = JSON.parse(atob(token.split('.')[1])).tenant;
+      return typeof valor === 'number' ? valor : null;
+    } catch {
+      return null;
     }
   }
 
@@ -124,6 +136,10 @@ export class AuthService {
       this.guardarSesion(res);
       return res.access_token;
     }).catch((err) => {
+      // [CU17] flujo alternativo 5: empresa suspendida con ventas sin entregar.
+      if ((err as { status?: number })?.status === 403 && this.offlineSync.hayPendientes()) {
+        return this.tokenDeSincronizacion(refreshToken);
+      }
       // Refresh vencido, cuenta bloqueada o empresa suspendida: la sesión
       // terminó de verdad. Un error de red NO cierra la sesión (modo offline).
       if (this.esRechazoDeSesion(err)) {
@@ -134,6 +150,15 @@ export class AuthService {
       this.refreshEnCurso = null;
     });
     return this.refreshEnCurso;
+  }
+
+  private tokenDeSincronizacion(refreshToken: string): Promise<string | null> {
+    return firstValueFrom(
+      this.http.post<{ access_token: string }>(`${API_URL}/api/auth/refresh-sincronizacion`, { refresh_token: refreshToken })
+    ).then((res) => {
+      this.accessTokenSignal.set(res.access_token);
+      return res.access_token;
+    }).catch(() => null);
   }
 
   private esRechazoDeSesion(err: unknown): boolean {
@@ -356,9 +381,9 @@ export class AuthService {
     localStorage.removeItem('access_token');
     localStorage.removeItem('refresh_token');
     localStorage.removeItem(CLAVE_USUARIO);
-    // El snapshot local, la cola pendiente y las respuestas de API cacheadas
-    // son del usuario que se va: en un dispositivo compartido no pueden
-    // quedar disponibles para el siguiente.
+    // El snapshot y las respuestas de API cacheadas son del usuario que se va:
+    // en un dispositivo compartido no pueden quedar para el siguiente. Las
+    // operaciones sin entregar se conservan (RNF03, CU12 alternativo 5).
     this.tenantService.limpiar();
     this.offlineSync.detener();
     void this.offlineSync.limpiar();

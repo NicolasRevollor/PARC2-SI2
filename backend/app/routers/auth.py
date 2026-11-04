@@ -244,6 +244,23 @@ async def register(payload: RegisterRequest, request: Request, session: AsyncSes
     )
 
 
+# ==== [CU17] Flujo alternativo 5 ===================================
+# Empresa suspendida: el dispositivo igual tiene que poder entregar lo que vendio
+# antes de la suspension. Este token solo sirve para POST /api/sync/lote.
+# ===================================================================
+@router.post("/refresh-sincronizacion")
+async def refresh_sincronizacion(payload: RefreshRequest, session: AsyncSession = Depends(get_db)):
+    decoded = decode_token(payload.refresh_token)
+    if not es_refresh_token(decoded):
+        raise HTTPException(status_code=401, detail="Refresh token invalido")
+    usuario = await session.get(Usuario, int(decoded["sub"]))
+    if not usuario or usuario.requiereActivacion:
+        raise HTTPException(status_code=401, detail="Usuario no existe")
+    claims = await build_user_claims(session, usuario)
+    claims = {**claims, "permisosSync": claims.get("permisos", []), "permisos": ["sync.enviar"]}
+    return {"access_token": create_access_token(usuario.idUser, claims), "token_type": "bearer"}
+
+
 @router.post("/refresh", response_model=TokenResponse)
 async def refresh(payload: RefreshRequest, session: AsyncSession = Depends(get_db)):
     decoded = decode_token(payload.refresh_token)

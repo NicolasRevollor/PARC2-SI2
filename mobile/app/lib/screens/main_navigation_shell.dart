@@ -9,6 +9,7 @@ import 'try_on_screen.dart';
 import 'profile_screen.dart';
 import 'cart_modal.dart';
 import 'chat_widget.dart';
+import 'offline/staff_shell.dart';
 
 // "Citas" (appointments_screen.dart) se elimino: mezclaba dos conceptos —
 // "Reserva de Probador y Prendas" (duplicaba CU12, ya resuelto de verdad
@@ -30,6 +31,12 @@ class MainNavigationShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final appState = context.watch<AppState>();
+
+    // [CU12] a [CU20]: el personal entra al modo tienda; el Cliente, a la vitrina.
+    final usuario = appState.currentUser;
+    if (usuario != null && usuario.rol != 'Cliente') {
+      return const StaffShell();
+    }
 
     return Scaffold(
       backgroundColor: AetherTheme.sandLight,
@@ -88,9 +95,27 @@ class MainNavigationShell extends StatelessWidget {
           const SizedBox(width: 6),
         ],
       ),
-      body: IndexedStack(
-        index: appState.currentTabIndex,
-        children: _screens,
+      body: Column(
+        children: [
+          // [CU13] Actor Cliente: catalogo guardado en el dispositivo.
+          if (appState.catalogoSinConexion)
+            Container(
+              width: double.infinity,
+              color: const Color(0xFFF6E6C4),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              child: Text(
+                'CU13 · Modo sin conexion: la informacion puede estar desactualizada'
+                '${appState.catalogoActualizado != null ? ' (${appState.catalogoActualizado})' : ''}',
+                style: GoogleFonts.outfit(fontSize: 11, color: AetherTheme.charcoalDark),
+              ),
+            ),
+          Expanded(
+            child: IndexedStack(
+              index: appState.currentTabIndex,
+              children: _screens,
+            ),
+          ),
+        ],
       ),
       // Mobile Fase 4 (CU23): FAB persistente en el Scaffold unico que
       // envuelve las 5 tabs via IndexedStack — visible sin importar en que

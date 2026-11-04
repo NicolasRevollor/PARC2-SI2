@@ -72,3 +72,5 @@ async def reflejar_estado_empresa(session: AsyncSession, id_tenant: int, estado_
     sus = await suscripcion_vigente(session, id_tenant)
     if sus is not None:
         sus.estado = "Activa" if estado_tenant == "Activo" else "Suspendida"
+        # [CU17] flujo alternativo 5: lo registrado antes de esta fecha se acepta al sincronizar.
+        sus.fechaSuspension = None if estado_tenant == "Activo" else datetime.now(timezone.utc)

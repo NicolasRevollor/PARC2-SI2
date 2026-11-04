@@ -97,6 +97,7 @@ from app.schemas.returns import (
     VentaDevolucionOut,
 )
 from app.security import get_current_payload, require_permiso
+from app.services import caja as caja_srv
 from app.services import devoluciones as dv
 from app.services import notificaciones as notif
 from app.services.alcance import alcance_sucursales, recortar
@@ -2225,6 +2226,11 @@ async def confirmar_transferencia(
     pendiente_manual = caso.estadoReembolso == "Pendiente" and caso.metodoReembolso in ("efectivo", "qr")
     if caso.estadoReembolso != "TransferenciaPendiente" and not pendiente_manual:
         raise HTTPException(status_code=409, detail="No hay una transferencia ni un reembolso en efectivo pendiente")
+    if caso.metodoReembolso == "efectivo":
+        # [CU19] [CU20]: el saldo a favor se entrega ahora: sale de la caja.
+        await caja_srv.efectivo_en_linea(
+            session, caso.codigoSucursal, concepto="reembolso", monto=caso.montoDevuelto, referencia=caso.codigo, id_usuario=int(auth["sub"])
+        )
     caso.estadoReembolso = "Completado"
     caso.referenciaReembolso = payload.comprobante
     await registrar_bitacora(session, f"Transferencia del reembolso {caso.codigo} confirmada", int(auth["sub"]), _ip(request))

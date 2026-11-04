@@ -63,6 +63,7 @@ from app.models import (
     Sucursal,
     Venta,
 )
+from app.services import caja as caja_srv
 from app.services.disponibilidad import resolver_inventario
 from app.services.horario import HORA_BOLIVIA
 from app.services.metodo_pago_guard import exigir_metodo_pago_consumible
@@ -948,6 +949,10 @@ async def reembolsar(
     caso.metodoReembolso = metodo
     # Secuencia CU6: [alt el pago original fue en efectivo] registrarEgresoEnCaja(monto)
     if metodo == "efectivo":
+        # [CU20] paso 3: el reembolso en efectivo sale de la caja (CU6: debe estar abierta).
+        await caja_srv.efectivo_en_linea(
+            session, caso.codigoSucursal, concepto="reembolso", monto=monto, referencia=caso.codigo, id_usuario=id_usuario
+        )
         caso.estadoReembolso = "Completado"
         return
     # Secuencia CU6: [alt el pago original fue por QR o transferencia] registrarTransferenciaPendiente(cuenta destino)
@@ -1014,6 +1019,9 @@ class Resolucion:
     medida_original: str | None = None
     medida_nueva: str | None = None
     fecha_entrega_ajuste: date | None = None
+    # [CU19]: cambio registrado sin conexion. El efectivo ya lo anoto la operacion
+    # y el saldo a favor no se entrego: queda pendiente.
+    sin_conexion: bool = False
 
 
 class AutorizacionRequerida(Exception):
@@ -1054,7 +1062,9 @@ def exigir_autorizacion(caso: Devolucion, monto, politica: Politica, puede_autor
 # Secuencia CU4: registrarPagoDiferencia(idMetPago, monto) a "MetodoPago" -> pago registrado()
 # Secuencia CU5: registrarCobro(diferencia, idMetPago) a "MetodoPago" -> pago registrado()
 # ==================================================================
-async def _cobrar_diferencia(session: AsyncSession, caso: Devolucion, diferencia: Decimal, id_pago: int | None, id_usuario: int) -> None:
+async def _cobrar_diferencia(
+    session: AsyncSession, caso: Devolucion, diferencia: Decimal, id_pago: int | None, id_usuario: int, *, sin_conexion: bool = False
+) -> None:
     # Si el cliente tiene que pagar la diferencia y no se registro el pago, se frena.
     if id_pago is None:
         raise HTTPException(
@@ -1068,6 +1078,22 @@ async def _cobrar_diferencia(session: AsyncSession, caso: Devolucion, diferencia
             detail=f"El pago registrado (Bs {float(pago.monto):.2f}) no cubre la diferencia de Bs {diferencia:.2f}",
         )
     caso.idMetPagoDiferencia = pago.idMetPago
+    # [CU20] paso 3: la diferencia cobrada en efectivo entra a la caja.
+    if medio_de_pago(pago) == "efectivo" and not sin_conexion:
+        await caja_srv.efectivo_en_linea(
+            session, caso.codigoSucursal, concepto="diferencia_cambio", monto=diferencia, referencia=caso.codigo, id_usuario=id_usuario
+        )
+
+
+# ==== [CU19] Saldo a favor de un cambio sin conexion ===============
+# El informe decia "nota de credito", pero la ingeniera las elimino: el saldo se
+# devuelve en dinero. Queda en "Reembolsos pendientes" y al entregarlo sale de
+# caja (returns.py -> confirmar_transferencia) con su nota de devolucion (CU7).
+# ===================================================================
+def dejar_saldo_pendiente(caso: Devolucion, monto: Decimal) -> None:
+    caso.montoDevuelto = dinero(monto)
+    caso.metodoReembolso, caso.estadoReembolso = "efectivo", "Pendiente"
+    caso.referenciaReembolso = "Saldo a favor de un cambio sin conexion"
 
 
 # ==== DIAGRAMA <-> CODIGO (informe Parcial 2) ====================
@@ -1087,8 +1113,12 @@ async def _liquidar(
     # Secuencia CU5: [alt total > credito] registrarCobro / [total <= credito] el saldo a favor se devuelve en dinero (CU6)
     if diferencia > 0:
         # Caso 1: la prenda nueva es mas cara -> el cliente paga la diferencia.
-        await _cobrar_diferencia(session, caso, diferencia, res.id_met_pago_diferencia, id_usuario)
+        await _cobrar_diferencia(session, caso, diferencia, res.id_met_pago_diferencia, id_usuario, sin_conexion=res.sin_conexion)
     elif diferencia < 0:
+        # [CU19] flujo alternativo 1: sin conexion no se entrega dinero, queda pendiente.
+        if res.sin_conexion:
+            dejar_saldo_pendiente(caso, -diferencia)
+            return
         # Caso 2: la prenda nueva es mas barata -> le sobra plata y SE LE DEVUELVE EN DINERO (CU6).
         await reembolsar(session, caso, venta, -diferencia, res.metodo_reembolso, res.cuenta_destino, id_usuario)
     # Caso 3: diferencia = 0 -> "cambio sin costo", no se cobra ni se devuelve nada.

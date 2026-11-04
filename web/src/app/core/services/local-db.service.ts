@@ -1,12 +1,12 @@
 import { Injectable } from '@angular/core';
+import { OperacionLocal } from '../offline-rules';
 
 /**
- * Base de datos local del dispositivo (IndexedDB), sin librerías externas.
+ * [CU12] [RNF03] Base de datos local del dispositivo (IndexedDB), sin librerías externas.
  *
- * Es la "base temporal" del modo sin conexión: el
- * catálogo, las sucursales y el inventario se guardan acá para poder operar
- * con la red caída, y las mutaciones que no se pudieron enviar quedan en la
- * cola `outbox` hasta que vuelva la conexión.
+ * Guarda el snapshot de la sucursal (catálogo, existencias, clientes, reservas,
+ * ventas recientes), la cola de operaciones hechas sin conexión y los metadatos
+ * (última descarga, PIN, caja abierta, borrador de venta).
  *
  * Por qué IndexedDB y no localStorage: localStorage es síncrono (bloquea el
  * hilo de UI), guarda solo strings y tiene ~5 MB; un catálogo con imágenes y
@@ -14,36 +14,29 @@ import { Injectable } from '@angular/core';
  */
 
 export const DB_NOMBRE = 'youshop-local';
-export const DB_VERSION = 1;
+export const DB_VERSION = 2;
 
 /** Colecciones que se replican desde el servidor (snapshot de solo lectura). */
-export type ColeccionLocal = 'catalogo' | 'sucursales' | 'inventario';
+export type ColeccionLocal = 'catalogo' | 'sucursales' | 'inventario' | 'clientes' | 'reservas' | 'ventas';
 
 const STORES_SNAPSHOT: Record<ColeccionLocal, string> = {
   catalogo: 'idProducto',
   sucursales: 'codigoSucursal',
   inventario: 'idInv',
+  clientes: 'idCliente',
+  reservas: 'codigoReserva',
+  ventas: 'idVenta',
 };
 
 const STORE_OUTBOX = 'outbox';
 const STORE_META = 'meta';
 
-/**
- * `venta_efectivo` es una operacion COMPUESTA: sin conexion no existe
- * todavia el `idMetPago` (lo genera el servidor), asi que se guarda el
- * monto cobrado junto con la venta y la sincronizacion crea primero el
- * metodo de pago y recien despues la venta.
- */
-export type TipoOperacion = 'venta' | 'venta_efectivo' | 'devolucion';
-
-export interface OperacionPendiente {
+/** Forma de la cola antes del CU16 (versión 1 de la base). */
+export interface OperacionAntigua {
   id?: number;
-  tipo: TipoOperacion;
-  /** Cuerpo exacto que se le va a mandar al endpoint cuando vuelva la red. */
-  payload: unknown;
+  tipo: string;
+  payload: any;
   creadoEn: string;
-  intentos: number;
-  ultimoError?: string | null;
 }
 
 function promesa<T>(request: IDBRequest<T>): Promise<T> {
@@ -108,11 +101,16 @@ export class LocalDbService {
 
   /** Reemplaza por completo una colección local con lo que vino del servidor. */
   async guardarColeccion<T>(coleccion: ColeccionLocal, items: T[]): Promise<void> {
+    await this.vaciar(coleccion);
+    await this.agregarColeccion(coleccion, items);
+  }
+
+  /** [CU12] flujo alternativo 4: cada página queda guardada apenas llega. */
+  async agregarColeccion<T>(coleccion: ColeccionLocal, items: T[]): Promise<void> {
     const db = await this.abrir();
     await new Promise<void>((resolve, reject) => {
       const transaccion = db.transaction(coleccion, 'readwrite');
       const store = transaccion.objectStore(coleccion);
-      store.clear();
       for (const item of items) {
         store.put(item);
       }
@@ -120,6 +118,11 @@ export class LocalDbService {
       transaccion.onerror = () => reject(transaccion.error);
       transaccion.onabort = () => reject(transaccion.error);
     });
+  }
+
+  async vaciar(coleccion: ColeccionLocal): Promise<void> {
+    const store = await this.tx(coleccion, 'readwrite');
+    await promesa(store.clear() as IDBRequest<undefined>);
   }
 
   async leerColeccion<T>(coleccion: ColeccionLocal): Promise<T[]> {
@@ -132,48 +135,31 @@ export class LocalDbService {
     return promesa(store.count());
   }
 
-  // --- Cola de operaciones pendientes (outbox) --------------------------
+  // --- Cola de operaciones (outbox) ------------------------------------
 
-  async encolar(tipo: TipoOperacion, payload: unknown): Promise<number> {
+  /** [RNF03] La operación queda escrita antes de confirmarse al usuario. */
+  async guardarOperacion(operacion: OperacionLocal): Promise<number> {
     const store = await this.tx(STORE_OUTBOX, 'readwrite');
-    const operacion: OperacionPendiente = {
-      tipo,
-      payload,
-      creadoEn: new Date().toISOString(),
-      intentos: 0,
-      ultimoError: null,
-    };
-    const clave = await promesa(store.add(operacion) as IDBRequest<IDBValidKey>);
-    return Number(clave);
+    return Number(await promesa(store.put(operacion) as IDBRequest<IDBValidKey>));
   }
 
-  async pendientes(): Promise<OperacionPendiente[]> {
+  /** Lee la cola sin tocar lo que escriba otra pantalla: nunca borra (RF15). */
+  async operaciones(): Promise<OperacionLocal[]> {
+    const todas = await this.filasOutbox();
+    return todas.filter((o): o is OperacionLocal => 'uuidOperacion' in o);
+  }
+
+  private async filasOutbox(): Promise<(OperacionLocal | OperacionAntigua)[]> {
     const store = await this.tx(STORE_OUTBOX, 'readonly');
-    const todas = await promesa(store.getAll() as IDBRequest<OperacionPendiente[]>);
-    // FIFO: una venta anterior tiene que reenviarse antes que la siguiente,
-    // porque ambas descuentan del mismo stock.
-    return todas.sort((a, b) => a.creadoEn.localeCompare(b.creadoEn));
+    return promesa(store.getAll() as IDBRequest<(OperacionLocal | OperacionAntigua)[]>);
   }
 
-  async contarPendientes(): Promise<number> {
-    const store = await this.tx(STORE_OUTBOX, 'readonly');
-    return promesa(store.count());
+  async operacionesAntiguas(): Promise<OperacionAntigua[]> {
+    const todas = await this.filasOutbox();
+    return todas.filter((o): o is OperacionAntigua => !('uuidOperacion' in o));
   }
 
-  async eliminarPendiente(id: number): Promise<void> {
-    const store = await this.tx(STORE_OUTBOX, 'readwrite');
-    await promesa(store.delete(id) as unknown as IDBRequest<undefined>);
-  }
-
-  async registrarFallo(operacion: OperacionPendiente, error: string): Promise<void> {
-    if (operacion.id === undefined) return;
-    const store = await this.tx(STORE_OUTBOX, 'readwrite');
-    await promesa(
-      store.put({ ...operacion, intentos: operacion.intentos + 1, ultimoError: error }) as IDBRequest<IDBValidKey>
-    );
-  }
-
-  // --- Metadatos (última sincronización, etc.) --------------------------
+  // --- Metadatos (descarga, PIN, caja, borrador) -----------------------
 
   async setMeta(clave: string, valor: unknown): Promise<void> {
     const store = await this.tx(STORE_META, 'readwrite');
@@ -186,9 +172,15 @@ export class LocalDbService {
     return fila ? fila.valor : null;
   }
 
+  async borrarMeta(clave: string): Promise<void> {
+    const store = await this.tx(STORE_META, 'readwrite');
+    await promesa(store.delete(clave) as IDBRequest<undefined>);
+  }
+
   /**
-   * Borra todo lo local. Se llama al cerrar sesión: el snapshot y la cola
-   * pertenecen al usuario que estaba operando, no al dispositivo.
+   * Borra todo lo local. Solo se llama cuando no queda nada sin sincronizar:
+   * el snapshot es del usuario que operaba, pero una operación pendiente es
+   * dinero real y nunca se pierde (CU12 flujo alternativo 5).
    */
   async limpiarTodo(): Promise<void> {
     const db = await this.abrir();

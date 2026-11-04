@@ -11,6 +11,7 @@ from app.routers import (
     auth,
     backups,
     branches,
+    caja,
     chat,
     cities,
     collections,
@@ -131,5 +132,6 @@ for router in (
     platform.router,
     backups.router,
     sync.router,
+    caja.router,
 ):
     app.include_router(router)

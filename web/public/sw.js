@@ -20,7 +20,9 @@
 // v2: cambio de catalogo (solo poleras oversize y jeans). Subir la version
 // hace que "activate" borre los caches viejos, incluidas respuestas de la API
 // con productos que ya no existen.
-const VERSION = 'youshop-v2';
+// v3: CU12-CU20. /api/sync y /api/caja no se cachean: un dato viejo de caja o
+// de la cola confundiria al usuario; lo local vive en IndexedDB.
+const VERSION = 'youshop-v3';
 const CACHE_SHELL = `${VERSION}-shell`;
 const CACHE_ASSETS = `${VERSION}-assets`;
 const CACHE_API = `${VERSION}-api`;
@@ -30,7 +32,43 @@ const SHELL = ['/', '/index.html', '/manifest.webmanifest', '/icon.svg'];
 
 // Rutas de la API que NO se cachean: respuestas con datos de pago o tokens
 // no tienen por que quedar en disco del dispositivo.
-const API_NUNCA_CACHEAR = ['/api/auth/', '/api/payments/'];
+const API_NUNCA_CACHEAR = ['/api/auth/', '/api/payments/', '/api/sync/', '/api/caja/'];
+
+/**
+ * [CU12] paso 2: guarda los scripts y estilos del build. Tienen hash en el
+ * nombre, asi que se leen del index.html: la primera carga ocurre antes de que
+ * el SW controle la pagina y sin esto recargar sin conexion quedaria en blanco.
+ */
+async function precargarAssets() {
+  const html = await (await fetch('/index.html', { cache: 'no-store' })).text();
+  const rutas = [...html.matchAll(/(?:src|href)="(\/assets\/[^"]+)"/g)].map((m) => m[1]);
+  const cache = await caches.open(CACHE_ASSETS);
+  await cache.addAll(rutas);
+  await precargarFuentes(html);
+}
+
+/**
+ * [CU12] paso 2: las fuentes vienen de Google. Sin ellas, sin conexion los iconos
+ * de Material Symbols se ven como texto ("point_of_sale"). Si Google no responde
+ * no se aborta la instalacion: la app funciona igual, solo se ve peor.
+ */
+async function precargarFuentes(html) {
+  try {
+    const hojas = [...html.matchAll(/href="(https:\/\/fonts\.googleapis\.com\/css2[^"]+)"/g)].map((m) => m[1].replaceAll('&amp;', '&'));
+    const cache = await caches.open(CACHE_TERCEROS);
+    for (const hoja of hojas) {
+      const respuesta = await fetch(hoja, { mode: 'cors' });
+      if (!respuesta.ok) continue;
+      await cache.put(hoja, respuesta.clone());
+      const css = await respuesta.text();
+      const fuentes = [...css.matchAll(/url\((https:\/\/fonts\.gstatic\.com\/[^)]+)\)/g)].map((m) => m[1]);
+      // La hoja de texto trae decenas de subconjuntos: alcanza con los ultimos (latin).
+      await Promise.all(fuentes.slice(-6).map((url) => cache.add(new Request(url, { mode: 'cors' })).catch(() => undefined)));
+    }
+  } catch (error) {
+    console.warn('No se pudieron guardar las fuentes para usar sin conexion', error);
+  }
+}
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -39,6 +77,7 @@ self.addEventListener('install', (event) => {
       // addAll falla entero si UN recurso falla; el shell es chico y
       // obligatorio, asi que esa semantica es la deseada.
       .then((cache) => cache.addAll(SHELL))
+      .then(precargarAssets)
       .then(() => self.skipWaiting())
   );
 });
@@ -97,7 +136,9 @@ async function redPrimeroConFallback(request, nombreCache) {
 
 async function cachePrimero(request, nombreCache) {
   const cache = await caches.open(nombreCache);
-  const cacheada = await cache.match(request);
+  // ignoreVary: los <script crossorigin> llevan cabecera Origin y la precarga no;
+  // con "Vary: Origin" del servidor nunca coincidirian y fallaria sin conexion.
+  const cacheada = await cache.match(request, { ignoreVary: true });
   if (cacheada) {
     return cacheada;
   }
@@ -110,7 +151,7 @@ async function cachePrimero(request, nombreCache) {
 
 async function staleWhileRevalidate(request, nombreCache) {
   const cache = await caches.open(nombreCache);
-  const cacheada = await cache.match(request);
+  const cacheada = await cache.match(request, { ignoreVary: true });
   const enRed = fetch(request)
     .then((respuesta) => {
       if (respuesta && respuesta.ok) {

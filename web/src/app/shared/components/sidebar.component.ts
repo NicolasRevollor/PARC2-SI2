@@ -5,7 +5,7 @@ import { OfflineSyncService } from '../../core/services/offline-sync.service';
 import { TenantService } from '../../core/services/tenant.service';
 import { PERMISO_PLATAFORMA } from '../../core/services/platform.service';
 
-export type AppView = 'dashboard' | 'archive' | 'inventory' | 'logistics' | 'suppliers' | 'seasons' | 'team' | 'reservations' | 'pos' | 'locations' | 'reports' | 'indicadores' | 'returns' | 'subscription' | 'bitacora' | PlatformView;
+export type AppView = 'dashboard' | 'archive' | 'inventory' | 'logistics' | 'suppliers' | 'seasons' | 'team' | 'reservations' | 'pos' | 'locations' | 'reports' | 'indicadores' | 'returns' | 'subscription' | 'offline' | 'caja' | 'bitacora' | PlatformView;
 
 /** Vistas de la consola de plataforma: las únicas del Superadministrador. */
 export type PlatformView = 'platform' | 'platform-bitacora' | 'platform-respaldos';
@@ -219,6 +219,54 @@ export const VISTAS_PLATAFORMA: readonly PlatformView[] = ['platform', 'platform
               <span class="material-symbols-outlined text-[18px]">event_available</span>
             </div>
             <span class="font-medium tracking-tight">Reservas</span>
+          </button>
+
+          <!-- [CU20] Apertura y cierre de caja -->
+          <button
+            *ngIf="canOpenCaja"
+            (click)="selectView('caja')"
+            [attr.data-testid]="'menu-caja'"
+            [class.bg-indigo-50]="currentView === 'caja'"
+            [class.text-indigo-700]="currentView === 'caja'"
+            [class.font-semibold]="currentView === 'caja'"
+            [class.text-gray-600]="currentView !== 'caja'"
+            class="w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left text-sm transition-colors hover:bg-gray-50 hover:text-gray-900 cursor-pointer group"
+          >
+            <div
+              [class.bg-indigo-600]="currentView === 'caja'"
+              [class.text-white]="currentView === 'caja'"
+              [class.bg-gray-100]="currentView !== 'caja'"
+              [class.text-gray-500]="currentView !== 'caja'"
+              class="w-7 h-7 rounded-md flex items-center justify-center shrink-0 transition-colors"
+            >
+              <span class="material-symbols-outlined text-[18px]">point_of_sale</span>
+            </div>
+            <span class="font-medium tracking-tight flex-1">Apertura y cierre de caja</span>
+            <span class="text-[9px] font-bold px-1 rounded border border-current">CU20</span>
+          </button>
+
+          <!-- [CU12] a [CU19] Operacion sin conexion -->
+          <button
+            *ngIf="canOpenOffline"
+            (click)="selectView('offline')"
+            [attr.data-testid]="'menu-offline'"
+            [class.bg-indigo-50]="currentView === 'offline'"
+            [class.text-indigo-700]="currentView === 'offline'"
+            [class.font-semibold]="currentView === 'offline'"
+            [class.text-gray-600]="currentView !== 'offline'"
+            class="w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left text-sm transition-colors hover:bg-gray-50 hover:text-gray-900 cursor-pointer group"
+          >
+            <div
+              [class.bg-indigo-600]="currentView === 'offline'"
+              [class.text-white]="currentView === 'offline'"
+              [class.bg-gray-100]="currentView !== 'offline'"
+              [class.text-gray-500]="currentView !== 'offline'"
+              class="w-7 h-7 rounded-md flex items-center justify-center shrink-0 transition-colors"
+            >
+              <span class="material-symbols-outlined text-[18px]">cloud_off</span>
+            </div>
+            <span class="font-medium tracking-tight flex-1">Operación sin conexión</span>
+            <span class="text-[9px] font-bold px-1 rounded border border-current">CU12-19</span>
           </button>
 
           <!-- Caja (Venta Presencial, CU19/CU20) — solo con venta.crear -->
@@ -451,6 +499,14 @@ export class SidebarComponent {
     public tenantService: TenantService,
     public offlineSync: OfflineSyncService,
   ) {}
+
+  get canOpenCaja(): boolean {
+    return this.authService.currentUser()?.permisos.includes('caja.operar') ?? false;
+  }
+
+  get canOpenOffline(): boolean {
+    return this.authService.currentUser()?.permisos.includes('inventario.ver') ?? false;
+  }
 
   get canOpenPos(): boolean {
     return this.authService.currentUser()?.permisos.includes('venta.crear') ?? false;
