@@ -3,11 +3,12 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MetodoPago, Reserva } from '../../core/models';
 import { ReservationsService } from '../../core/services/reservations.service';
+import { PermisoDirective } from '../../shared/directives/permiso.directive';
 
 @Component({
   selector: 'app-staff-reservations',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, PermisoDirective],
   template: `
     <div class="p-6 md:p-8 space-y-6 animate-in fade-in duration-200">
 
@@ -84,7 +85,7 @@ import { ReservationsService } from '../../core/services/reservations.service';
                 <div class="flex items-center gap-2">
                   <button
                     *ngIf="r.estado === 'Pendiente'"
-                    (click)="onPreparar(r.codigoReserva)"
+                    appPermiso="reserva.gestionar" (click)="onPreparar(r.codigoReserva)"
                     [disabled]="busyId() === r.codigoReserva"
                     class="px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wide text-indigo-600 border border-indigo-200 hover:bg-indigo-50 transition-colors cursor-pointer disabled:opacity-50"
                   >
@@ -93,7 +94,7 @@ import { ReservationsService } from '../../core/services/reservations.service';
 
                   <button
                     *ngIf="r.estado === 'Preparada en Sucursal'"
-                    (click)="onAbrirConfirmar(r)"
+                    appPermiso="reserva.gestionar" (click)="onAbrirConfirmar(r)"
                     [disabled]="busyId() === r.codigoReserva"
                     class="px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wide text-emerald-600 border border-emerald-200 hover:bg-emerald-50 transition-colors cursor-pointer disabled:opacity-50"
                   >
@@ -102,7 +103,7 @@ import { ReservationsService } from '../../core/services/reservations.service';
 
                   <button
                     *ngIf="r.estado === 'Pendiente' || r.estado === 'Preparada en Sucursal'"
-                    (click)="onCancelar(r.codigoReserva)"
+                    appPermiso="reserva.gestionar" (click)="onCancelar(r.codigoReserva)"
                     [disabled]="busyId() === r.codigoReserva"
                     class="px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wide text-rose-600 border border-rose-200 hover:bg-rose-50 transition-colors cursor-pointer disabled:opacity-50"
                   >

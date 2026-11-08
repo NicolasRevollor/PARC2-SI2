@@ -3,11 +3,12 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { SuppliersService } from '../../core/services/suppliers.service';
 import { Proveedor, ProveedorIn } from '../../core/models';
+import { PermisoDirective } from '../../shared/directives/permiso.directive';
 
 @Component({
   selector: 'app-suppliers',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, PermisoDirective],
   template: `
     <div class="p-6 md:p-8 space-y-6 max-w-7xl mx-auto animate-in fade-in duration-200">
 
@@ -23,7 +24,7 @@ import { Proveedor, ProveedorIn } from '../../core/models';
 
         <div class="flex items-center space-x-3">
           <button
-            (click)="openCreateModal()"
+            appPermiso="producto.crear" (click)="openCreateModal()"
             class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold tracking-wide uppercase transition-colors shadow-xs flex items-center space-x-1.5 cursor-pointer"
           >
             <span class="material-symbols-outlined text-[18px]">add</span>
@@ -55,14 +56,14 @@ import { Proveedor, ProveedorIn } from '../../core/models';
                 <td class="p-3.5 text-right pr-6">
                   <div class="inline-flex items-center space-x-2">
                     <button
-                      (click)="openEditModal(p)"
+                      appPermiso="producto.editar" (click)="openEditModal(p)"
                       class="w-7 h-7 rounded-lg bg-gray-50 hover:bg-indigo-50 hover:text-indigo-600 text-gray-600 flex items-center justify-center transition-colors cursor-pointer border border-gray-200"
                       title="Editar"
                     >
                       <span class="material-symbols-outlined text-[16px]">edit</span>
                     </button>
                     <button
-                      (click)="confirmDelete(p)"
+                      appPermiso="producto.eliminar" (click)="confirmDelete(p)"
                       class="w-7 h-7 rounded-lg bg-gray-50 hover:bg-red-50 hover:text-red-600 text-gray-600 flex items-center justify-center transition-colors cursor-pointer border border-gray-200"
                       title="Eliminar"
                     >

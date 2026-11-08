@@ -5,6 +5,11 @@
 	<!-- CU11 (Vestidor Virtual RA): camara para el probador virtual. -->
 	<key>NSCameraUsageDescription</key>
 	<string>YouShop usa la cámara para mostrarte el probador virtual de prendas.</string>
+	<!-- [CU36] Asistente por voz. -->
+	<key>NSMicrophoneUsageDescription</key>
+	<string>YouShop usa el micrófono para que le hables al asistente virtual.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>YouShop convierte tu voz en texto para responder tus preguntas.</string>
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>CFBundleDevelopmentRegion</key>

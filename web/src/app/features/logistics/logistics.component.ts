@@ -5,11 +5,12 @@ import { DispatchService } from '../../core/services/dispatch.service';
 import { ArchiveService } from '../../core/services/archive.service';
 import { InventoryService } from '../../core/services/inventory.service';
 import { DispatchIn, DispatchItem } from '../../core/models';
+import { PermisoDirective } from '../../shared/directives/permiso.directive';
 
 @Component({
   selector: 'app-logistics',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, PermisoDirective],
   template: `
     <div class="p-6 md:p-8 space-y-6 max-w-7xl mx-auto animate-in fade-in duration-200">
 
@@ -25,7 +26,7 @@ import { DispatchIn, DispatchItem } from '../../core/models';
 
         <div class="flex items-center space-x-3">
           <button
-            (click)="openNewDispatchModal()"
+            appPermiso="inventario.traspasar" (click)="openNewDispatchModal()"
             class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold tracking-wide uppercase transition-colors shadow-xs flex items-center space-x-1.5 cursor-pointer"
           >
             <span class="material-symbols-outlined text-[18px]">add_box</span>

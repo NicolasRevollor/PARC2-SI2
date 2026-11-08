@@ -320,8 +320,9 @@ export const VISTAS_PLATAFORMA: readonly PlatformView[] = ['platform', 'platform
             Administración
           </div>
 
-          <!-- Personal y Nodos -->
+          <!-- Personal y Nodos: solo quien puede ver el equipo (Administrador y Encargado). -->
           <button
+            *ngIf="tienePermiso('equipo.ver')"
             (click)="selectView('team')"
             [class.bg-indigo-50]="currentView === 'team'"
             [class.text-indigo-700]="currentView === 'team'"

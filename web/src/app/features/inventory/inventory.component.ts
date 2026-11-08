@@ -4,11 +4,12 @@ import { FormsModule } from '@angular/forms';
 import { InventoryService } from '../../core/services/inventory.service';
 import { ArchiveService } from '../../core/services/archive.service';
 import { InventoryStockEntry } from '../../core/models';
+import { PermisoDirective } from '../../shared/directives/permiso.directive';
 
 @Component({
   selector: 'app-inventory',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, PermisoDirective],
   template: `
     <div class="p-6 md:p-8 space-y-6 max-w-7xl mx-auto animate-in fade-in duration-200">
 
@@ -24,14 +25,14 @@ import { InventoryStockEntry } from '../../core/models';
 
         <div class="flex items-center space-x-3">
           <button
-            (click)="openLoteModal()"
+            appPermiso="inventario.ajustar" (click)="openLoteModal()"
             class="px-4 py-2 bg-[#18191d] hover:bg-gray-50 border border-gray-200 text-gray-700 rounded-lg text-xs font-bold tracking-wide uppercase transition-colors shadow-xs flex items-center space-x-1.5 cursor-pointer"
           >
             <span class="material-symbols-outlined text-[18px]">inventory_2</span>
             <span>Ingreso de Lote</span>
           </button>
           <button
-            (click)="openTransferModal()"
+            appPermiso="inventario.traspasar" (click)="openTransferModal()"
             class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold tracking-wide uppercase transition-colors shadow-xs flex items-center space-x-1.5 cursor-pointer"
           >
             <span class="material-symbols-outlined text-[18px]">swap_horiz</span>

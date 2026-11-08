@@ -6,6 +6,9 @@
          puede garantizar acceso a red (debug lo auto-agrega, release no). -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- [CU36] Asistente por voz: el microfono para dictar la pregunta. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <application
         android:label="app"
         android:name="${applicationName}"
@@ -47,6 +50,13 @@
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
+        </intent>
+        <!-- [CU36] Android 11+: sin esto la app no ve el reconocimiento de voz ni la lectura en voz alta. -->
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
         </intent>
     </queries>
 </manifest>

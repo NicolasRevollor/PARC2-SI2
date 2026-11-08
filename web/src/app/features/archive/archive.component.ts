@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { ArchiveService } from '../../core/services/archive.service';
 import { ProductOut, ProductoIn } from '../../core/models';
+import { PermisoDirective } from '../../shared/directives/permiso.directive';
 import {
   COLORES_POR_TIPO,
   COLORES_TIENDA,
@@ -18,7 +19,7 @@ import {
 @Component({
   selector: 'app-archive',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, PermisoDirective],
   template: `
     <div class="p-6 md:p-8 space-y-6 max-w-7xl mx-auto animate-in fade-in duration-200">
 
@@ -32,7 +33,7 @@ import {
 
         <div class="flex items-center space-x-3">
           <button
-            (click)="openCreateModal()"
+            appPermiso="producto.crear" (click)="openCreateModal()"
             class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold tracking-wide uppercase transition-colors shadow-xs flex items-center space-x-1.5 cursor-pointer"
           >
             <span class="material-symbols-outlined text-[18px]">add</span>

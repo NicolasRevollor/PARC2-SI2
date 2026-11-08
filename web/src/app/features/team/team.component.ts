@@ -8,6 +8,7 @@ import { TenantService } from '../../core/services/tenant.service';
 import { AuthService } from '../../core/services/auth.service';
 import { TeamMember, StaffRole, StaffCreado } from '../../core/models';
 import { CuBadgeComponent } from '../../shared/components/cu-badge.component';
+import { PermisoDirective } from '../../shared/directives/permiso.directive';
 
 const STAFF_ROLES: StaffRole[] = ['Administrador', 'Encargado de Sucursal', 'Cajero'];
 
@@ -23,7 +24,7 @@ const STAFF_ROLES: StaffRole[] = ['Administrador', 'Encargado de Sucursal', 'Caj
 @Component({
   selector: 'app-team',
   standalone: true,
-  imports: [CommonModule, FormsModule, CuBadgeComponent],
+  imports: [CommonModule, FormsModule, CuBadgeComponent, PermisoDirective],
   template: `
     <div class="p-6 md:p-8 space-y-6 max-w-7xl mx-auto animate-in fade-in duration-200">
 
@@ -46,7 +47,7 @@ const STAFF_ROLES: StaffRole[] = ['Administrador', 'Encargado de Sucursal', 'Caj
 
         <div class="flex items-center space-x-3">
           <button
-            (click)="openCreateModal()"
+            appPermiso="usuario.admin" (click)="openCreateModal()"
             class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold tracking-wide uppercase transition-colors shadow-xs flex items-center space-x-1.5 cursor-pointer"
           >
             <span class="material-symbols-outlined text-[18px]">add</span>
@@ -88,7 +89,7 @@ const STAFF_ROLES: StaffRole[] = ['Administrador', 'Encargado de Sucursal', 'Caj
               <span *ngIf="!member.activo" class="ys-chip border-rose-300 text-rose-600">Dado de baja {{ member.fechaBaja | date: 'dd/MM/yyyy' }}</span>
               <span *ngIf="member.activo && !member.cuentaActivada" class="ys-chip border-amber-300 text-amber-700">Pendiente de activación</span>
               <span *ngIf="member.activo && member.cuentaActivada" class="ys-chip border-emerald-300 text-emerald-700">Activo</span>
-              <button *ngIf="member.activo && !member.cuentaActivada" (click)="reenviar(member)" class="text-indigo-600 hover:underline bg-transparent cursor-pointer">Reenviar activación</button>
+              <button *ngIf="member.activo && !member.cuentaActivada" appPermiso="usuario.admin" (click)="reenviar(member)" class="text-indigo-600 hover:underline bg-transparent cursor-pointer">Reenviar activación</button>
             </div>
 
             <div class="mt-3.5 pt-3 border-t border-gray-100">
@@ -103,7 +104,7 @@ const STAFF_ROLES: StaffRole[] = ['Administrador', 'Encargado de Sucursal', 'Caj
               </div>
             </div>
 
-            <div class="mt-3.5 pt-3 border-t border-gray-100">
+            <div appPermiso="usuario.admin" class="mt-3.5 pt-3 border-t border-gray-100">
               <label class="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1.5 block">Cambiar Rol</label>
               <select
                 [disabled]="savingRoleFor() === member.idUser || !member.activo"
@@ -116,7 +117,7 @@ const STAFF_ROLES: StaffRole[] = ['Administrador', 'Encargado de Sucursal', 'Caj
             </div>
 
             <!-- CU24: sucursales asignadas (el Encargado solo ve las suyas en el CU11) -->
-            <div class="mt-3.5 pt-3 border-t border-gray-100">
+            <div appPermiso="usuario.admin" class="mt-3.5 pt-3 border-t border-gray-100">
               <p class="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">Sucursales asignadas</p>
               <div class="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto">
                 <label *ngFor="let s of inventoryService.locations()"
@@ -136,10 +137,10 @@ const STAFF_ROLES: StaffRole[] = ['Administrador', 'Encargado de Sucursal', 'Caj
 
           <!-- [CU24] alternativo 3: baja y reincorporación -->
           <div *ngIf="member.idUser !== miId()" class="mt-3.5 pt-3 border-t border-gray-100 flex justify-end">
-            <button *ngIf="member.activo" (click)="pedirBaja.set(member)" class="ys-btn-sec py-1 text-xs" data-testid="dar-baja">
+            <button *ngIf="member.activo" appPermiso="usuario.admin" (click)="pedirBaja.set(member)" class="ys-btn-sec py-1 text-xs" data-testid="dar-baja">
               <span class="material-symbols-outlined text-[16px]">person_off</span> Dar de baja
             </button>
-            <button *ngIf="!member.activo" (click)="reincorporar(member)" class="ys-btn-sec py-1 text-xs">
+            <button *ngIf="!member.activo" appPermiso="usuario.admin" (click)="reincorporar(member)" class="ys-btn-sec py-1 text-xs">
               <span class="material-symbols-outlined text-[16px]">person_add</span> Reincorporar
             </button>
           </div>

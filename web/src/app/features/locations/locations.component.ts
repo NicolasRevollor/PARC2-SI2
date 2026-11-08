@@ -3,13 +3,14 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { LocationsAdminService } from '../../core/services/locations-admin.service';
 import { Ciudad, CiudadIn, Sucursal, SucursalIn } from '../../core/models';
+import { PermisoDirective } from '../../shared/directives/permiso.directive';
 
 type LocationsTab = 'ciudades' | 'sucursales';
 
 @Component({
   selector: 'app-locations',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, PermisoDirective],
   template: `
     <div class="p-6 md:p-8 space-y-6 max-w-7xl mx-auto animate-in fade-in duration-200">
 
@@ -26,7 +27,7 @@ type LocationsTab = 'ciudades' | 'sucursales';
         <div class="flex items-center space-x-3">
           <button
             *ngIf="activeTab() === 'ciudades'"
-            (click)="openCreateCityModal()"
+            appPermiso="usuario.admin" (click)="openCreateCityModal()"
             class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold tracking-wide uppercase transition-colors shadow-xs flex items-center space-x-1.5 cursor-pointer"
           >
             <span class="material-symbols-outlined text-[18px]">add</span>
@@ -34,7 +35,7 @@ type LocationsTab = 'ciudades' | 'sucursales';
           </button>
           <button
             *ngIf="activeTab() === 'sucursales'"
-            (click)="openCreateBranchModal()"
+            appPermiso="usuario.admin" (click)="openCreateBranchModal()"
             class="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold tracking-wide uppercase transition-colors shadow-xs flex items-center space-x-1.5 cursor-pointer"
           >
             <span class="material-symbols-outlined text-[18px]">add</span>
@@ -86,14 +87,14 @@ type LocationsTab = 'ciudades' | 'sucursales';
                 <td class="p-3.5 text-right pr-6">
                   <div class="inline-flex items-center space-x-2">
                     <button
-                      (click)="openEditCityModal(c)"
+                      appPermiso="usuario.admin" (click)="openEditCityModal(c)"
                       class="w-7 h-7 rounded-lg bg-gray-50 hover:bg-indigo-50 hover:text-indigo-600 text-gray-600 flex items-center justify-center transition-colors cursor-pointer border border-gray-200"
                       title="Editar"
                     >
                       <span class="material-symbols-outlined text-[16px]">edit</span>
                     </button>
                     <button
-                      (click)="confirmDeleteCity(c)"
+                      appPermiso="usuario.admin" (click)="confirmDeleteCity(c)"
                       class="w-7 h-7 rounded-lg bg-gray-50 hover:bg-red-50 hover:text-red-600 text-gray-600 flex items-center justify-center transition-colors cursor-pointer border border-gray-200"
                       title="Eliminar"
                     >
@@ -134,14 +135,14 @@ type LocationsTab = 'ciudades' | 'sucursales';
                 <td class="p-3.5 text-right pr-6">
                   <div class="inline-flex items-center space-x-2">
                     <button
-                      (click)="openEditBranchModal(s)"
+                      appPermiso="usuario.admin" (click)="openEditBranchModal(s)"
                       class="w-7 h-7 rounded-lg bg-gray-50 hover:bg-indigo-50 hover:text-indigo-600 text-gray-600 flex items-center justify-center transition-colors cursor-pointer border border-gray-200"
                       title="Editar"
                     >
                       <span class="material-symbols-outlined text-[16px]">edit</span>
                     </button>
                     <button
-                      (click)="confirmDeleteBranch(s)"
+                      appPermiso="usuario.admin" (click)="confirmDeleteBranch(s)"
                       class="w-7 h-7 rounded-lg bg-gray-50 hover:bg-red-50 hover:text-red-600 text-gray-600 flex items-center justify-center transition-colors cursor-pointer border border-gray-200"
                       title="Eliminar"
                     >
