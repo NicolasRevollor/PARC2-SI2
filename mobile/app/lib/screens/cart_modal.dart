@@ -35,6 +35,24 @@ class _CartModalState extends State<CartModal> {
   Map<String, dynamic>? _cotizacion;
   int? _idCupon;
   String? _firmaCotizada;
+  // [CU35] envio a domicilio de la compra
+  bool _conEnvio = false;
+  final _direccion = TextEditingController();
+  final _telefono = TextEditingController();
+
+  Map<String, dynamic>? get _entrega => _conEnvio
+      ? {'direccion': _direccion.text.trim(), 'telefono': _telefono.text.trim()}
+      : null;
+
+  bool get _entregaValida =>
+      !_conEnvio || (_direccion.text.trim().length >= 8 && _telefono.text.replaceAll(RegExp(r'\D'), '').length >= 7);
+
+  @override
+  void dispose() {
+    _direccion.dispose();
+    _telefono.dispose();
+    super.dispose();
+  }
 
   Future<void> _cotizar(List<Map<String, dynamic>> items, int? idCupon) async {
     try {
@@ -82,7 +100,7 @@ class _CartModalState extends State<CartModal> {
     });
 
     try {
-      final intent = await _paymentsService.crearIntent(items, concepto: 'Compra YouShop', idCupon: _idCupon);
+      final intent = await _paymentsService.crearIntent(items, concepto: 'Compra YouShop', idCupon: _idCupon, conEnvio: _conEnvio);
       final clientSecret = intent['clientSecret'] as String;
 
       await Stripe.instance.initPaymentSheet(
@@ -138,7 +156,7 @@ class _CartModalState extends State<CartModal> {
 
   Future<void> _crearVenta(AppState appState, int idMetPago, List<Map<String, dynamic>> items) async {
     try {
-      final venta = await _salesService.crearVenta(idMetPago, items, idCupon: _idCupon);
+      final venta = await _salesService.crearVenta(idMetPago, items, idCupon: _idCupon, entrega: _entrega);
       appState.clearCart();
       setState(() {
         _status = _CheckoutStatus.idle;
@@ -199,6 +217,9 @@ class _CartModalState extends State<CartModal> {
               style: GoogleFonts.sourceSerif4(fontSize: 16, fontWeight: FontWeight.bold),
             ),
             // [CU33] la compra completo 3: gano un cupon.
+            if (venta['envio'] != null)
+              Text('Envío a domicilio a ${venta['envio']['direccion']}: te avisamos el día en que sale.',
+                  style: GoogleFonts.outfit(fontSize: 12)),
             if (venta['cuponGanado'] != null) ...[
               const SizedBox(height: 8),
               Text('¡Ganaste un cupón del ${(venta['cuponGanado']['porcentaje'] as num).toInt()}%! Código ${venta['cuponGanado']['codigo']}',
@@ -228,7 +249,30 @@ class _CartModalState extends State<CartModal> {
     if (c == null) return const [];
     final cupones = (c['cuponesDisponibles'] as List).cast<Map<String, dynamic>>();
     final verde = Colors.green.shade800;
+    final costoEnvio = c['costoEnvio'] as num?;
     return [
+      // [CU35] retiro en sucursal o envio a domicilio
+      if (costoEnvio != null) ...[
+        Wrap(spacing: 6, children: [
+          ChoiceChip(
+            label: Text('Retiro en sucursal', style: GoogleFonts.outfit(fontSize: 11)),
+            selected: !_conEnvio,
+            onSelected: bloqueado ? null : (_) => setState(() => _conEnvio = false),
+          ),
+          ChoiceChip(
+            label: Text('Envío a domicilio (+Bs ${costoEnvio.toStringAsFixed(2)})', style: GoogleFonts.outfit(fontSize: 11)),
+            selected: _conEnvio,
+            onSelected: bloqueado ? null : (_) => setState(() => _conEnvio = true),
+          ),
+        ]),
+        if (_conEnvio) ...[
+          TextField(controller: _direccion, onChanged: (_) => setState(() {}),
+              decoration: const InputDecoration(labelText: 'Dirección (calle, número, zona)')),
+          TextField(controller: _telefono, keyboardType: TextInputType.phone, onChanged: (_) => setState(() {}),
+              decoration: const InputDecoration(labelText: 'Teléfono')),
+          const SizedBox(height: 8),
+        ],
+      ],
       if (cupones.isEmpty)
         Padding(
           padding: const EdgeInsets.only(bottom: 8),
@@ -382,7 +426,7 @@ class _CartModalState extends State<CartModal> {
                         foregroundColor: AetherTheme.sandLight,
                         shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
                       ),
-                      onPressed: cobrando
+                      onPressed: cobrando || !_entregaValida
                           ? null
                           : cobradoSinVenta
                               ? () => _reintentarVenta(appState)

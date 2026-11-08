@@ -182,6 +182,16 @@ class VentaIn(BaseModel):
     fechaOperacion: Optional[datetime] = None
     # [CU33] cupon del 30% que se usa en esta compra (no vale sin conexion).
     idCupon: Optional[int] = None
+    # [CU35] compra en linea con envio a domicilio (el pago cubre productos + envio).
+    entrega: Optional["EntregaPedidoIn"] = None
+
+
+class EntregaPedidoIn(BaseModel):
+    direccion: str
+    telefono: str
+    referencia: Optional[str] = None
+    franja: Optional[Literal["manana", "tarde"]] = None
+    fechaPreferida: Optional[date] = None
 
 
 class DetalleVentaOut(BaseModel):
@@ -208,6 +218,8 @@ class VentaOut(ORMModel):
     # [CU33] cupon usado en esta compra y cupon que gano con ella (si completo 3 compras).
     cuponUsado: Optional[dict] = None
     cuponGanado: Optional[dict] = None
+    # [CU35] envio a domicilio de la compra
+    envio: Optional[dict] = None
 
 
 class ReservaIn(BaseModel):
@@ -327,6 +339,8 @@ class PagoIntentIn(BaseModel):
     # [CU33] el cobro con tarjeta ya descuenta el cupon (se marca usado recien en la venta).
     idCupon: Optional[int] = None
     idCliente: Optional[int] = None  # POS: el cliente dueno del cupon
+    # [CU35] el cobro incluye el envio a domicilio.
+    conEnvio: bool = False
 
 
 class PagoIntentOut(BaseModel):
@@ -341,3 +355,6 @@ class PagoIntentVerificadoOut(BaseModel):
     pagado: bool
     idMetPago: Optional[int] = None
     monto: Optional[float] = None
+
+
+VentaIn.model_rebuild()

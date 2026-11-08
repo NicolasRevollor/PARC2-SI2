@@ -329,7 +329,26 @@ compra de cualquier producto en esa empresa. Vence a los 90 días y sirve una so
 Sin conexión las compras **suman** para el próximo cupón, pero **no se puede usar** un cupón (no hay cómo validarlo).
 El conteo arranca el día en que se corre la migración: el historial anterior no genera cupones.
 
+## Aviso de stock (CU34), envío de compras en línea (CU35) y asistente virtual (CU36)
+
+Migración: `backend/database/migrations/031_aviso_stock_envio_pedidos.sql`.
+
+| CU | Qué hace | Pantallas | Backend |
+|---|---|---|---|
+| CU34 Avisar cuando vuelve el stock de una talla | Si la talla está agotada, el detalle de la prenda muestra "Avisame cuando vuelva". Cuando vuelve a haber stock, el cliente recibe el aviso en la app y por correo | Web: detalle de la prenda (`features/customer/catalog/product-detail.component.ts`) y Perfil → Avisos de stock. Móvil: detalle de la prenda (`screens/try_on_screen.dart`) | `routers/avisos_stock.py`. El aviso lo dispara la **base**: trigger `trg_avisar_reposicion` sobre `Inventario`, venga de donde venga el stock (lote, traslado, devolución, reserva cancelada o una corrección manual) |
+| CU35 Entregar a domicilio una compra en línea | Al pagar, el cliente elige "Retiro en sucursal" o "Envío a domicilio" (dirección, teléfono y horario). El cobro incluye el envío. El pedido aparece en Devoluciones → Recojos y entregas, donde el personal lo programa y marca la entrega | Web: checkout (`purchase-modal.component.ts`), Perfil → Mis pedidos a domicilio, personal en `return-delivery.component.ts`. Móvil: carrito (`screens/cart_modal.dart`) | `routers/sales.py` y `routers/payments.py` (cobro con envío) · `services/domicilio.py` → `registrar_pedido`, `costo_envio` (viaje de tipo "pedido") · `GET /api/pedidos/mios` |
+| CU36 Conversar con el asistente virtual (texto o voz) | Chat con Gemini en la landing (visitante: solo catálogo), en la tienda del cliente (también sus compras y reservas) y en el portal del personal (datos del negocio y reportes en PDF, CSV o HTML). Se le habla con el micrófono y puede leer las respuestas en voz alta | `shared/components/chat-widget.component.ts` (modos `publico`, `cliente`, `admin`) | `routers/chat.py` · `services/chat_gemini.py` (cliente y visitante) · `services/chat_admin.py` (personal: usa el motor del CU26) · `services/exportacion.py` → `pdf`, `csv`, `html` |
+
+**Reglas del CU35:** el envío cuesta lo que fija la política (el mismo delivery del CU9, por defecto Bs 15) y no lleva
+el descuento del cupón. Solo vale para compras en línea: el POS no hace envíos.
+
+**Reglas del CU36:**
+- La landing no pide cuenta: tiene un límite de 20 preguntas cada 10 minutos por IP y solo consulta el catálogo.
+- La voz la reconoce el navegador (Chrome y Edge). Si el navegador no puede y hay sesión, graba y transcribe el servidor con Gemini.
+- El asistente del personal necesita el permiso `reporte.ia` y un plan con IA (CU25). La IA solo interpreta el pedido: el backend valida y consulta únicamente los datos de la empresa y, para un Encargado, de sus sucursales.
+- Si no hay clave de Gemini, el asistente del personal igual arma reportes con el motor de reglas. El de clientes avisa que no está configurado.
+
 ## Modelo de dominio (sección 3.1) y diagrama de clases de la BD
 
-Las 42 entidades (36 hasta la migración 026, más `PagoSuscripcion`, `ReporteSolicitud`, `ReporteExportacion` y `ModeloIA` de la 027, `EntregaDomicilio` de la 028 y `Cupon` de la 030) están en `backend/app/models/__init__.py`. Arriba de cada clase dice su paquete:
+Las 43 entidades (36 hasta la migración 026, más `PagoSuscripcion`, `ReporteSolicitud`, `ReporteExportacion` y `ModeloIA` de la 027, `EntregaDomicilio` de la 028, `Cupon` de la 030 y `AvisoStock` de la 031) están en `backend/app/models/__init__.py`. Arriba de cada clase dice su paquete:
 busca, por ejemplo, `entidad Devolucion` o `Paquete "Posventa"`.

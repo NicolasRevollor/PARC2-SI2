@@ -27,6 +27,8 @@ export interface PagoIntentIn {
   /** [CU33] el cobro ya descuenta el cupon. `idCliente` solo lo manda el POS. */
   idCupon?: number | null;
   idCliente?: number | null;
+  /** [CU35] el cobro incluye el envio a domicilio. */
+  conEnvio?: boolean;
 }
 
 export interface PagoIntentOut {

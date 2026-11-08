@@ -8,6 +8,7 @@ import '../models/product_model.dart';
 import '../services/api_client.dart';
 import '../services/customer_service.dart';
 import '../services/size_chart.dart';
+import '../services/tienda_service.dart';
 import 'ar_try_on_screen.dart';
 import 'reservation_form_screen.dart';
 
@@ -217,6 +218,9 @@ class TryOnScreen extends StatelessWidget {
           ),
 
           const SizedBox(height: 20),
+
+          // [CU34] si la talla esta agotada, el cliente pide que le avisen.
+          _AvisoStock(idProducto: int.tryParse(product.id)),
 
           // 6. Action CTAs
           SizedBox(
@@ -439,6 +443,83 @@ class _MirrorCanvasState extends State<_MirrorCanvas> {
           ],
         ),
       ),
+    );
+  }
+}
+
+
+// ==== DIAGRAMA <-> CODIGO (informe Parcial 2) ====================
+// [CU34] Avisar cuando vuelve el stock de una talla (app del cliente)
+// ==================================================================
+class _AvisoStock extends StatefulWidget {
+  final int? idProducto;
+
+  const _AvisoStock({required this.idProducto});
+
+  @override
+  State<_AvisoStock> createState() => _AvisoStockState();
+}
+
+class _AvisoStockState extends State<_AvisoStock> {
+  final TiendaService _service = TiendaService(ApiClient());
+  bool _agotado = false;
+  int? _idAviso;
+
+  @override
+  void initState() {
+    super.initState();
+    _cargar();
+  }
+
+  Future<void> _cargar() async {
+    final id = widget.idProducto;
+    if (id == null) return;
+    try {
+      final e = await _service.estadoStock(id);
+      if (mounted) setState(() {
+        _agotado = e['agotado'] == true;
+        _idAviso = e['idAviso'] as int?;
+      });
+    } on ApiException {
+      // Sin sesion o sin conexion: no se muestra el aviso.
+    }
+  }
+
+  Future<void> _pedir() async {
+    try {
+      final a = await _service.pedirAviso(widget.idProducto!);
+      if (!mounted) return;
+      setState(() => _idAviso = a['idAviso'] as int?);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Te avisaremos cuando vuelva a haber stock.')));
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+      _cargar();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_agotado) return const SizedBox.shrink();
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(border: Border.all(color: Colors.orange.shade300)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('Talla agotada', style: GoogleFonts.outfit(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.orange.shade800)),
+        const SizedBox(height: 6),
+        if (_idAviso == null)
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              icon: const Icon(Icons.notifications_active_outlined, size: 16),
+              label: Text('AVISAME CUANDO VUELVA', style: GoogleFonts.outfit(fontSize: 11, fontWeight: FontWeight.bold)),
+              onPressed: _pedir,
+            ),
+          )
+        else
+          Text('Listo: te avisaremos cuando vuelva.', style: GoogleFonts.outfit(fontSize: 12, color: Colors.green.shade800)),
+      ]),
     );
   }
 }

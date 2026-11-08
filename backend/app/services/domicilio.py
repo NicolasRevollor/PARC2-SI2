@@ -10,6 +10,9 @@
 # Cada viaje cuesta lo que dice la politica (CU9), salvo que la culpa sea de la
 # tienda (defecto de fabrica o prenda equivocada): ahi el delivery es gratis.
 # El costo se descuenta del valor de la prenda devuelta (o suma a la diferencia).
+# [CU35] Entregar a domicilio una compra en linea: el mismo repartidor y la misma
+#   pantalla. El viaje es de tipo "pedido" y va ligado a la venta; al entregarlo
+#   el pedido queda completo.
 # Pantallas: web/src/app/features/returns/return-delivery.component.ts (personal)
 #            web/src/app/features/customer/returns/customer-returns.component.ts (cliente)
 # ==================================================================
@@ -23,12 +26,13 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Devolucion, EntregaDomicilio, Sucursal
+from app.models import Devolucion, EntregaDomicilio, Sucursal, Venta
 from app.services import devoluciones as dv
 from app.services import notificaciones as notif
 
 RECOJO = "recojo"
 ENTREGA = "entrega"
+PEDIDO = "pedido"
 ACTIVOS = ("Solicitado", "Programado", "Fallido")
 # Motivos en los que la culpa es de la tienda: el cliente no paga el delivery.
 MOTIVOS_SIN_COSTO = ("defecto", "equivocado")
@@ -140,8 +144,16 @@ def cargar_costo_entrega(caso: Devolucion, politica: dv.Politica) -> Decimal:
 
 
 # ==== [CU31] [CU32] ControlDelivery.programar() ====================
+async def _destinatario(session: AsyncSession, viaje: EntregaDomicilio, caso: Devolucion | None) -> tuple[int, str]:
+    """(idCliente, codigo) del viaje: el caso de devolucion o la compra en linea."""
+    if caso is not None:
+        return caso.idCliente, caso.codigo
+    venta = await session.get(Venta, viaje.idVenta)
+    return venta.idCliente, f"VTA-{viaje.idVenta}"
+
+
 async def programar(
-    session: AsyncSession, viaje: EntregaDomicilio, caso: Devolucion, *, fecha: date, franja: str, repartidor: str, id_usuario: int
+    session: AsyncSession, viaje: EntregaDomicilio, caso: Devolucion | None, *, fecha: date, franja: str, repartidor: str, id_usuario: int
 ) -> None:
     if viaje.estado not in ACTIVOS:
         raise HTTPException(status_code=409, detail=f"El viaje esta {viaje.estado}: ya no se puede programar")
@@ -154,27 +166,40 @@ async def programar(
     viaje.fechaProgramada, viaje.franja, viaje.repartidor = fecha, franja, repartidor.strip()[:100]
     viaje.estado, viaje.idUsuario = "Programado", id_usuario
     cuando = f"el {notif.fecha_texto(datetime.combine(fecha, datetime.min.time(), dv.HORA_BOLIVIA))} por {FRANJAS[franja]}"
+    id_cliente, codigo = await _destinatario(session, viaje, caso)
     if viaje.tipo == RECOJO:
         titulo = f"Pasaremos a recoger su prenda {cuando}"
         mensaje = (f"El repartidor {viaje.repartidor} pasara por {viaje.direccion} {cuando}. Tenga lista la prenda "
-                   f"con sus etiquetas y el codigo {caso.codigo}.")
+                   f"con sus etiquetas y el codigo {codigo}.")
+    elif viaje.tipo == PEDIDO:
+        titulo = f"Su compra llega {cuando}"
+        mensaje = f"El repartidor {viaje.repartidor} le llevara su compra {codigo} a {viaje.direccion} {cuando}."
     else:
         titulo = f"Su prenda nueva llega {cuando}"
-        mensaje = f"El repartidor {viaje.repartidor} le llevara la prenda a {viaje.direccion} {cuando}. Muestre el codigo {caso.codigo}."
-    await notif.notificar_cliente(session, caso.idCliente, caso.idTenant, tipo="envio", referencia=caso.codigo, titulo=titulo, mensaje=mensaje)
+        mensaje = f"El repartidor {viaje.repartidor} le llevara la prenda a {viaje.direccion} {cuando}. Muestre el codigo {codigo}."
+    await notif.notificar_cliente(session, id_cliente, viaje.idTenant, tipo="envio", referencia=codigo, titulo=titulo, mensaje=mensaje)
 
 
 # ==== [CU31] ControlDelivery.registrarRecojo() =====================
 # [CU32] ControlDelivery.registrarEntrega()
 # ===================================================================
 async def completar(
-    session: AsyncSession, viaje: EntregaDomicilio, caso: Devolucion, *, observaciones: str | None, en_sucursal: bool, id_usuario: int
+    session: AsyncSession, viaje: EntregaDomicilio, caso: Devolucion | None, *, observaciones: str | None, en_sucursal: bool, id_usuario: int
 ) -> None:
     if viaje.estado not in ("Programado", "Fallido") and not (en_sucursal and viaje.estado in ACTIVOS):
         raise HTTPException(status_code=409, detail="Primero programe el viaje")
     ahora = datetime.now(timezone.utc)
     viaje.estado, viaje.fechaCompletado, viaje.idUsuario = "Completado", ahora, id_usuario
     viaje.observaciones = ((observaciones or "").strip() or ("Resuelto en la sucursal" if en_sucursal else None))
+    if viaje.tipo == PEDIDO:
+        # [CU35] paso final: el cliente recibio su compra.
+        id_cliente, codigo = await _destinatario(session, viaje, None)
+        await notif.notificar_cliente(
+            session, id_cliente, viaje.idTenant, tipo="pedido", referencia=codigo,
+            titulo=f"Entregamos su compra {codigo}",
+            mensaje="Su pedido fue entregado." if not en_sucursal else "Retiro su pedido en la sucursal.",
+        )
+        return
     if viaje.tipo == RECOJO:
         # CU31 paso final: la prenda llego a la sucursal; sigue la inspeccion (CU3).
         if caso.estado != "PendienteEntrega":
@@ -199,21 +224,22 @@ async def completar(
 
 
 # ==== [CU31] [CU32] ControlDelivery.registrarIntentoFallido() ======
-async def fallido(session: AsyncSession, viaje: EntregaDomicilio, caso: Devolucion, *, motivo: str, id_usuario: int) -> None:
+async def fallido(session: AsyncSession, viaje: EntregaDomicilio, caso: Devolucion | None, *, motivo: str, id_usuario: int) -> None:
     if viaje.estado != "Programado":
         raise HTTPException(status_code=409, detail="Solo un viaje programado puede fallar")
     if len(motivo.strip()) < 3:
         raise HTTPException(status_code=400, detail="Indique por que no se pudo hacer el viaje")
     viaje.estado, viaje.intentos, viaje.idUsuario = "Fallido", viaje.intentos + 1, id_usuario
     viaje.observaciones = motivo.strip()[:255]
-    que = "recoger su prenda" if viaje.tipo == RECOJO else "entregarle la prenda nueva"
+    que = {RECOJO: "recoger su prenda", PEDIDO: "entregarle su compra"}.get(viaje.tipo, "entregarle la prenda nueva")
+    id_cliente, codigo = await _destinatario(session, viaje, caso)
     extra = (
         " Tambien puede acercarse a la sucursal con su codigo."
         if viaje.intentos >= INTENTOS_ANTES_DE_SUCURSAL else " Lo volveremos a programar."
     )
     await notif.notificar_cliente(
-        session, caso.idCliente, caso.idTenant, tipo="envio", referencia=caso.codigo,
-        titulo=f"No pudimos {que} ({caso.codigo})", mensaje=f"Motivo: {viaje.observaciones}.{extra}",
+        session, id_cliente, viaje.idTenant, tipo="envio", referencia=codigo,
+        titulo=f"No pudimos {que} ({codigo})", mensaje=f"Motivo: {viaje.observaciones}.{extra}",
     )
 
 
@@ -243,3 +269,44 @@ def cancelar_viajes_abiertos(viajes: list[EntregaDomicilio]) -> None:
     for v in viajes:
         if v.estado in ACTIVOS:
             v.estado = "Cancelado"
+
+
+# ==== [CU35] ControlDelivery.registrarPedido() =====================
+# La compra en linea con envio: el viaje sale de la sucursal que surtio la compra.
+# ===================================================================
+async def registrar_pedido(
+    session: AsyncSession, venta: Venta, *, id_tenant: int, codigo_sucursal: int | None, datos: DatosDomicilio, costo: Decimal
+) -> EntregaDomicilio:
+    if len(datos.direccion.strip()) < 8:
+        raise HTTPException(status_code=400, detail="Indique la direccion completa para el envio")
+    if len("".join(c for c in datos.telefono if c.isdigit())) < 7:
+        raise HTTPException(status_code=400, detail="Indique un telefono de contacto para el repartidor")
+    if datos.franja is not None and datos.franja not in FRANJAS:
+        raise HTTPException(status_code=400, detail="La franja horaria es manana o tarde")
+    viaje = EntregaDomicilio(
+        idVenta=venta.idVenta, idTenant=id_tenant, tipo=PEDIDO, estado="Solicitado", codigoSucursal=codigo_sucursal,
+        direccion=datos.direccion.strip()[:255], referencia=(datos.referencia or "").strip()[:255] or None,
+        telefono=datos.telefono.strip()[:20], fechaPreferida=datos.fechaPreferida, franja=datos.franja, costo=costo,
+    )
+    session.add(viaje)
+    await session.flush()
+    codigo = f"VTA-{venta.idVenta}"
+    await notif.notificar_cliente(
+        session, venta.idCliente, id_tenant, tipo="pedido", referencia=codigo,
+        titulo=f"Recibimos tu pedido {codigo}",
+        mensaje=f"Lo enviaremos a {viaje.direccion}. Te avisamos el dia en que sale con el repartidor.",
+    )
+    await notif.notificar_personal(
+        session, id_tenant, tipo="pedido", referencia=codigo,
+        titulo=f"Nuevo pedido a domicilio {codigo}",
+        mensaje="Una compra en linea se envia a domicilio: programela en Devoluciones > Recojos y entregas.",
+    )
+    return viaje
+
+
+async def costo_envio(session: AsyncSession, id_tenant: int) -> Decimal:
+    """[CU35] lo que cuesta el envio de una compra (el mismo delivery de la politica, CU9)."""
+    politica, _ = await dv.politica_vigente(session, id_tenant)
+    if not politica.permiteDomicilio:
+        raise HTTPException(status_code=400, detail="Esta tienda no hace envios a domicilio")
+    return dv.dinero(politica.costoDomicilio)

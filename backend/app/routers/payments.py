@@ -135,6 +135,12 @@ async def create_payment_intent(
             cupon = await cupones.cupon_para_compra(session, payload.idCupon, id_cliente=id_cliente, id_tenant=id_tenant)
             total = (await cupones.cotizar(session, payload.items, cupon)).total
 
+        # [CU35] el cobro incluye el envio a domicilio de la tienda.
+        if payload.conEnvio:
+            from app.services import domicilio
+
+            total += await domicilio.costo_envio(session, await cupones.tenant_de_los_items(session, payload.items))
+
         # Stock verificado ANTES de cobrar (D5): branch-agnostico, la misma
         # formula de `create_sale` — ninguna fila individual de `Inventario`
         # cubre la cantidad => 400 y NUNCA se llama a Stripe.

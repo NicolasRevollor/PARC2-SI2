@@ -61,6 +61,9 @@ import type { Venta } from '../../core/models';
             <span class="text-sm font-bold text-slate-900 uppercase tracking-wide">Total</span>
             <span class="text-lg font-bold text-violet-600">Bs {{ venta.total.toFixed(2) }}</span>
           </div>
+          <p *ngIf="venta.envio as e" class="text-xs text-indigo-700 border border-indigo-200 rounded-lg p-2" data-testid="envio-recibo">
+            Envío a domicilio (Bs {{ e.costo.toFixed(2) }}) a {{ e.direccion }}. Le avisamos el día en que sale con el repartidor.
+          </p>
           <p *ngIf="venta.cuponGanado as g" class="text-xs font-semibold text-emerald-700 border border-emerald-300 rounded-lg p-2 text-center" data-testid="cupon-ganado">
             ¡Ganó un cupón del {{ g.porcentaje }}%! Código {{ g.codigo }}, válido hasta el {{ g.vence | date: 'dd/MM/yyyy' }} en su próxima compra.
           </p>

@@ -27,7 +27,7 @@ SIEMPRE_PERMITIDAS = ("/api/auth/",)
 # [CU17] [CU22] alt. 4: lo vendido sin conexion antes de la suspension se acepta.
 SINCRONIZACION = ("/api/sync/lote", "/api/sync/estado")
 # Pedidos POST que solo consultan: siguen disponibles en el periodo de gracia.
-CONSULTAS_POST = ("/api/reports/ia/consultar", "/api/reports/ia/transcribir", "/api/reports/exportar", "/api/notificaciones")
+CONSULTAS_POST = ("/api/reports/ia/consultar", "/api/reports/ia/transcribir", "/api/reports/exportar", "/api/notificaciones", "/api/chat")
 METODOS_LECTURA = ("GET", "HEAD", "OPTIONS")
 
 

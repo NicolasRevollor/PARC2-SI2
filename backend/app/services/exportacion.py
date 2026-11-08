@@ -336,3 +336,71 @@ def excel(doc: Documento) -> bytes:
 def nombre_archivo(doc: Documento, formato: str) -> str:
     base = "".join(ch if ch.isalnum() else "-" for ch in doc.titulo.lower()).strip("-")[:60] or "reporte"
     return f"{base}-{doc.generado:%Y%m%d-%H%M}.{formato}"
+
+
+# --- [CU36] CSV y HTML (los pide el asistente de los administradores) -------------
+
+def csv(doc: Documento) -> bytes:
+    """Los datos sin formato, listos para Excel o Sheets (separador ';' y BOM para los acentos)."""
+    import csv as _csv
+
+    salida = io.StringIO()
+    escritor = _csv.writer(salida, delimiter=";")
+    escritor.writerow([c.etiqueta for c in doc.columnas])
+    for fila in doc.filas:
+        escritor.writerow([fila.get(c.clave, "") for c in doc.columnas])
+    if doc.totales:
+        escritor.writerow(["Total"] + [doc.totales.get(c.clave, "") for c in doc.columnas[1:]])
+    return ("\ufeff" + salida.getvalue()).encode("utf-8")
+
+
+def html(doc: Documento) -> bytes:
+    """Pagina autonoma (se abre en cualquier navegador y se imprime): encabezado,
+    filtros, resumen, grafico de barras y la tabla con totales."""
+    from html import escape
+
+    def celda(fila: dict, c: Columna, etiqueta: str = "td") -> str:
+        alineado = ' class="num"' if c.tipo != "texto" else ""
+        return f"<{etiqueta}{alineado}>{escape(_texto(fila.get(c.clave), c.tipo))}</{etiqueta}>"
+
+    grafico = ""
+    datos = _grafico_datos(doc)
+    if datos:
+        etiquetas, valores, metrica = datos
+        maximo = max(valores) or 1
+        barras = "".join(
+            f'<div class="barra"><span class="et">{escape(e)}</span><span class="v" style="width:{max(v / maximo * 100, 0.5):.1f}%"></span>'
+            f'<span class="n">{escape(_texto(v, doc.metricas[0].tipo))}</span></div>'
+            for e, v in zip(etiquetas[:MAX_BARRAS], valores[:MAX_BARRAS])
+        )
+        grafico = f'<h2>{escape(metrica)}</h2><div class="grafico">{barras}</div>'
+    filtros = "".join(f"<li><b>{escape(k)}:</b> {escape(v)}</li>" for k, v in doc.filtros)
+    cuerpo = "".join("<tr>" + "".join(celda(f, c) for c in doc.columnas) + "</tr>" for f in doc.filas)
+    pie = ""
+    if doc.totales:
+        pie = "<tfoot><tr><td>Total</td>" + "".join(
+            celda(doc.totales, c) if c.clave in doc.totales else "<td></td>" for c in doc.columnas[1:]
+        ) + "</tr></tfoot>"
+    pagina = f"""<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{escape(doc.titulo)} - {escape(doc.empresa)}</title>
+<style>
+body{{font-family:system-ui,Segoe UI,Arial,sans-serif;color:{TINTA};margin:32px auto;max-width:960px;padding:0 16px}}
+header{{display:flex;justify-content:space-between;border-bottom:2px solid {SERIE};padding-bottom:12px}}
+h1{{margin:0;font-size:22px}} h2{{font-size:15px;margin:24px 0 8px}} small,.suave{{color:{TINTA_SUAVE}}}
+ul{{padding-left:18px;margin:8px 0}} .resumen{{background:#f3f4f6;border-radius:8px;padding:12px 14px}}
+table{{border-collapse:collapse;width:100%;font-size:13px}} th,td{{border-bottom:1px solid {LINEA};padding:6px 8px;text-align:left}}
+th{{background:#f3f4f6}} .num{{text-align:right;font-variant-numeric:tabular-nums}} tfoot td{{font-weight:700;border-top:2px solid {TINTA}}}
+.barra{{display:grid;grid-template-columns:30% 1fr auto;gap:8px;align-items:center;font-size:12px;margin:3px 0}}
+.barra .v{{height:12px;background:{SERIE};border-radius:0 4px 4px 0}} .barra .et{{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
+@media print{{body{{margin:0}}}}
+</style></head><body>
+<header><div><small>{escape(doc.empresa)}</small><h1>{escape(doc.titulo)}</h1></div>
+<div class="suave" style="text-align:right;font-size:12px">Generado el {doc.generado:%d/%m/%Y %H:%M}<br>por {escape(doc.usuario or '-')}</div></header>
+<h2>Filtros aplicados</h2><ul>{filtros or '<li>Sin filtros</li>'}</ul>
+{f'<h2>Resumen</h2><p class="resumen">{escape(doc.resumen)}</p>' if doc.resumen else ''}
+{grafico}
+<h2>Datos</h2><table><thead><tr>{''.join(f'<th{chr(32) + "class=num" if c.tipo != "texto" else ""}>{escape(c.etiqueta)}</th>' for c in doc.columnas)}</tr></thead>
+<tbody>{cuerpo}</tbody>{pie}</table>
+<p class="suave" style="font-size:11px;margin-top:24px">{len(doc.filas)} fila(s). Reporte generado por el asistente de YouShop.</p>
+</body></html>"""
+    return pagina.encode("utf-8")

@@ -15,11 +15,11 @@ router, antes de armar las herramientas de este request.
 
 from datetime import date
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import get_settings
-from app.models import Producto, Reserva, Sucursal, Venta
+from app.models import Inventario, Producto, Reserva, Sucursal, Venta
 from app.schemas.chat import ChatMensaje
 
 try:
@@ -57,7 +57,18 @@ SYSTEM_INSTRUCTION = (
     "una pregunta necesita esa informacion, llama a la herramienta "
     "correspondiente antes de responder. Si una pregunta no tiene que ver "
     "con el catalogo o con las compras/reservas propias del cliente, "
-    "decilo con honestidad en vez de inventar una respuesta."
+    "decilo con honestidad en vez de inventar una respuesta. "
+    "Tambien podes contar como funciona la tienda: cada 3 compras el cliente gana un cupon "
+    "del 30% para su siguiente compra; si una talla esta agotada puede pedir que le avisen "
+    "cuando vuelva; las compras en linea se pueden enviar a domicilio y las devoluciones y "
+    "cambios se pueden hacer en tienda, en linea o con recojo a domicilio. "
+    "Tus respuestas pueden leerse en voz alta: no uses tablas ni markdown, usa frases cortas."
+)
+
+# [CU36] Visitante de la landing (sin cuenta): solo catalogo e informacion general.
+SYSTEM_INSTRUCTION_PUBLICO = SYSTEM_INSTRUCTION + (
+    " Estas hablando con un VISITANTE que todavia no inicio sesion: no tenes acceso a compras ni "
+    "reservas. Si pregunta por las suyas, invitalo a registrarse o iniciar sesion."
 )
 
 
@@ -108,6 +119,11 @@ async def buscar_productos(
         .limit(LIMITE_RESULTADOS)
     )
     rows = (await session.execute(stmt)).scalars().all()
+    # [CU36] cuanto hay disponible de cada prenda (para responder "hay talla M?").
+    stock = dict((await session.execute(
+        select(Inventario.idProducto, func.sum(Inventario.cantidad_actual - Inventario.cantidad_reservada))
+        .where(Inventario.idProducto.in_([p.idProducto for p in rows])).group_by(Inventario.idProducto)
+    )).all()) if rows else {}
     return [
         {
             "idProducto": p.idProducto,
@@ -116,6 +132,7 @@ async def buscar_productos(
             "talla": p.talla,
             "color": p.color,
             "precio": float(p.venta),
+            "stockDisponible": int(stock.get(p.idProducto) or 0),
             "descripcion": p.descripcion,
         }
         for p in rows
@@ -211,7 +228,7 @@ def _historial_a_contents(historial: list[ChatMensaje]) -> list["types.Content"]
 
 async def responder_chat(
     session: AsyncSession,
-    id_cliente: int,
+    id_cliente: int | None,
     mensaje: str,
     historial: list[ChatMensaje],
     id_tenant: int,
@@ -230,18 +247,22 @@ async def responder_chat(
             # con TypeError (500) o pisaban el tenant cerrado por clausura.
             permitidos = {k: v for k, v in args.items() if k in ("query", "tipo", "color", "talla")}
             return {"resultados": await buscar_productos(session, id_tenant, **permitidos)}
-        if nombre == "consultar_mis_ventas":
+        if nombre == "consultar_mis_ventas" and id_cliente is not None:
             return {"resultados": await consultar_mis_ventas(session, id_cliente)}
-        if nombre == "consultar_mis_reservas":
+        if nombre == "consultar_mis_reservas" and id_cliente is not None:
             return {"resultados": await consultar_mis_reservas(session, id_cliente)}
         return {"error": f"Herramienta desconocida: {nombre}"}
 
     contents: list[types.Content] = _historial_a_contents(historial)
     contents.append(types.Content(role="user", parts=[types.Part.from_text(text=mensaje)]))
 
+    # [CU36] el visitante (id_cliente None) solo puede buscar en el catalogo.
+    declaraciones = _declaraciones_herramientas()
+    if id_cliente is None:
+        declaraciones = [d for d in declaraciones if d.name == "buscar_productos"]
     config = types.GenerateContentConfig(
-        system_instruction=SYSTEM_INSTRUCTION,
-        tools=[types.Tool(function_declarations=_declaraciones_herramientas())],
+        system_instruction=SYSTEM_INSTRUCTION if id_cliente is not None else SYSTEM_INSTRUCTION_PUBLICO,
+        tools=[types.Tool(function_declarations=declaraciones)],
         automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
     )
 

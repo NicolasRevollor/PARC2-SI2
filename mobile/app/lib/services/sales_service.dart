@@ -16,10 +16,11 @@ class SalesService {
     int idMetPago,
     List<Map<String, dynamic>> items, {
     int? idCupon, // [CU33]
+    Map<String, dynamic>? entrega, // [CU35] envio a domicilio
   }) async {
     final data = await _api.post(
       '/api/sales',
-      body: {'idMetPago': idMetPago, 'items': items, if (idCupon != null) 'idCupon': idCupon},
+      body: {'idMetPago': idMetPago, 'items': items, if (idCupon != null) 'idCupon': idCupon, if (entrega != null) 'entrega': entrega},
     ) as Map<String, dynamic>;
     return data;
   }

@@ -885,9 +885,11 @@ class EntregaDomicilio(Base):
     __tablename__ = "entrega_domicilio"
 
     idEntrega: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    idDevolucion: Mapped[int] = mapped_column(
-        ForeignKey("devolucion.idDevolucion", ondelete="CASCADE", onupdate="CASCADE"), nullable=False
+    # Recojo/entrega de una devolucion (CU31, CU32) o envio de una compra en linea (CU35, tipo "pedido").
+    idDevolucion: Mapped[int | None] = mapped_column(
+        ForeignKey("devolucion.idDevolucion", ondelete="CASCADE", onupdate="CASCADE")
     )
+    idVenta: Mapped[int | None] = mapped_column(ForeignKey("Venta.idVenta", ondelete="CASCADE", onupdate="CASCADE"))
     idTenant: Mapped[int] = mapped_column(ForeignKey("tenant.idTenant", ondelete="CASCADE", onupdate="CASCADE"), nullable=False)
     tipo: Mapped[str] = mapped_column(String(10), nullable=False)
     estado: Mapped[str] = mapped_column(String(12), default="Solicitado", nullable=False)
@@ -905,6 +907,22 @@ class EntregaDomicilio(Base):
     fechaRegistro: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=_ahora_utc, nullable=False)
     fechaCompletado: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
     idUsuario: Mapped[int | None] = mapped_column(ForeignKey("Usuario.idUser", ondelete="SET NULL", onupdate="CASCADE"))
+
+
+# [Modelo de dominio] Paquete "Ventas" -> entidad AvisoStock  (tabla "aviso_stock")
+# [CU34] Avisar cuando vuelve el stock de una talla. El aviso lo dispara un trigger
+# de la base (migracion 031) cuando el Inventario vuelve a tener disponible.
+class AvisoStock(Base):
+    __tablename__ = "aviso_stock"
+
+    idAviso: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    idTenant: Mapped[int] = mapped_column(ForeignKey("tenant.idTenant", ondelete="CASCADE", onupdate="CASCADE"), nullable=False)
+    idCliente: Mapped[int] = mapped_column(ForeignKey("Cliente.idCliente", ondelete="CASCADE", onupdate="CASCADE"), nullable=False)
+    idProducto: Mapped[int] = mapped_column(ForeignKey("producto.idProducto", ondelete="CASCADE", onupdate="CASCADE"), nullable=False)
+    estado: Mapped[str] = mapped_column(String(10), default="Pendiente", nullable=False)
+    fechaRegistro: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=_ahora_utc, nullable=False)
+    fechaAviso: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+    codigoSucursal: Mapped[int | None] = mapped_column(ForeignKey("Sucursal.codigoSucursal", ondelete="SET NULL", onupdate="CASCADE"))
 
 
 # [Modelo de dominio] Paquete "Posventa" -> entidad PoliticaDevolucion  (tabla "politica_devolucion")

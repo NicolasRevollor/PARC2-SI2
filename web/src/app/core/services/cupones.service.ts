@@ -44,6 +44,8 @@ export interface Cotizacion {
   cuponesDisponibles: Cupon[];
   compras: number;
   faltan: number;
+  /** [CU35] costo del envio a domicilio de la tienda (null si no hace envios). */
+  costoEnvio: number | null;
 }
 
 export type ItemCompra = { idProducto: number; cantidad: number };

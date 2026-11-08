@@ -9,6 +9,7 @@ from app.models import (
     Cliente,
     Cupon,
     DetalleVenta,
+    EntregaDomicilio,
     Historial,
     Inventario,
     MetodoPago,
@@ -27,6 +28,7 @@ from app.services import caja as caja_srv
 from app.services import sincronizacion as sync
 from app.services import notificaciones as notif
 from app.services import cupones
+from app.services import domicilio
 from app.services.alcance import alcance_sucursales
 from app.services.tenancy import tenant_actual
 
@@ -79,7 +81,9 @@ async def _serialize_venta(v: Venta, session: AsyncSession, detalles: list[Detal
     # [CU33] cupon usado en la compra y el que se gano con ella.
     usado = await session.scalar(select(Cupon).where(Cupon.idVentaUso == v.idVenta))
     ganado = await session.scalar(select(Cupon).where(Cupon.idVentaOrigen == v.idVenta))
+    envio = await session.scalar(select(EntregaDomicilio).where(EntregaDomicilio.idVenta == v.idVenta))
     return VentaOut(
+        envio={"estado": envio.estado, "direccion": envio.direccion, "costo": float(envio.costo), "codigo": f"VTA-{v.idVenta}"} if envio else None,
         cuponUsado={"codigo": usado.codigo, "porcentaje": float(usado.porcentaje), "descuento": float(usado.montoDescontado)} if usado else None,
         cuponGanado={"codigo": ganado.codigo, "porcentaje": float(ganado.porcentaje), "vence": ganado.fechaVencimiento.isoformat()} if ganado else None,
         idVenta=v.idVenta,
@@ -298,6 +302,10 @@ async def _crear_venta(
             if producto is not None and producto.idTenant != cupon.idTenant:
                 raise HTTPException(status_code=400, detail="El cupon es de otra tienda: solo vale para las prendas de esa empresa")
     total_sin_cupon = 0.0
+    sucursal_surte = None
+    # [CU35] el envio a domicilio es solo para la compra en linea del cliente.
+    if payload.entrega is not None and (not es_autocompra or payload.uuidOperacion is not None):
+        raise HTTPException(status_code=400, detail="El envio a domicilio es para compras en linea")
 
     total = 0.0
     venta = Venta(
@@ -361,6 +369,7 @@ async def _crear_venta(
 
         # [CU33] aplicarDescuento: el precio con cupon queda en el detalle (una devolucion
         #   reembolsa lo que de verdad se pago).
+        sucursal_surte = sucursal_surte or inv.codigoSucursal
         precio_unitario = float(cupones.precio_con_descuento(producto.venta, cupon.porcentaje)) if cupon else float(producto.venta)
         total_sin_cupon += float(producto.venta) * item.cantidad
         inv.cantidad_actual -= item.cantidad
@@ -397,13 +406,20 @@ async def _crear_venta(
     # idMetPago para llevarse un carrito de Bs 1000 (el intento y la venta
     # reciben los items por separado). El POS (staff) registra efectivo con un
     # monto indicativo, por eso no aplica ahi.
-    if es_autocompra and round(total, 2) > round(float(metodo.monto), 2):
+    # [CU35] con envio, el pago tambien cubre el delivery.
+    envio = await domicilio.costo_envio(session, id_tenant_venta) if payload.entrega is not None else Decimal("0.00")
+    if es_autocompra and round(total + float(envio), 2) > round(float(metodo.monto), 2):
         raise HTTPException(
             status_code=400,
             detail=(
                 f"El pago verificado (Bs {float(metodo.monto):.2f}) no cubre el total "
-                f"de la compra (Bs {total:.2f})"
+                f"de la compra (Bs {total + float(envio):.2f})"
             ),
+        )
+    if payload.entrega is not None:
+        await domicilio.registrar_pedido(
+            session, venta, id_tenant=id_tenant_venta, codigo_sucursal=sucursal_surte,
+            datos=domicilio.DatosDomicilio(**payload.entrega.model_dump()), costo=envio,
         )
 
     total = round(total, 2)

@@ -7,6 +7,8 @@ import { NotificationService } from '../../../core/services/notification.service
 import { CardPaymentComponent } from '../../../shared/components/card-payment.component';
 import { ReceiptModalComponent } from '../../../shared/components/receipt-modal.component';
 import { CuponSelectorComponent } from '../../../shared/components/cupon-selector.component';
+import { CuBadgeComponent } from '../../../shared/components/cu-badge.component';
+import { FormsModule } from '@angular/forms';
 
 // [CU33] 'resumen': total de la compra y cupon a usar, antes de cobrar.
 type EstadoCompra = 'resumen' | 'iniciando' | 'cobrando' | 'cobrado_sin_venta' | 'comprado' | 'error';
@@ -32,7 +34,7 @@ type EstadoCompra = 'resumen' | 'iniciando' | 'cobrando' | 'cobrado_sin_venta' |
 @Component({
   selector: 'app-purchase-modal',
   standalone: true,
-  imports: [CommonModule, CardPaymentComponent, ReceiptModalComponent, CuponSelectorComponent],
+  imports: [CommonModule, FormsModule, CardPaymentComponent, ReceiptModalComponent, CuponSelectorComponent, CuBadgeComponent],
   template: `
     <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4 animate-in fade-in duration-150">
       <div
@@ -59,8 +61,30 @@ type EstadoCompra = 'resumen' | 'iniciando' | 'cobrando' | 'cobrado_sin_venta' |
           <!-- [CU33] Resumen: total y cupon antes de cobrar -->
           <div *ngIf="estado() === 'resumen'" class="space-y-3">
             <app-cupon-selector [items]="items" (cambio)="onCupon($event)"></app-cupon-selector>
-            <p class="flex justify-between text-sm font-bold text-gray-900"><span>Total</span><span data-testid="total-compra">Bs {{ totalAPagar()?.toFixed(2) ?? '…' }}</span></p>
-            <button (click)="iniciarCobro()" [disabled]="totalAPagar() === null"
+
+            <!-- [CU35] retiro en sucursal o envio a domicilio -->
+            <div *ngIf="costoEnvio() !== null" class="rounded-xl border border-gray-200 p-3 space-y-2" data-testid="entrega">
+              <div class="flex items-center justify-between">
+                <p class="text-xs font-bold text-gray-900">¿Cómo la recibís?</p>
+                <app-cu-badge cu="CU35"></app-cu-badge>
+              </div>
+              <div class="grid grid-cols-2 gap-2">
+                <button type="button" (click)="conEnvio.set(false)" class="ys-opcion text-xs" [class.ys-opcion-activa]="!conEnvio()">Retiro en sucursal</button>
+                <button type="button" (click)="conEnvio.set(true)" class="ys-opcion text-xs" [class.ys-opcion-activa]="conEnvio()" data-testid="elegir-envio">
+                  Envío a domicilio (+Bs {{ costoEnvio()!.toFixed(2) }})</button>
+              </div>
+              <div *ngIf="conEnvio()" class="space-y-2">
+                <input class="ys-campo mt-0 text-xs" [(ngModel)]="entrega.direccion" name="dir" placeholder="Dirección (calle, número, zona)" data-testid="direccion-envio" />
+                <div class="grid grid-cols-2 gap-2">
+                  <input class="ys-campo mt-0 text-xs" [(ngModel)]="entrega.telefono" name="tel" placeholder="Teléfono" data-testid="telefono-envio" />
+                  <select class="ys-campo mt-0 text-xs" [(ngModel)]="entrega.franja" name="fr"><option value="manana">Mañana (9 a 13)</option><option value="tarde">Tarde (14 a 19)</option></select>
+                </div>
+                <input class="ys-campo mt-0 text-xs" [(ngModel)]="entrega.referencia" name="ref" placeholder="Referencia (opcional)" />
+              </div>
+            </div>
+
+            <p class="flex justify-between text-sm font-bold text-gray-900"><span>Total</span><span data-testid="total-compra">Bs {{ totalFinal()?.toFixed(2) ?? '…' }}</span></p>
+            <button (click)="iniciarCobro()" [disabled]="totalAPagar() === null || !entregaValida()"
                     class="w-full px-4 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wide text-white bg-indigo-600 hover:bg-indigo-700 transition-colors cursor-pointer disabled:opacity-50"
                     data-testid="pagar">Pagar con tarjeta</button>
           </div>
@@ -129,6 +153,25 @@ export class PurchaseModalComponent implements OnInit {
   items: { idProducto: number; cantidad: number }[] = [];
   idCupon = signal<number | null>(null);
   totalAPagar = signal<number | null>(null);
+  // [CU35]
+  costoEnvio = signal<number | null>(null);
+  conEnvio = signal<boolean>(false);
+  entrega: { direccion: string; telefono: string; referencia: string; franja: 'manana' | 'tarde' } = { direccion: '', telefono: '', referencia: '', franja: 'manana' };
+
+  totalFinal(): number | null {
+    const t = this.totalAPagar();
+    return t === null ? null : t + (this.conEnvio() ? this.costoEnvio() ?? 0 : 0);
+  }
+
+  entregaValida(): boolean {
+    return !this.conEnvio() || (this.entrega.direccion.trim().length >= 8 && this.entrega.telefono.replace(/\D/g, '').length >= 7);
+  }
+
+  private datosEntrega() {
+    return this.conEnvio()
+      ? { direccion: this.entrega.direccion.trim(), telefono: this.entrega.telefono.trim(), referencia: this.entrega.referencia.trim() || null, franja: this.entrega.franja }
+      : null;
+  }
   clientSecret = signal<string | null>(null);
   idMetPagoActual = signal<number | null>(null);
   ventaCreada = signal<Venta | null>(null);
@@ -146,9 +189,11 @@ export class PurchaseModalComponent implements OnInit {
     this.items = this.itemsDeLineas();
   }
 
-  onCupon(e: { idCupon: number | null; total: number }): void {
+  onCupon(e: { idCupon: number | null; total: number; costoEnvio: number | null }): void {
     this.idCupon.set(e.idCupon);
     this.totalAPagar.set(e.total);
+    this.costoEnvio.set(e.costoEnvio);
+    if (e.costoEnvio === null) this.conEnvio.set(false);
   }
 
   // Una sola linea conserva la redaccion original ("Comprar ahora" y
@@ -187,6 +232,7 @@ export class PurchaseModalComponent implements OnInit {
       claveIntento: crypto.randomUUID(),
       concepto: `Compra en línea — ${this.tituloCompra()}`,
       idCupon: this.idCupon(),
+      conEnvio: this.conEnvio(),
     });
     this.enviando.set(false);
     if (!intent) {
@@ -241,6 +287,7 @@ export class PurchaseModalComponent implements OnInit {
       idMetPago,
       items: this.itemsDeLineas(),
       idCupon: this.idCupon(),
+      entrega: this.datosEntrega(),
     });
     this.enviando.set(false);
 

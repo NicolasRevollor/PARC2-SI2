@@ -308,6 +308,8 @@ export interface Venta {
   /** [CU33] cupon usado en esta compra y el que gano con ella. */
   cuponUsado?: { codigo: string; porcentaje: number; descuento: number } | null;
   cuponGanado?: { codigo: string; porcentaje: number; vence: string } | null;
+  /** [CU35] */
+  envio?: { estado: string; direccion: string; costo: number; codigo: string } | null;
 }
 
 export interface MetodoPago {
@@ -337,6 +339,8 @@ export interface VentaIn {
   fechaOperacion?: string;
   /** [CU33] cupon del 30% (no vale sin conexion). */
   idCupon?: number | null;
+  /** [CU35] envio a domicilio de la compra en linea. */
+  entrega?: { direccion: string; telefono: string; referencia?: string | null; franja?: 'manana' | 'tarde' | null } | null;
 }
 
 // Línea de ticket en memoria del cliente: nunca se envía tal cual al
@@ -795,8 +799,9 @@ export interface DomicilioIn {
 export interface ViajeDomicilio {
   idEntrega: number;
   idDevolucion: number;
-  tipo: 'recojo' | 'entrega';
+  tipo: 'recojo' | 'entrega' | 'pedido';
   estado: 'Solicitado' | 'Programado' | 'Completado' | 'Fallido' | 'Cancelado';
+  idVenta?: number | null;
   direccion: string;
   referencia: string | null;
   telefono: string;

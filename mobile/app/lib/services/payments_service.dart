@@ -28,6 +28,7 @@ class PaymentsService {
     String proposito = 'venta',
     int? codigoSucursal,
     int? idCupon, // [CU33] el cobro ya descuenta el cupon
+    bool conEnvio = false, // [CU35] el cobro incluye el envio a domicilio
   }) async {
     final data = await _api.post(
       '/api/payments/intents',
@@ -38,6 +39,7 @@ class PaymentsService {
         'proposito': proposito,
         if (codigoSucursal != null) 'codigoSucursal': codigoSucursal,
         if (idCupon != null) 'idCupon': idCupon,
+        if (conEnvio) 'conEnvio': true,
       },
     ) as Map<String, dynamic>;
     return data;

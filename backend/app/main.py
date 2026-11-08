@@ -33,6 +33,7 @@ from app.routers import (
     reportes_generativos,
     domicilio,
     cupones,
+    avisos_stock,
     reservations,
     returns,
     sales,
@@ -152,6 +153,8 @@ for router in (
     caja.router,
     reportes_generativos.router,
     domicilio.router,
+    domicilio.router_pedidos,
+    avisos_stock.router,
     cupones.router,
     inteligencia.router,
 ):

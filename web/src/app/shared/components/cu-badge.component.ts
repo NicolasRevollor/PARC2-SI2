@@ -27,6 +27,9 @@ export const CASOS_DE_USO: Record<string, string> = {
   CU31: 'Recoger a domicilio la prenda devuelta',
   CU32: 'Entregar a domicilio la prenda del cambio',
   CU33: 'Obtener y usar cupón de descuento por compras',
+  CU34: 'Avisar cuando vuelve el stock de una talla',
+  CU35: 'Entregar a domicilio una compra en línea',
+  CU36: 'Conversar con el asistente virtual (texto o voz)',
 };
 
 /**

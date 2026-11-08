@@ -35,6 +35,7 @@ import { ModelosIaComponent } from './features/modelos-ia/modelos-ia.component';
 import { DashboardAnaliticoComponent } from './features/dashboard-analitico/dashboard-analitico.component';
 import { BitacoraComponent } from './features/bitacora/bitacora.component';
 import { PERMISO_PLATAFORMA } from './core/services/platform.service';
+import { ChatWidgetComponent } from './shared/components/chat-widget.component';
 
 @Component({
   selector: 'app-root',
@@ -72,7 +73,8 @@ import { PERMISO_PLATAFORMA } from './core/services/platform.service';
     PlatformPlansComponent,
     ReportsIaComponent,
     ModelosIaComponent,
-    DashboardAnaliticoComponent
+    DashboardAnaliticoComponent,
+    ChatWidgetComponent
   ],
   template: `
     <!-- Branded loader overlay: shown briefly when moving from the landing page
@@ -270,7 +272,14 @@ import { PERMISO_PLATAFORMA } from './core/services/platform.service';
 
     <!-- Global Toast Alert Messages -->
     <app-toast-container></app-toast-container>
+
+    <!-- [CU36] Asistente virtual: en la landing (visitante) y en el portal del personal (reportes).
+         El de la tienda del cliente vive en customer-shell. -->
+    <app-chat-widget *ngIf="asistenteAdmin()" modo="admin"></app-chat-widget>
     </ng-container>
+
+    <!-- [CU36] la landing (fuera del bloque del portal, que se oculta mientras se ve la landing) -->
+    <app-chat-widget *ngIf="showLanding() && !authService.isAuthenticated()" modo="publico"></app-chat-widget>
   `
 })
 export class AppComponent {
@@ -282,6 +291,11 @@ export class AppComponent {
   showLanding = signal<boolean>(true);
 
   isCustomer = computed(() => this.authService.currentUser()?.rol === 'Cliente');
+  // [CU36] el personal con reportes con IA tiene el asistente de gestion.
+  asistenteAdmin = computed(() => {
+    const u = this.authService.currentUser();
+    return !!u && u.rol !== 'Cliente' && !u.permisos.includes(PERMISO_PLATAFORMA) && u.permisos.includes('reporte.ia') && !this.showAuthScreen();
+  });
   esSuperadmin = computed(
     () => this.authService.currentUser()?.permisos.includes(PERMISO_PLATAFORMA) ?? false
   );

@@ -6,13 +6,15 @@ import { ProductOut } from '../../../core/models';
 import { environment } from '../../../../environments/environment';
 import { CANTIDAD_MAXIMA_LINEA } from '../../../core/services/cart.service';
 import { classifyProductDetailError, ProductDetailError } from './product-detail-error';
+import { TiendaService } from '../../../core/services/tienda.service';
+import { CuBadgeComponent } from '../../../shared/components/cu-badge.component';
 
 const API_URL = environment.apiUrl;
 
 @Component({
   selector: 'app-product-detail',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, CuBadgeComponent],
   template: `
     <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4 animate-in fade-in duration-150">
       <div class="bg-[#18191d] max-w-3xl w-full rounded-2xl border border-gray-200 shadow-xl overflow-hidden max-h-[90vh] flex flex-col relative">
@@ -64,7 +66,25 @@ const API_URL = environment.apiUrl;
                 <p class="text-lg font-bold text-indigo-700 mt-0.5">{{ p.venta.toLocaleString() }} Bs</p>
               </div>
 
-              <div class="flex items-center gap-2 mb-3" *ngIf="stripeDisponible">
+              <!-- [CU34] talla agotada: el cliente pide que le avisen cuando vuelva -->
+              <div *ngIf="agotado()" class="p-3 rounded-xl border border-amber-300 space-y-2 mb-3" data-testid="agotado">
+                <p class="text-sm font-bold text-amber-700 flex items-center gap-2">
+                  <span class="material-symbols-outlined text-[18px]">inventory</span> Talla agotada
+                  <app-cu-badge cu="CU34"></app-cu-badge>
+                </p>
+                <ng-container *ngIf="idAviso() === null; else yaPedido">
+                  <p class="text-xs text-gray-600">Te avisamos en la app y por correo apenas vuelva a haber stock.</p>
+                  <button (click)="pedirAviso(p)" [disabled]="enviandoAviso()" class="w-full py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold uppercase tracking-wide cursor-pointer disabled:opacity-50" data-testid="avisame">
+                    Avisame cuando vuelva
+                  </button>
+                </ng-container>
+                <ng-template #yaPedido>
+                  <p class="text-xs text-emerald-700">Listo: te avisaremos cuando vuelva.
+                    <button (click)="cancelarAviso()" class="underline text-gray-500 bg-transparent cursor-pointer">Ya no me interesa</button></p>
+                </ng-template>
+              </div>
+
+              <div class="flex items-center gap-2 mb-3" *ngIf="stripeDisponible && !agotado()">
                 <span class="text-[10px] font-bold uppercase tracking-wider text-gray-400">Cantidad</span>
                 <button
                   type="button"
@@ -81,7 +101,7 @@ const API_URL = environment.apiUrl;
                 >+</button>
               </div>
 
-              <div class="flex flex-wrap gap-2">
+              <div class="flex flex-wrap gap-2" *ngIf="!agotado()">
                 <button
                   (click)="reservar.emit(p)"
                   class="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-xs font-bold uppercase tracking-wide transition-colors shadow-xs cursor-pointer"
@@ -155,6 +175,10 @@ export class ProductDetailComponent implements OnChanges {
   loading = signal<boolean>(true);
   loadError = signal<ProductDetailError | null>(null);
   cantidad = signal<number>(1);
+  // [CU34]
+  agotado = signal<boolean>(false);
+  idAviso = signal<number | null>(null);
+  enviandoAviso = signal<boolean>(false);
 
   // Sin lectura de disponibilidad real por sucursal (el Cliente no tiene
   // `inventario.ver`, ver design.md D5): el selector se acota a un tope fijo
@@ -166,7 +190,26 @@ export class ProductDetailComponent implements OnChanges {
 
   stripeDisponible = !!environment.stripePublishableKey;
 
-  constructor(private http: HttpClient) {}
+  constructor(private http: HttpClient, private tiendaService: TiendaService) {}
+
+  async pedirAviso(p: ProductOut): Promise<void> {
+    this.enviandoAviso.set(true);
+    const aviso = await this.tiendaService.pedirAviso(p.idProducto);
+    this.enviandoAviso.set(false);
+    if (aviso) this.idAviso.set(aviso.idAviso);
+    else await this.cargarEstado(p.idProducto); // pudo volver el stock mientras tanto
+  }
+
+  async cancelarAviso(): Promise<void> {
+    const id = this.idAviso();
+    if (id !== null && (await this.tiendaService.cancelarAviso(id))) this.idAviso.set(null);
+  }
+
+  private async cargarEstado(idProducto: number): Promise<void> {
+    const estado = await this.tiendaService.estadoStock(idProducto);
+    this.agotado.set(estado?.agotado ?? false);
+    this.idAviso.set(estado?.idAviso ?? null);
+  }
 
   ngOnChanges(changes: SimpleChanges) {
     if (changes['idProducto']) {
@@ -203,6 +246,7 @@ export class ProductDetailComponent implements OnChanges {
         this.http.get<ProductOut>(`${API_URL}/api/products/${this.idProducto}`)
       );
       this.producto.set(producto);
+      await this.cargarEstado(producto.idProducto);
     } catch (err: unknown) {
       this.loadError.set(classifyProductDetailError(err));
     } finally {

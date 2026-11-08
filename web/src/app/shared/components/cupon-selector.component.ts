@@ -48,7 +48,7 @@ export class CuponSelectorComponent implements OnChanges {
   @Input() idCliente: number | null = null;
   @Input() bloqueado = false;
   /** Se emite con cada cambio: el cupón elegido (o null) y el total que cobrará el servidor. */
-  @Output() cambio = new EventEmitter<{ idCupon: number | null; total: number; descuento: number }>();
+  @Output() cambio = new EventEmitter<{ idCupon: number | null; total: number; descuento: number; costoEnvio: number | null }>();
 
   readonly cotizacion = signal<Cotizacion | null>(null);
   readonly elegido = signal<number | null>(null);
@@ -76,6 +76,6 @@ export class CuponSelectorComponent implements OnChanges {
     }
     this.cotizacion.set(c);
     this.elegido.set(c ? idCupon : null);
-    if (c) this.cambio.emit({ idCupon, total: c.total, descuento: c.descuento });
+    if (c) this.cambio.emit({ idCupon, total: c.total, descuento: c.descuento, costoEnvio: c.costoEnvio });
   }
 }

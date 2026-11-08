@@ -41,6 +41,7 @@ function manana(): string {
       <div class="flex items-center gap-2 flex-wrap">
         <app-cu-badge cu="CU31" [conNombre]="true"></app-cu-badge>
         <app-cu-badge cu="CU32" [conNombre]="true"></app-cu-badge>
+        <app-cu-badge cu="CU35" [conNombre]="true"></app-cu-badge>
         <div class="flex gap-1 ml-auto">
           <button *ngFor="let f of filtros" (click)="cambiarFiltro(f.id)" class="ys-opcion text-xs" [ngClass]="{ 'ys-opcion-activa': filtro() === f.id }">{{ f.etiqueta }}</button>
           <button (click)="cargar()" class="ys-btn-sec py-1 text-xs" title="Actualizar"><span class="material-symbols-outlined text-[16px]">refresh</span></button>
@@ -54,15 +55,16 @@ function manana(): string {
         <div class="flex items-start justify-between gap-3 flex-wrap">
           <div>
             <p class="text-sm font-bold text-gray-900 flex items-center gap-2">
-              <span class="material-symbols-outlined text-[18px]">{{ v.tipo === 'recojo' ? 'move_to_inbox' : 'local_shipping' }}</span>
-              {{ v.tipo === 'recojo' ? 'Recoger la prenda devuelta' : 'Entregar la prenda nueva' }} · {{ v.codigo }}
+              <span class="material-symbols-outlined text-[18px]">{{ v.tipo === 'recojo' ? 'move_to_inbox' : v.tipo === 'pedido' ? 'shopping_bag' : 'local_shipping' }}</span>
+              {{ titulos[v.tipo] }} · {{ v.codigo }}
             </p>
             <p class="text-xs text-gray-600">{{ v.cliente }} · {{ v.producto }}
               <span *ngIf="v.tipo === 'recojo'">talla {{ v.tallaOriginal || '—' }}</span>
-              <span *ngIf="v.tipo === 'entrega'">→ talla {{ v.tallaNueva || '—' }}</span></p>
+              <span *ngIf="v.tipo === 'entrega'">→ talla {{ v.tallaNueva || '—' }}</span>
+              <span *ngIf="v.tipo === 'pedido'"> · compra en línea</span></p>
             <p class="text-xs text-gray-600">{{ v.direccion }}<span *ngIf="v.referencia"> ({{ v.referencia }})</span> · Tel. {{ v.telefono }}</p>
             <p class="text-[11px] text-gray-400">
-              {{ v.sucursal || 'Sin sucursal' }} · caso {{ etiquetaEstado(v.estadoCaso) }}
+              {{ v.sucursal || 'Sin sucursal' }}<span *ngIf="v.tipo !== 'pedido'"> · caso {{ etiquetaEstado(v.estadoCaso) }}</span>
               <span *ngIf="v.fechaPreferida"> · prefiere {{ v.fechaPreferida | date: 'dd/MM' }}</span>
               <span *ngIf="v.franja && !v.fechaProgramada"> por la {{ franja(v.franja) }}</span>
               · delivery {{ v.costo ? 'Bs ' + v.costo.toFixed(2) : 'sin costo' }}
@@ -94,7 +96,7 @@ function manana(): string {
               <span class="material-symbols-outlined text-[16px]">event</span> {{ v.estado === 'Solicitado' ? 'Programar' : 'Reprogramar' }}
             </button>
             <button *ngIf="v.estado !== 'Solicitado'" (click)="completar(v, false)" class="ys-btn py-1.5" data-testid="completar">
-              <span class="material-symbols-outlined text-[16px]">task_alt</span> {{ v.tipo === 'recojo' ? 'Prenda recogida' : 'Prenda entregada' }}
+              <span class="material-symbols-outlined text-[16px]">task_alt</span> {{ v.tipo === 'recojo' ? 'Prenda recogida' : v.tipo === 'pedido' ? 'Pedido entregado' : 'Prenda entregada' }}
             </button>
             <button *ngIf="v.estado === 'Programado'" (click)="pedirMotivo.set(v)" class="ys-btn-sec py-1.5">No se pudo</button>
             <button (click)="completar(v, true)" class="ys-btn-sec py-1.5" title="El cliente vino a la sucursal">{{ v.tipo === 'recojo' ? 'La trajo a la sucursal' : 'La retiró en la sucursal' }}</button>
@@ -126,6 +128,9 @@ export class ReturnDeliveryComponent implements OnInit {
     { id: '', etiqueta: 'Todos' },
   ];
   readonly filtro = signal('activos');
+  readonly titulos: Record<string, string> = {
+    recojo: 'Recoger la prenda devuelta', entrega: 'Entregar la prenda nueva', pedido: 'Entregar la compra en línea',
+  };
   readonly viajes = signal<ViajeDomicilio[]>([]);
   readonly editando = signal<number | null>(null);
   readonly pedirMotivo = signal<ViajeDomicilio | null>(null);

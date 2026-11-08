@@ -108,7 +108,12 @@ async def cotizar(
         )
     ).scalars().all()
     compras = await cs.compras_validas(session, id_cliente, id_tenant)
+    # [CU35] cuanto cuesta el envio a domicilio en esta tienda (None si no hace envios).
+    from app.services import devoluciones as dv
+
+    politica, _ = await dv.politica_vigente(session, id_tenant)
     salida = {
+        "costoEnvio": float(politica.costoDomicilio) if politica.permiteDomicilio else None,
         "subtotal": float(c.subtotal), "descuento": float(c.descuento), "total": float(c.total),
         "idCupon": payload.idCupon, "cuponesDisponibles": [cs.cupon_out(x) for x in disponibles],
         "compras": compras, "faltan": cs.faltan_para_cupon(compras),
