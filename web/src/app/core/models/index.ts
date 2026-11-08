@@ -305,6 +305,9 @@ export interface Venta {
   idCliente: number;
   idMetPago: number;
   detalles: DetalleVenta[];
+  /** [CU33] cupon usado en esta compra y el que gano con ella. */
+  cuponUsado?: { codigo: string; porcentaje: number; descuento: number } | null;
+  cuponGanado?: { codigo: string; porcentaje: number; vence: string } | null;
 }
 
 export interface MetodoPago {
@@ -332,6 +335,8 @@ export interface VentaIn {
   uuidOperacion?: string;
   /** Hora real en que se hizo la venta en el dispositivo. */
   fechaOperacion?: string;
+  /** [CU33] cupon del 30% (no vale sin conexion). */
+  idCupon?: number | null;
 }
 
 // Línea de ticket en memoria del cliente: nunca se envía tal cual al

@@ -26,6 +26,7 @@ export const CASOS_DE_USO: Record<string, string> = {
   CU30: 'Visualizar dashboard analítico inteligente',
   CU31: 'Recoger a domicilio la prenda devuelta',
   CU32: 'Entregar a domicilio la prenda del cambio',
+  CU33: 'Obtener y usar cupón de descuento por compras',
 };
 
 /**

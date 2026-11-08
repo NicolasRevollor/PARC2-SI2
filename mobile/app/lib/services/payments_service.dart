@@ -27,6 +27,7 @@ class PaymentsService {
     String? concepto,
     String proposito = 'venta',
     int? codigoSucursal,
+    int? idCupon, // [CU33] el cobro ya descuenta el cupon
   }) async {
     final data = await _api.post(
       '/api/payments/intents',
@@ -36,6 +37,7 @@ class PaymentsService {
         if (concepto != null) 'concepto': concepto,
         'proposito': proposito,
         if (codigoSucursal != null) 'codigoSucursal': codigoSucursal,
+        if (idCupon != null) 'idCupon': idCupon,
       },
     ) as Map<String, dynamic>;
     return data;

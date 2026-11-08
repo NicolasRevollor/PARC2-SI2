@@ -486,6 +486,10 @@ async def aplicar_venta(ctx: Contexto, op: OperacionIn, autorizacion: Autorizaci
             id_usuario=ctx.id_usuario, uuid_operacion=str(op.uuidOperacion), fecha=fecha,
         )
     await session.flush()
+    # [CU33] la compra sin conexion tambien suma para el cupon (pero sin conexion no se usa ninguno).
+    from app.services import cupones
+
+    await cupones.registrar_compra(session, id_cliente=id_cliente, id_tenant=ctx.id_tenant, id_venta=venta.idVenta)
     return Resultado(CONFIRMADA, id_servidor=venta.idVenta)
 
 

@@ -180,6 +180,8 @@ class VentaIn(BaseModel):
     # dispositivo y hora real en que se hizo. Reenviar el UUID no duplica.
     uuidOperacion: Optional[UUID] = None
     fechaOperacion: Optional[datetime] = None
+    # [CU33] cupon del 30% que se usa en esta compra (no vale sin conexion).
+    idCupon: Optional[int] = None
 
 
 class DetalleVentaOut(BaseModel):
@@ -203,6 +205,9 @@ class VentaOut(ORMModel):
     estadoSincronizacion: str = "Sincronizada"
     fechaOperacion: Optional[datetime] = None
     fechaSincronizacion: Optional[datetime] = None
+    # [CU33] cupon usado en esta compra y cupon que gano con ella (si completo 3 compras).
+    cuponUsado: Optional[dict] = None
+    cuponGanado: Optional[dict] = None
 
 
 class ReservaIn(BaseModel):
@@ -319,6 +324,9 @@ class PagoIntentIn(BaseModel):
     # requiere codigoSucursal (D2) para el chequeo de stock branch-scoped.
     proposito: Literal["venta", "reserva_deposito"] = "venta"
     codigoSucursal: Optional[int] = None
+    # [CU33] el cobro con tarjeta ya descuenta el cupon (se marca usado recien en la venta).
+    idCupon: Optional[int] = None
+    idCliente: Optional[int] = None  # POS: el cliente dueno del cupon
 
 
 class PagoIntentOut(BaseModel):

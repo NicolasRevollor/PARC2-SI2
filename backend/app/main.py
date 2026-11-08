@@ -32,6 +32,7 @@ from app.routers import (
     reports,
     reportes_generativos,
     domicilio,
+    cupones,
     reservations,
     returns,
     sales,
@@ -151,6 +152,7 @@ for router in (
     caja.router,
     reportes_generativos.router,
     domicilio.router,
+    cupones.router,
     inteligencia.router,
 ):
     app.include_router(router)

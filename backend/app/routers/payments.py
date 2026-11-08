@@ -15,7 +15,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
-from app.models import MetodoPago, Producto
+from app.models import Cliente, MetodoPago, Producto
+from app.services import cupones
+from app.services.tenancy import tenant_actual
 from app.schemas.fase2 import PagoIntentIn, PagoIntentOut, PagoIntentVerificadoOut
 from app.security import require_permiso
 from app.services.disponibilidad import resolver_inventario
@@ -115,6 +117,23 @@ async def create_payment_intent(
             if not producto:
                 raise HTTPException(status_code=400, detail=f"Producto {item.idProducto} inexistente")
             total += Decimal(str(producto.venta)) * item.cantidad
+
+        # [CU33] el cobro ya descuenta el cupon: el mismo calculo que hara la venta.
+        if payload.idCupon is not None:
+            if "venta.ver" in auth.get("permisos", []):
+                if payload.idCliente is None:
+                    raise HTTPException(status_code=400, detail="Indique el cliente dueno del cupon")
+                id_cliente, id_tenant_staff = payload.idCliente, tenant_actual(auth)
+            else:
+                cliente = (await session.execute(select(Cliente).where(Cliente.idUser == int(auth["sub"])))).scalar_one_or_none()
+                if cliente is None:
+                    raise HTTPException(status_code=403, detail="La cuenta no tiene un cliente asociado")
+                id_cliente, id_tenant_staff = cliente.idCliente, None
+            id_tenant = await cupones.tenant_de_los_items(session, payload.items)
+            if id_tenant_staff is not None and id_tenant != id_tenant_staff:
+                raise HTTPException(status_code=400, detail="Las prendas no son de su empresa")
+            cupon = await cupones.cupon_para_compra(session, payload.idCupon, id_cliente=id_cliente, id_tenant=id_tenant)
+            total = (await cupones.cotizar(session, payload.items, cupon)).total
 
         # Stock verificado ANTES de cobrar (D5): branch-agnostico, la misma
         # formula de `create_sale` — ninguna fila individual de `Inventario`

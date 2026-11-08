@@ -6,8 +6,10 @@ import { SalesService } from '../../../core/services/sales.service';
 import { NotificationService } from '../../../core/services/notification.service';
 import { CardPaymentComponent } from '../../../shared/components/card-payment.component';
 import { ReceiptModalComponent } from '../../../shared/components/receipt-modal.component';
+import { CuponSelectorComponent } from '../../../shared/components/cupon-selector.component';
 
-type EstadoCompra = 'iniciando' | 'cobrando' | 'cobrado_sin_venta' | 'comprado' | 'error';
+// [CU33] 'resumen': total de la compra y cupon a usar, antes de cobrar.
+type EstadoCompra = 'resumen' | 'iniciando' | 'cobrando' | 'cobrado_sin_venta' | 'comprado' | 'error';
 
 /**
  * Checkout de compra digital (CU17/CU18, generalizado por CU16 a una o mas
@@ -30,7 +32,7 @@ type EstadoCompra = 'iniciando' | 'cobrando' | 'cobrado_sin_venta' | 'comprado' 
 @Component({
   selector: 'app-purchase-modal',
   standalone: true,
-  imports: [CommonModule, CardPaymentComponent, ReceiptModalComponent],
+  imports: [CommonModule, CardPaymentComponent, ReceiptModalComponent, CuponSelectorComponent],
   template: `
     <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4 animate-in fade-in duration-150">
       <div
@@ -54,6 +56,15 @@ type EstadoCompra = 'iniciando' | 'cobrando' | 'cobrado_sin_venta' | 'comprado' 
         </div>
 
         <div class="p-5 space-y-4">
+          <!-- [CU33] Resumen: total y cupon antes de cobrar -->
+          <div *ngIf="estado() === 'resumen'" class="space-y-3">
+            <app-cupon-selector [items]="items" (cambio)="onCupon($event)"></app-cupon-selector>
+            <p class="flex justify-between text-sm font-bold text-gray-900"><span>Total</span><span data-testid="total-compra">Bs {{ totalAPagar()?.toFixed(2) ?? '…' }}</span></p>
+            <button (click)="iniciarCobro()" [disabled]="totalAPagar() === null"
+                    class="w-full px-4 py-2.5 rounded-lg text-xs font-bold uppercase tracking-wide text-white bg-indigo-600 hover:bg-indigo-700 transition-colors cursor-pointer disabled:opacity-50"
+                    data-testid="pagar">Pagar con tarjeta</button>
+          </div>
+
           <!-- Preparando el cobro (crearIntent en curso) -->
           <div *ngIf="estado() === 'iniciando' && !errorMensaje()" class="py-8 text-center">
             <p class="text-sm text-gray-400">Preparando el cobro…</p>
@@ -113,7 +124,11 @@ export class PurchaseModalComponent implements OnInit {
   @Output() cerrar = new EventEmitter<void>();
   @Output() completada = new EventEmitter<Venta>();
 
-  estado = signal<EstadoCompra>('iniciando');
+  estado = signal<EstadoCompra>('resumen');
+  // [CU33]
+  items: { idProducto: number; cantidad: number }[] = [];
+  idCupon = signal<number | null>(null);
+  totalAPagar = signal<number | null>(null);
   clientSecret = signal<string | null>(null);
   idMetPagoActual = signal<number | null>(null);
   ventaCreada = signal<Venta | null>(null);
@@ -127,7 +142,13 @@ export class PurchaseModalComponent implements OnInit {
   ) {}
 
   ngOnInit(): void {
-    this.iniciarCobro();
+    // Foto fija de los items: el selector de cupones cotiza sobre esta lista.
+    this.items = this.itemsDeLineas();
+  }
+
+  onCupon(e: { idCupon: number | null; total: number }): void {
+    this.idCupon.set(e.idCupon);
+    this.totalAPagar.set(e.total);
   }
 
   // Una sola linea conserva la redaccion original ("Comprar ahora" y
@@ -158,12 +179,14 @@ export class PurchaseModalComponent implements OnInit {
   // POST /api/payments/intents: el servidor valida stock ANTES de crear el
   // intento (Requirement "Stock Verified Before Any Charge") — si no hay
   // stock en ninguna sucursal, devuelve 400 y esta llamada nunca cobra nada.
-  private async iniciarCobro(): Promise<void> {
+  async iniciarCobro(): Promise<void> {
+    this.estado.set('iniciando');
     this.enviando.set(true);
     const intent = await this.paymentsService.crearIntent({
       items: this.itemsDeLineas(),
       claveIntento: crypto.randomUUID(),
       concepto: `Compra en línea — ${this.tituloCompra()}`,
+      idCupon: this.idCupon(),
     });
     this.enviando.set(false);
     if (!intent) {
@@ -217,6 +240,7 @@ export class PurchaseModalComponent implements OnInit {
     const venta = await this.salesService.crearVenta({
       idMetPago,
       items: this.itemsDeLineas(),
+      idCupon: this.idCupon(),
     });
     this.enviando.set(false);
 
@@ -224,6 +248,9 @@ export class PurchaseModalComponent implements OnInit {
       this.ventaCreada.set(venta);
       this.estado.set('comprado');
       this.completada.emit(venta);
+      if (venta.cuponGanado) {
+        this.notificationService.success('¡Ganaste un cupón!', `${venta.cuponGanado.porcentaje}% en tu próxima compra: ${venta.cuponGanado.codigo}`);
+      }
     } else {
       // El idMetPago YA fue cobrado (tarjeta verificada): se retiene para
       // reintentar, nunca se cobra de nuevo (Requirement "Charge Preserved

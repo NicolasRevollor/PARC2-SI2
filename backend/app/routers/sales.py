@@ -1,3 +1,5 @@
+from decimal import Decimal
+
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -5,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.models import (
     Cliente,
+    Cupon,
     DetalleVenta,
     Historial,
     Inventario,
@@ -23,6 +26,7 @@ from app.services.bitacora import registrar_bitacora
 from app.services import caja as caja_srv
 from app.services import sincronizacion as sync
 from app.services import notificaciones as notif
+from app.services import cupones
 from app.services.alcance import alcance_sucursales
 from app.services.tenancy import tenant_actual
 
@@ -72,7 +76,12 @@ async def venta_es_del_tenant(session: AsyncSession, idVenta: int, id_tenant: in
 
 
 async def _serialize_venta(v: Venta, session: AsyncSession, detalles: list[DetalleVenta]) -> VentaOut:
+    # [CU33] cupon usado en la compra y el que se gano con ella.
+    usado = await session.scalar(select(Cupon).where(Cupon.idVentaUso == v.idVenta))
+    ganado = await session.scalar(select(Cupon).where(Cupon.idVentaOrigen == v.idVenta))
     return VentaOut(
+        cuponUsado={"codigo": usado.codigo, "porcentaje": float(usado.porcentaje), "descuento": float(usado.montoDescontado)} if usado else None,
+        cuponGanado={"codigo": ganado.codigo, "porcentaje": float(ganado.porcentaje), "vence": ganado.fechaVencimiento.isoformat()} if ganado else None,
         idVenta=v.idVenta,
         fecha=v.fecha,
         total=float(v.total),
@@ -277,6 +286,19 @@ async def _crear_venta(
                 raise HTTPException(status_code=403, detail="No esta asignado a esa sucursal")
         id_tenant_venta = sucursal.idTenant
 
+    # ==== [CU33] ControlCupones.validarCupon() ==========================
+    cupon = None
+    if payload.idCupon is not None:
+        if payload.uuidOperacion is not None:
+            raise HTTPException(status_code=400, detail="Sin conexion no se pueden usar cupones")
+        cupon = await cupones.cupon_para_compra(session, payload.idCupon, id_cliente=id_cliente, id_tenant=id_tenant_venta)
+        id_tenant_venta = cupon.idTenant
+        for item in payload.items:
+            producto = await session.get(Producto, item.idProducto)
+            if producto is not None and producto.idTenant != cupon.idTenant:
+                raise HTTPException(status_code=400, detail="El cupon es de otra tienda: solo vale para las prendas de esa empresa")
+    total_sin_cupon = 0.0
+
     total = 0.0
     venta = Venta(
         total=0.0,
@@ -337,7 +359,10 @@ async def _crear_venta(
                     ),
                 )
 
-        precio_unitario = float(producto.venta)
+        # [CU33] aplicarDescuento: el precio con cupon queda en el detalle (una devolucion
+        #   reembolsa lo que de verdad se pago).
+        precio_unitario = float(cupones.precio_con_descuento(producto.venta, cupon.porcentaje)) if cupon else float(producto.venta)
+        total_sin_cupon += float(producto.venta) * item.cantidad
         inv.cantidad_actual -= item.cantidad
         total += precio_unitario * item.cantidad
 
@@ -381,7 +406,12 @@ async def _crear_venta(
             ),
         )
 
+    total = round(total, 2)
     venta.total = total
+    # [CU33] marcarUsado y emitirCupon (cada 3 compras, uno nuevo).
+    if cupon is not None:
+        cupones.marcar_usado(cupon, venta.idVenta, Decimal(str(round(total_sin_cupon - total, 2))))
+    await cupones.registrar_compra(session, id_cliente=id_cliente, id_tenant=id_tenant_venta, id_venta=venta.idVenta)
     # [CU20] paso 3: la venta en efectivo del POS entra a la caja abierta de la sucursal.
     if not es_autocompra and metodo.tipo == "Efectivo" and payload.uuidOperacion is None:
         await caja_srv.efectivo_en_linea(
@@ -397,6 +427,7 @@ async def _crear_venta(
     await registrar_bitacora(session, f"Venta {venta.idVenta} creada", int(auth["sub"]), request.client.host if request.client else "0.0.0.0")
     await session.commit()
     await session.refresh(venta)
+    notif.programar_correos(background_tasks)
 
     # CU22: recomendaciones generadas en background, DESPUES del commit —
     # nunca demora la respuesta de la venta, y si Gemini falla la venta ya

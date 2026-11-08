@@ -78,8 +78,30 @@ class Tenant(Base):
     idPlan: Mapped[int] = mapped_column(ForeignKey("plan.idPlan", onupdate="CASCADE"), nullable=False)
     # Migracion 027 ([CU21]): NIT de la empresa contratante.
     nit: Mapped[str | None] = mapped_column(String(20), unique=True)
+    # Migracion 030 ([CU33]): desde cuando cuentan las compras para los cupones.
+    inicioFidelidad: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=_ahora_utc, nullable=False)
 
     plan: Mapped["Plan"] = relationship()
+
+
+# [Modelo de dominio] Paquete "Ventas" -> entidad Cupon  (tabla "cupon")
+# [CU33] Obtener y usar cupon de descuento por compras
+class Cupon(Base):
+    __tablename__ = "cupon"
+
+    idCupon: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    codigo: Mapped[str] = mapped_column(String(20), unique=True, nullable=False)
+    idTenant: Mapped[int] = mapped_column(ForeignKey("tenant.idTenant", ondelete="CASCADE", onupdate="CASCADE"), nullable=False)
+    idCliente: Mapped[int] = mapped_column(ForeignKey("Cliente.idCliente", ondelete="CASCADE", onupdate="CASCADE"), nullable=False)
+    numero: Mapped[int] = mapped_column(Integer, nullable=False)
+    porcentaje: Mapped[float] = mapped_column(Numeric(5, 2), default=30.00, nullable=False)
+    estado: Mapped[str] = mapped_column(String(10), default="Disponible", nullable=False)
+    fechaEmision: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=_ahora_utc, nullable=False)
+    fechaVencimiento: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+    idVentaOrigen: Mapped[int | None] = mapped_column(ForeignKey("Venta.idVenta", ondelete="SET NULL", onupdate="CASCADE"))
+    idVentaUso: Mapped[int | None] = mapped_column(ForeignKey("Venta.idVenta", ondelete="SET NULL", onupdate="CASCADE"), unique=True)
+    montoDescontado: Mapped[float] = mapped_column(Numeric(12, 2), default=0.00, nullable=False)
+    fechaUso: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
 
 
 # [Modelo de dominio] Paquete "Plataforma SaaS" -> entidad Suscripcion  (tabla "suscripcion")

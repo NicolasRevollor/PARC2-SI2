@@ -24,6 +24,9 @@ export interface PagoIntentIn {
   // activa la rama de anticipo del 10% en el backend; requiere codigoSucursal.
   proposito?: 'venta' | 'reserva_deposito';
   codigoSucursal?: number;
+  /** [CU33] el cobro ya descuenta el cupon. `idCliente` solo lo manda el POS. */
+  idCupon?: number | null;
+  idCliente?: number | null;
 }
 
 export interface PagoIntentOut {

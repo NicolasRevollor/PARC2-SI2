@@ -9,6 +9,7 @@ import '../providers/app_state.dart';
 import '../services/api_client.dart';
 import '../services/payments_service.dart';
 import '../services/sales_service.dart';
+import '../services/cupones_service.dart';
 
 /// Mobile Fase 2: checkout real. Misma maquina de estados que
 /// `web/src/app/features/customer/checkout/purchase-modal.component.ts`
@@ -28,6 +29,24 @@ class _CartModalState extends State<CartModal> {
   final ApiClient _api = ApiClient();
   late final PaymentsService _paymentsService = PaymentsService(_api);
   late final SalesService _salesService = SalesService(_api);
+  late final CuponesService _cuponesService = CuponesService(_api);
+
+  // [CU33] cotizacion del carrito con o sin cupon (la calcula el servidor).
+  Map<String, dynamic>? _cotizacion;
+  int? _idCupon;
+  String? _firmaCotizada;
+
+  Future<void> _cotizar(List<Map<String, dynamic>> items, int? idCupon) async {
+    try {
+      final c = await _cuponesService.cotizar(items, idCupon);
+      if (mounted) setState(() {
+        _cotizacion = c;
+        _idCupon = idCupon;
+      });
+    } on ApiException {
+      if (idCupon != null) await _cotizar(items, null);
+    }
+  }
 
   _CheckoutStatus _status = _CheckoutStatus.idle;
   String? _errorMessage;
@@ -63,7 +82,7 @@ class _CartModalState extends State<CartModal> {
     });
 
     try {
-      final intent = await _paymentsService.crearIntent(items, concepto: 'Compra YouShop');
+      final intent = await _paymentsService.crearIntent(items, concepto: 'Compra YouShop', idCupon: _idCupon);
       final clientSecret = intent['clientSecret'] as String;
 
       await Stripe.instance.initPaymentSheet(
@@ -119,7 +138,7 @@ class _CartModalState extends State<CartModal> {
 
   Future<void> _crearVenta(AppState appState, int idMetPago, List<Map<String, dynamic>> items) async {
     try {
-      final venta = await _salesService.crearVenta(idMetPago, items);
+      final venta = await _salesService.crearVenta(idMetPago, items, idCupon: _idCupon);
       appState.clearCart();
       setState(() {
         _status = _CheckoutStatus.idle;
@@ -172,10 +191,19 @@ class _CartModalState extends State<CartModal> {
             Text('Venta #${venta['idVenta']}', style: GoogleFonts.sourceSerif4(fontSize: 14)),
             if (fechaTexto.isNotEmpty) Text(fechaTexto, style: GoogleFonts.outfit(fontSize: 12, color: const Color(0xFF7B776E))),
             const SizedBox(height: 8),
+            if (venta['cuponUsado'] != null)
+              Text('Cupón ${venta['cuponUsado']['codigo']}: −Bs ${(venta['cuponUsado']['descuento'] as num).toStringAsFixed(2)}',
+                  style: GoogleFonts.outfit(fontSize: 12, color: Colors.green.shade800)),
             Text(
               'Total: \$${(venta['total'] as num).toStringAsFixed(2)}',
               style: GoogleFonts.sourceSerif4(fontSize: 16, fontWeight: FontWeight.bold),
             ),
+            // [CU33] la compra completo 3: gano un cupon.
+            if (venta['cuponGanado'] != null) ...[
+              const SizedBox(height: 8),
+              Text('¡Ganaste un cupón del ${(venta['cuponGanado']['porcentaje'] as num).toInt()}%! Código ${venta['cuponGanado']['codigo']}',
+                  style: GoogleFonts.outfit(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.green.shade800)),
+            ],
           ],
         ),
         actions: [
@@ -186,6 +214,46 @@ class _CartModalState extends State<CartModal> {
         ],
       ),
     );
+  }
+
+  List<Widget> _seccionCupones(AppState appState, bool bloqueado) {
+    final items = _itemsDesdeCarrito(appState);
+    if (items == null || items.isEmpty) return const [];
+    final firma = items.map((i) => '${i['idProducto']}x${i['cantidad']}').join(',');
+    if (firma != _firmaCotizada) {
+      _firmaCotizada = firma;
+      WidgetsBinding.instance.addPostFrameCallback((_) => _cotizar(items, _idCupon));
+    }
+    final c = _cotizacion;
+    if (c == null) return const [];
+    final cupones = (c['cuponesDisponibles'] as List).cast<Map<String, dynamic>>();
+    final verde = Colors.green.shade800;
+    return [
+      if (cupones.isEmpty)
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Text('Te ${c['faltan'] == 1 ? 'falta 1 compra' : 'faltan ${c['faltan']} compras'} para ganar un cupón del 30%.',
+              style: GoogleFonts.outfit(fontSize: 11, color: const Color(0xFF7B776E))),
+        ),
+      if (cupones.isNotEmpty)
+        Wrap(spacing: 6, children: [
+          for (final cu in cupones)
+            ChoiceChip(
+              label: Text('${cu['codigo']} · ${(cu['porcentaje'] as num).toInt()}%', style: GoogleFonts.outfit(fontSize: 11)),
+              selected: _idCupon == cu['idCupon'],
+              onSelected: bloqueado ? null : (s) => _cotizar(items, s ? cu['idCupon'] as int : null),
+            ),
+        ]),
+      if ((c['descuento'] as num) > 0)
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+            Text('Cupón', style: GoogleFonts.outfit(fontSize: 13, color: verde)),
+            Text('−Bs ${(c['descuento'] as num).toStringAsFixed(2)} · total Bs ${(c['total'] as num).toStringAsFixed(2)}',
+                style: GoogleFonts.outfit(fontSize: 13, fontWeight: FontWeight.bold, color: verde)),
+          ]),
+        ),
+    ];
   }
 
   @override
@@ -295,6 +363,8 @@ class _CartModalState extends State<CartModal> {
                         style: GoogleFonts.outfit(fontSize: 11, color: Colors.red.shade700),
                       ),
                     ),
+                  // [CU33] cupones del cliente para esta tienda
+                  ..._seccionCupones(appState, cobrando || cobradoSinVenta),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [

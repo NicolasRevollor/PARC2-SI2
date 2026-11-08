@@ -309,7 +309,27 @@ Ya no quedan notas de crédito en pantallas ni en datos: la venta del cambio por
 "Valor de prenda devuelta" (antes "Crédito por devolución"), las pantallas dicen "Valor a favor" y la venta sin
 conexión ya no menciona la nota de crédito como medio de pago.
 
+## Cupones de descuento por compras (CU33)
+
+Migración: `backend/database/migrations/030_cupones_fidelidad.sql`.
+
+**Regla:** cada 3 compras de un cliente en una empresa, el sistema le emite un cupón del **30%** para su siguiente
+compra de cualquier producto en esa empresa. Vence a los 90 días y sirve una sola vez.
+
+| Paso | Dónde |
+|---|---|
+| Contar compras (desde que arrancó el programa; una compra devuelta por completo no cuenta) | `services/cupones.py` → `compras_validas()` |
+| Emitir el cupón al completar 3, 6, 9… compras y avisar al cliente (app y correo) | `cupones.registrar_compra()`, llamado desde `routers/sales.py` (en línea y POS) y `services/operaciones_offline.py` (sin conexión) |
+| Ver cupones y cuánto falta | Web: Perfil del cliente (`features/customer/profile`). Móvil: Perfil → **Mis cupones** (`screens/cupones_screen.dart`). API `GET /api/cupones/mios` |
+| Elegir el cupón al pagar | Web: checkout (`features/customer/checkout/purchase-modal.component.ts`) y POS (`features/pos/pos.component.ts`) con `shared/components/cupon-selector.component.ts`. Móvil: carrito (`screens/cart_modal.dart`). API `POST /api/cupones/cotizar` |
+| Validar y aplicar | `cupones.cupon_para_compra()` (es del cliente, de esta empresa, disponible, no vencido; la fila se bloquea para que dos compras no lo usen) y `precio_con_descuento()` |
+| Cobrar con el descuento | `routers/payments.py` (tarjeta) y `routers/sales.py` (venta). El precio con descuento queda en cada línea de la venta, así una devolución reembolsa lo que de verdad se pagó |
+| Marcar usado | `cupones.marcar_usado()` |
+
+Sin conexión las compras **suman** para el próximo cupón, pero **no se puede usar** un cupón (no hay cómo validarlo).
+El conteo arranca el día en que se corre la migración: el historial anterior no genera cupones.
+
 ## Modelo de dominio (sección 3.1) y diagrama de clases de la BD
 
-Las 41 entidades (36 hasta la migración 026, más `PagoSuscripcion`, `ReporteSolicitud`, `ReporteExportacion` y `ModeloIA` de la 027 y `EntregaDomicilio` de la 028) están en `backend/app/models/__init__.py`. Arriba de cada clase dice su paquete:
+Las 42 entidades (36 hasta la migración 026, más `PagoSuscripcion`, `ReporteSolicitud`, `ReporteExportacion` y `ModeloIA` de la 027, `EntregaDomicilio` de la 028 y `Cupon` de la 030) están en `backend/app/models/__init__.py`. Arriba de cada clase dice su paquete:
 busca, por ejemplo, `entidad Devolucion` o `Paquete "Posventa"`.

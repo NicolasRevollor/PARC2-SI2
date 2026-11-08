@@ -53,10 +53,17 @@ import type { Venta } from '../../core/models';
             </tbody>
           </table>
 
+          <!-- [CU33] -->
+          <p *ngIf="venta.cuponUsado as c" class="text-xs text-emerald-700 flex justify-between">
+            <span>Cupón {{ c.codigo }} ({{ c.porcentaje }}%)</span><span>− Bs {{ c.descuento.toFixed(2) }}</span>
+          </p>
           <div class="border-t border-dashed border-slate-300 pt-3 flex items-center justify-between">
             <span class="text-sm font-bold text-slate-900 uppercase tracking-wide">Total</span>
             <span class="text-lg font-bold text-violet-600">Bs {{ venta.total.toFixed(2) }}</span>
           </div>
+          <p *ngIf="venta.cuponGanado as g" class="text-xs font-semibold text-emerald-700 border border-emerald-300 rounded-lg p-2 text-center" data-testid="cupon-ganado">
+            ¡Ganó un cupón del {{ g.porcentaje }}%! Código {{ g.codigo }}, válido hasta el {{ g.vence | date: 'dd/MM/yyyy' }} en su próxima compra.
+          </p>
         </div>
 
         <div class="p-4 pt-0 flex items-center justify-end gap-2 print:hidden">

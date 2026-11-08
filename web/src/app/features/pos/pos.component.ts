@@ -19,6 +19,7 @@ import { CajaService } from '../../core/services/caja.service';
 import { OfflineSaleComponent } from '../offline/offline-sale.component';
 import { CardPaymentComponent } from '../../shared/components/card-payment.component';
 import { ReceiptModalComponent } from '../../shared/components/receipt-modal.component';
+import { CuponSelectorComponent } from '../../shared/components/cupon-selector.component';
 import { environment } from '../../../environments/environment';
 
 const API_URL = environment.apiUrl;
@@ -40,7 +41,7 @@ type Modalidad = 'efectivo' | 'tarjeta';
 @Component({
   selector: 'app-pos',
   standalone: true,
-  imports: [CommonModule, FormsModule, CardPaymentComponent, ReceiptModalComponent, OfflineSaleComponent],
+  imports: [CommonModule, FormsModule, CardPaymentComponent, ReceiptModalComponent, OfflineSaleComponent, CuponSelectorComponent],
   template: `
     <!-- [CU14] Sin conexion la venta presencial se registra en el dispositivo. -->
     <div *ngIf="!offlineSync.enLinea()" class="p-6 md:p-8">
@@ -181,6 +182,11 @@ type Modalidad = 'efectivo' | 'tarjeta';
           <span class="text-base font-bold text-gray-900">Bs {{ subtotalIndicativo().toFixed(2) }}</span>
         </div>
       </div>
+
+      <!-- [CU33] Cupones del cliente: cada 3 compras, 30% en la siguiente -->
+      <app-cupon-selector *ngIf="selectedCliente() !== null && itemsTicket().length > 0"
+                          [items]="itemsTicket()" [idCliente]="selectedCliente()" [bloqueado]="estado() !== 'ticket'"
+                          (cambio)="onCupon($event)"></app-cupon-selector>
 
       <!-- Elección de modalidad de pago -->
       <div
@@ -325,6 +331,16 @@ export class PosComponent implements OnInit {
   subtotalIndicativo = computed(() =>
     this.ticketLines().reduce((acc, l) => acc + l.precioUnitario * l.cantidad, 0)
   );
+
+  // [CU33] Una sola lista por cambio del ticket (el selector cotiza cuando cambia).
+  itemsTicket = computed(() => this.ticketLines().map(l => ({ idProducto: l.idProducto, cantidad: l.cantidad })));
+  idCupon = signal<number | null>(null);
+  totalConCupon = signal<number | null>(null);
+
+  onCupon(e: { idCupon: number | null; total: number }): void {
+    this.idCupon.set(e.idCupon);
+    this.totalConCupon.set(e.idCupon ? e.total : null);
+  }
 
   // Bloqueadas solo cuando ya existe un idMetPago cobrado a la espera de
   // venta: la sucursal sigue editable (permite reintentar en otra), las
@@ -485,7 +501,7 @@ export class PosComponent implements OnInit {
 
     this.enviando.set(true);
     this.estado.set('cobrando');
-    const metodo = await this.salesService.crearMetodoEfectivo(this.subtotalIndicativo());
+    const metodo = await this.salesService.crearMetodoEfectivo(this.totalConCupon() ?? this.subtotalIndicativo());
     if (!metodo) {
       this.enviando.set(false);
       this.estado.set('ticket');
@@ -493,6 +509,9 @@ export class PosComponent implements OnInit {
     }
     this.idMetPagoActual.set(metodo.idMetPago);
     this.montoCobrado.set(metodo.monto);
+    // intentarVenta() no hace nada si "enviando" sigue activo: sin esto el cobro en
+    // efectivo quedaba registrado pero la venta nunca se creaba.
+    this.enviando.set(false);
     await this.intentarVenta();
   }
 
@@ -531,6 +550,8 @@ export class PosComponent implements OnInit {
       items: this.ticketLines().map(l => ({ idProducto: l.idProducto, cantidad: l.cantidad })),
       claveIntento: crypto.randomUUID(),
       concepto: 'Venta presencial (POS)',
+      idCupon: this.idCupon(),
+      idCliente: this.selectedCliente(),
     });
     this.enviando.set(false);
     if (!intent) {
@@ -588,6 +609,7 @@ export class PosComponent implements OnInit {
       idMetPago,
       codigoSucursal,
       items: this.ticketLines().map(l => ({ idProducto: l.idProducto, cantidad: l.cantidad })),
+      idCupon: this.idCupon(),
     });
     this.enviando.set(false);
 
@@ -617,6 +639,8 @@ export class PosComponent implements OnInit {
 
   private resetearTicket(): void {
     this.ticketLines.set([]);
+    this.idCupon.set(null);
+    this.totalConCupon.set(null);
     this.modalidad.set(null);
     this.estado.set('ticket');
     this.idMetPagoActual.set(null);
