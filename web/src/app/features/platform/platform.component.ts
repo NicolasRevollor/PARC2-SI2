@@ -3,7 +3,8 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { PlatformService } from '../../core/services/platform.service';
 import { TenantService } from '../../core/services/tenant.service';
-import { EmpresaIn, EmpresaOut } from '../../core/models';
+import { EmpresaCreada, EmpresaIn, EmpresaOut } from '../../core/models';
+import { CuBadgeComponent } from '../../shared/components/cu-badge.component';
 
 /**
  * Consola de plataforma del superadministrador (migración 016): ve y gestiona
@@ -14,7 +15,7 @@ import { EmpresaIn, EmpresaOut } from '../../core/models';
 @Component({
   selector: 'app-platform',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, CuBadgeComponent],
   template: `
     <div class="p-6 md:p-8 space-y-6 max-w-[1400px] mx-auto animate-in fade-in duration-200">
 
@@ -22,6 +23,7 @@ import { EmpresaIn, EmpresaOut } from '../../core/models';
         <div>
           <span class="text-[10px] font-bold uppercase tracking-widest text-indigo-600">Superadministrador</span>
           <h1 class="text-xl font-bold text-gray-900 mt-0.5">Empresas suscritas</h1>
+          <app-cu-badge cu="CU21" [conNombre]="true" class="block mt-1"></app-cu-badge>
           <p class="text-xs text-gray-500 mt-1">
             Todas las organizaciones que operan sobre la plataforma: plan, consumo y estado de la suscripción.
           </p>
@@ -98,7 +100,7 @@ import { EmpresaIn, EmpresaOut } from '../../core/models';
                       <span class="material-symbols-outlined text-[16px]">close</span>
                     </button>
                   </div>
-                  <p class="text-[10px] text-gray-400 font-mono">{{ e.tenant.slug }} · desde {{ e.tenant.fechaAlta | date: 'dd/MM/yyyy' }}</p>
+                  <p class="text-[10px] text-gray-400 font-mono">{{ e.tenant.slug }}{{ e.tenant.nit ? ' · NIT ' + e.tenant.nit : '' }} · desde {{ e.tenant.fechaAlta | date: 'dd/MM/yyyy' }}</p>
                 </td>
                 <td class="px-5 py-3 text-gray-600">{{ e.adminCorreo || '—' }}</td>
                 <td class="px-5 py-3">
@@ -108,17 +110,19 @@ import { EmpresaIn, EmpresaOut } from '../../core/models';
                     <option *ngFor="let p of tenantService.planes()" [ngValue]="p.codigo">
                       {{ p.nombre }} ({{ p.precioMensual.toLocaleString() }} Bs)
                     </option>
+                    <option *ngIf="!planOfrecido(e.plan.codigo)" [ngValue]="e.plan.codigo">{{ e.plan.nombre }} (desactivado)</option>
                   </select>
                 </td>
                 <td class="px-5 py-3 text-right font-mono text-gray-700">{{ e.uso.sucursales }} / {{ tenantService.formatearLimite(e.plan.maxSucursales) }}</td>
                 <td class="px-5 py-3 text-right font-mono text-gray-700">{{ e.uso.usuarios }} / {{ tenantService.formatearLimite(e.plan.maxUsuarios) }}</td>
                 <td class="px-5 py-3 text-right font-mono text-gray-700">{{ e.uso.productos }} / {{ tenantService.formatearLimite(e.plan.maxProductos) }}</td>
                 <td class="px-5 py-3">
+                  <!-- El estado de la suscripcion se administra en "Suscripciones" (CU22). -->
                   <span class="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border"
                         [ngClass]="e.tenant.estado === 'Activo'
                           ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                           : 'bg-rose-50 text-rose-600 border-rose-200'">
-                    {{ e.tenant.estado }}
+                    {{ e.suscripcion?.etiqueta || e.tenant.estado }}
                   </span>
                 </td>
                 <td class="px-5 py-3 text-right whitespace-nowrap">
@@ -126,13 +130,10 @@ import { EmpresaIn, EmpresaOut } from '../../core/models';
                           class="p-1.5 mr-1 rounded-lg text-indigo-600 hover:bg-indigo-50 bg-transparent border-0 cursor-pointer disabled:opacity-40 align-middle">
                     <span class="material-symbols-outlined text-[18px]">backup</span>
                   </button>
-                  <button *ngIf="e.tenant.idTenant !== 1"
-                          (click)="alternarEstado(e)" [disabled]="procesando() === e.tenant.idTenant"
-                          class="px-3 py-1.5 rounded-lg text-[11px] font-bold uppercase tracking-wide border transition-colors cursor-pointer disabled:opacity-50"
-                          [ngClass]="e.tenant.estado === 'Activo'
-                            ? 'border-rose-200 text-rose-600 hover:bg-rose-50'
-                            : 'border-emerald-200 text-emerald-700 hover:bg-emerald-50'">
-                    {{ e.tenant.estado === 'Activo' ? 'Suspender' : 'Reactivar' }}
+                  <button *ngIf="e.tenant.idTenant !== 1" (click)="reenviar(e)" [disabled]="procesando() === e.tenant.idTenant"
+                          title="Reenviar la activacion del administrador (CU21 alt. 3)"
+                          class="px-3 py-1.5 rounded-lg text-[11px] font-bold uppercase tracking-wide border border-gray-200 text-gray-600 hover:bg-gray-50 cursor-pointer disabled:opacity-50">
+                    Reenviar activación
                   </button>
                   <span *ngIf="e.tenant.idTenant === 1" class="text-[10px] uppercase tracking-wide text-gray-400">Operadora</span>
                 </td>
@@ -155,55 +156,84 @@ import { EmpresaIn, EmpresaOut } from '../../core/models';
         <div class="mb-5">
           <span class="text-[10px] font-bold tracking-wider text-indigo-600 uppercase">Nueva suscripción</span>
           <h3 class="text-lg font-bold text-gray-900 mt-1">Dar de alta una empresa</h3>
-          <p class="text-xs text-gray-500 mt-1">Se crea la empresa y su administrador inicial en un solo paso.</p>
+          <p class="text-xs text-gray-500 mt-1">Se crean en un solo paso la empresa, su suscripción, su administrador y la política de devoluciones por defecto.</p>
         </div>
 
         <div class="space-y-4">
+          <div>
+            <label class="text-xs font-bold text-gray-700 uppercase tracking-wide">Razón social</label>
+            <input type="text" [(ngModel)]="alta.nombre" (ngModelChange)="sugerirSlug()" placeholder="Boutique Ejemplo S.R.L." name="nombre"
+                   class="w-full mt-1 px-3.5 py-2 bg-gray-50 border rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-indigo-500 focus:outline-none" [ngClass]="claseCampo('nombre')" />
+          </div>
           <div class="grid grid-cols-2 gap-3">
             <div>
-              <label class="text-xs font-bold text-gray-700 uppercase tracking-wide">Nombre</label>
-              <input type="text" [(ngModel)]="alta.nombre" (ngModelChange)="sugerirSlug()" placeholder="Boutique Ejemplo"
-                     class="w-full mt-1 px-3.5 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-indigo-500 focus:outline-none" />
+              <label class="text-xs font-bold text-gray-700 uppercase tracking-wide">NIT</label>
+              <input type="text" [(ngModel)]="alta.nit" placeholder="1234567019" name="nit" class="w-full mt-1 px-3.5 py-2 bg-gray-50 border rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-indigo-500 focus:outline-none" [ngClass]="claseCampo('nit')" />
             </div>
             <div>
               <label class="text-xs font-bold text-gray-700 uppercase tracking-wide">Identificador</label>
-              <input type="text" [(ngModel)]="alta.slug" placeholder="boutique-ejemplo"
-                     class="w-full mt-1 px-3.5 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-900 font-mono focus:ring-2 focus:ring-indigo-500 focus:outline-none" />
+              <input type="text" [(ngModel)]="alta.slug" placeholder="boutique-ejemplo" name="slug" class="w-full mt-1 px-3.5 py-2 bg-gray-50 border rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-indigo-500 focus:outline-none" [ngClass]="claseCampo('slug')" />
             </div>
           </div>
 
           <div>
             <label class="text-xs font-bold text-gray-700 uppercase tracking-wide">Plan</label>
-            <select [(ngModel)]="alta.codigoPlan"
-                    class="w-full mt-1 px-3.5 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+            <select [(ngModel)]="alta.codigoPlan" name="plan" class="w-full mt-1 px-3.5 py-2 bg-gray-50 border rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-indigo-500 focus:outline-none" [ngClass]="claseCampo('codigoPlan')">
               <option *ngFor="let p of tenantService.planes()" [ngValue]="p.codigo">
                 {{ p.nombre }} — {{ p.precioMensual.toLocaleString() }} Bs/mes
               </option>
             </select>
           </div>
-
-          <div class="pt-2 border-t border-gray-100">
-            <p class="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-3">Administrador inicial</p>
-            <div class="space-y-3">
-              <input type="text" [(ngModel)]="alta.adminNombre" placeholder="Nombre completo"
-                     class="w-full px-3.5 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-indigo-500 focus:outline-none" />
-              <input type="email" [(ngModel)]="alta.adminCorreo" placeholder="admin@empresa.com"
-                     class="w-full px-3.5 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-indigo-500 focus:outline-none" />
-              <input type="password" [(ngModel)]="alta.adminPassword" placeholder="Contraseña (mín. 10, mayúscula, número y símbolo)"
-                     class="w-full px-3.5 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-indigo-500 focus:outline-none" />
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="text-xs font-bold text-gray-700 uppercase tracking-wide">Inicio de la suscripción</label>
+              <input type="date" [(ngModel)]="alta.fechaInicio" name="inicio" class="w-full mt-1 px-3.5 py-2 bg-gray-50 border rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-indigo-500 focus:outline-none" [ngClass]="claseCampo('fechaInicio')" />
+            </div>
+            <div>
+              <label class="text-xs font-bold text-gray-700 uppercase tracking-wide">Vencimiento</label>
+              <input type="date" [(ngModel)]="alta.fechaVencimiento" name="vence" class="w-full mt-1 px-3.5 py-2 bg-gray-50 border rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-indigo-500 focus:outline-none" [ngClass]="claseCampo('fechaVencimiento')" />
             </div>
           </div>
+          <p *ngIf="fechasInvalidas()" class="text-xs text-rose-600 -mt-2">La fecha de vencimiento debe ser posterior a la de inicio.</p>
 
-          <button (click)="crear()" [disabled]="!puedeCrear() || guardando()"
+          <div class="pt-2 border-t border-gray-100">
+            <p class="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-3">Administrador de la empresa</p>
+            <div class="space-y-3">
+              <input type="text" [(ngModel)]="alta.adminNombre" placeholder="Nombre completo" name="adminNombre" class="w-full mt-1 px-3.5 py-2 bg-gray-50 border rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-indigo-500 focus:outline-none" [ngClass]="claseCampo('adminNombre')" />
+              <input type="email" [(ngModel)]="alta.adminCorreo" placeholder="admin@empresa.com" name="adminCorreo" class="w-full mt-1 px-3.5 py-2 bg-gray-50 border rounded-lg text-sm text-gray-900 focus:ring-2 focus:ring-indigo-500 focus:outline-none" [ngClass]="claseCampo('adminCorreo')" />
+              <p class="text-[11px] text-gray-500">Recibirá un correo para crear su contraseña: nadie más la conoce.</p>
+            </div>
+          </div>
+          <p *ngIf="errorAlta()" class="text-xs text-rose-600">{{ errorAlta() }}</p>
+
+          <button (click)="crear()" [disabled]="!puedeCrear() || guardando()" data-testid="crear-empresa"
                   class="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white rounded-lg text-xs font-bold uppercase tracking-wide transition-colors shadow-xs">
             {{ guardando() ? 'Creando…' : 'Crear empresa' }}
           </button>
         </div>
       </div>
     </div>
+
+    <!-- [CU21] pasos 5-6: resultado del alta y activacion del administrador -->
+    <div *ngIf="resultado() as r" class="ys-modal">
+      <div class="ys-modal-caja max-w-lg ys-tarjeta space-y-3">
+        <h3 class="text-lg font-bold text-gray-900">{{ r.empresa.tenant.nombre }} quedó registrada</h3>
+        <p class="text-xs text-gray-600">Plan {{ r.empresa.plan.nombre }} · vence el {{ r.empresa.suscripcion?.fechaVencimiento | date: 'dd/MM/yyyy' }}</p>
+        <p *ngIf="r.correoEnviado" class="text-sm text-emerald-600">Se envió el correo de activación a {{ r.empresa.adminCorreo }}.</p>
+        <div *ngIf="!r.correoEnviado" class="space-y-2">
+          <p class="text-sm text-amber-700">El correo no se pudo enviar. Entregue este enlace al administrador (vence en 72 horas):</p>
+          <textarea readonly rows="3" class="ys-campo font-mono text-[11px]" data-testid="enlace-activacion">{{ r.enlaceActivacion }}</textarea>
+          <button (click)="copiar(r.enlaceActivacion)" class="ys-btn-sec">Copiar enlace</button>
+        </div>
+        <button (click)="resultado.set(null)" class="ys-btn w-full">Listo</button>
+      </div>
+    </div>
   `
 })
 export class PlatformComponent implements OnInit {
+  readonly resultado = signal<EmpresaCreada | null>(null);
+  readonly errorAlta = signal<string | null>(null);
+  readonly campoError = signal<string | null>(null);
   /** idTenant de la empresa cuyo nombre se está editando (null: ninguna). */
   readonly editandoNombre = signal<number | null>(null);
   nombreEditado = '';
@@ -225,11 +255,42 @@ export class PlatformComponent implements OnInit {
   }
 
   private altaVacia(): EmpresaIn {
-    return { nombre: '', slug: '', codigoPlan: 'basico', adminNombre: '', adminCorreo: '', adminPassword: '' };
+    const hoy = new Date();
+    const vence = new Date(hoy.getFullYear(), hoy.getMonth() + 1, hoy.getDate());
+    const iso = (d: Date) => d.toLocaleDateString('sv');
+    return {
+      nombre: '', nit: '', slug: '', codigoPlan: 'basico', fechaInicio: iso(hoy), fechaVencimiento: iso(vence),
+      adminNombre: '', adminCorreo: '',
+    };
+  }
+
+  claseCampo(campo: string): string {
+    return this.campoError() === campo ? 'border-rose-500' : 'border-gray-200';
+  }
+
+  fechasInvalidas(): boolean {
+    return !!this.alta.fechaInicio && !!this.alta.fechaVencimiento && this.alta.fechaVencimiento <= this.alta.fechaInicio;
+  }
+
+  planOfrecido(codigo: string): boolean {
+    return this.tenantService.planes().some(p => p.codigo === codigo);
+  }
+
+  copiar(texto: string | null): void {
+    if (texto) void navigator.clipboard?.writeText(texto);
+  }
+
+  async reenviar(empresa: EmpresaOut): Promise<void> {
+    this.procesando.set(empresa.tenant.idTenant);
+    const r = await this.platformService.reenviarActivacion(empresa.tenant.idTenant);
+    this.procesando.set(null);
+    if (r) this.resultado.set({ ...r, empresa });
   }
 
   abrirAlta(): void {
     this.alta = this.altaVacia();
+    this.errorAlta.set(null);
+    this.campoError.set(null);
     this.mostrarAlta.set(true);
   }
 
@@ -242,16 +303,21 @@ export class PlatformComponent implements OnInit {
 
   puedeCrear(): boolean {
     const a = this.alta;
-    return !!(a.nombre.trim() && /^[a-z0-9]+(-[a-z0-9]+)*$/.test(a.slug) && a.codigoPlan
-      && a.adminNombre.trim() && a.adminCorreo.includes('@') && a.adminPassword.length >= 10);
+    return !!(a.nombre.trim() && /^[0-9]{5,}(-[0-9A-Za-z]+)?$/.test(a.nit) && /^[a-z0-9]+(-[a-z0-9]+)*$/.test(a.slug) && a.codigoPlan
+      && !this.fechasInvalidas() && a.adminNombre.trim() && a.adminCorreo.includes('@'));
   }
 
   async crear(): Promise<void> {
     if (!this.puedeCrear()) return;
     this.guardando.set(true);
-    const ok = await this.platformService.crearEmpresa(this.alta);
+    const { creada, campo, error } = await this.platformService.crearEmpresa(this.alta);
     this.guardando.set(false);
-    if (ok) this.mostrarAlta.set(false);
+    this.campoError.set(campo);
+    this.errorAlta.set(error);
+    if (creada) {
+      this.mostrarAlta.set(false);
+      this.resultado.set(creada);
+    }
   }
 
   async cambiarPlan(empresa: EmpresaOut, codigo: string): Promise<void> {
@@ -293,14 +359,4 @@ export class PlatformComponent implements OnInit {
     this.procesando.set(null);
   }
 
-  async alternarEstado(empresa: EmpresaOut): Promise<void> {
-    const nuevo = empresa.tenant.estado === 'Activo' ? 'Suspendido' : 'Activo';
-    if (nuevo === 'Suspendido'
-        && !confirm(`¿Suspender ${empresa.tenant.nombre}? Sus usuarios no podrán iniciar sesión.`)) {
-      return;
-    }
-    this.procesando.set(empresa.tenant.idTenant);
-    await this.platformService.cambiarEstado(empresa.tenant.idTenant, nuevo);
-    this.procesando.set(null);
-  }
 }

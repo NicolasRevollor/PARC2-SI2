@@ -46,3 +46,12 @@ jobs:
           echo "$respuesta"
           # Falla el job (y GitHub avisa por correo) si alguna empresa no se pudo respaldar.
           echo "$respuesta" | python3 -c "import json,sys; r=json.load(sys.stdin); sys.exit(1 if r['fallidos'] else 0)"
+
+      # [CU22] alternativo 3: cada dia se avisa a las empresas que vencen pronto y
+      # se pasan a periodo de gracia o a suspendidas las que ya vencieron.
+      - name: Revisar vencimientos de las suscripciones
+        if: always()
+        run: |
+          curl -fsS --max-time 120 -X POST \
+            "${{ secrets.API_URL }}/api/platform/suscripciones/cron" \
+            -H "X-Backup-Secret: ${{ secrets.BACKUP_CRON_SECRET }}"

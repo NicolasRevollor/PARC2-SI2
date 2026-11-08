@@ -206,9 +206,10 @@ import { hasDigit, hasLower, hasSpecial, hasUpper, isStrong } from '../../shared
         <!-- Paso 2: Ingresar nueva contraseña -->
         <div *ngIf="recoveryStep() === 2">
           <div class="mb-5">
-            <span class="text-[10px] font-bold tracking-wider text-[#ff8da1] uppercase font-mono">Nueva Contraseña</span>
-            <h3 class="font-headline text-lg text-white mt-1">Establezca su Contraseña</h3>
-            <p class="text-xs text-[#a48b8c] mt-1">Ingrese y confirme su nueva contraseña.</p>
+            <!-- [CU21] [CU24] El enlace de activación usa este mismo formulario. -->
+            <span class="text-[10px] font-bold tracking-wider text-[#ff8da1] uppercase font-mono">{{ activacion() ? 'Activación de cuenta' : 'Nueva Contraseña' }}</span>
+            <h3 class="font-headline text-lg text-white mt-1">{{ activacion() ? 'Active su cuenta' : 'Establezca su Contraseña' }}</h3>
+            <p class="text-xs text-[#a48b8c] mt-1">{{ activacion() ? 'Defina la contraseña con la que va a ingresar. El enlace sirve una sola vez.' : 'Ingrese y confirme su nueva contraseña.' }}</p>
           </div>
           <div class="space-y-4">
             <div>
@@ -265,8 +266,8 @@ import { hasDigit, hasLower, hasSpecial, hasUpper, isStrong } from '../../shared
             <div class="w-14 h-14 rounded-full bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center mx-auto mb-4">
               <span class="material-symbols-outlined text-[28px] text-emerald-400">check_circle</span>
             </div>
-            <h3 class="font-headline text-lg text-white">Contraseña Actualizada</h3>
-            <p class="text-xs text-[#a48b8c] mt-2">Su contraseña ha sido restablecida exitosamente. Ahora puede iniciar sesión con su nueva contraseña.</p>
+            <h3 class="font-headline text-lg text-white">{{ activacion() ? 'Cuenta activada' : 'Contraseña Actualizada' }}</h3>
+            <p class="text-xs text-[#a48b8c] mt-2">{{ activacion() ? 'Su cuenta quedó activa. Ahora puede iniciar sesión con su correo y la contraseña que definió.' : 'Su contraseña ha sido restablecida exitosamente. Ahora puede iniciar sesión con su nueva contraseña.' }}</p>
             <button (click)="showForgotModal.set(false)" class="mt-5 w-full bg-gradient-to-r from-[#7a1c30] to-[#9b1d3d] text-white py-3 rounded-full text-xs font-bold tracking-wide uppercase transition-all hover:brightness-110 shadow-lg shadow-[#7a1c30]/40 cursor-pointer border-0">
               Cerrar
             </button>
@@ -332,6 +333,8 @@ export class LoginComponent implements OnInit {
   showRequestModal = signal<boolean>(false);
 
   recoveryStep = signal<number>(1);
+  /** [CU21] [CU24] El enlace trae &activar=1: es una cuenta nueva, no una recuperación. */
+  activacion = signal<boolean>(false);
   recoveryEmail = '';
   recoveryToken = '';
   recoveryNewPassword = '';
@@ -349,6 +352,7 @@ export class LoginComponent implements OnInit {
     const token = params.get('reset_token');
     if (token) {
       this.recoveryToken = token;
+      this.activacion.set(params.get('activar') === '1');
       this.recoveryNewPassword = '';
       this.recoveryConfirmPassword = '';
       this.recoveryStep.set(2);
@@ -378,6 +382,7 @@ export class LoginComponent implements OnInit {
   }
 
   openForgotPassword() {
+    this.activacion.set(false);
     this.recoveryStep.set(1);
     this.recoveryEmail = '';
     this.recoveryNewPassword = '';

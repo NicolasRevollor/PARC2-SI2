@@ -123,15 +123,27 @@ class Politica:
     diasRetiroCambio: int = 7
     costoAjusteMedida: Decimal = Decimal("20")
     condiciones: str = CONDICIONES_POR_DEFECTO
+    # [CU31] [CU32]: la empresa ofrece recoger la prenda y entregar la nueva en el domicilio.
+    permiteDomicilio: bool = True
+    costoDomicilio: Decimal = Decimal("15")
 
 
 CAMPOS_POLITICA = tuple(f.name for f in fields(Politica))
 POLITICA_PLATAFORMA = Politica()
 
 
+def politica_inicial(id_tenant: int) -> PoliticaDevolucion:
+    """[CU21] paso 5: la empresa nueva arranca con la politica de la plataforma (version 1)."""
+    valores = {
+        k: list(v) if isinstance(v, tuple) else v
+        for k, v in ((campo, getattr(POLITICA_PLATAFORMA, campo)) for campo in CAMPOS_POLITICA)
+    }
+    return PoliticaDevolucion(idTenant=id_tenant, version=1, **valores)
+
+
 def politica_desde_fila(fila: PoliticaDevolucion) -> Politica:
     valores = {campo: getattr(fila, campo) for campo in CAMPOS_POLITICA}
-    for campo in ("recargoValor", "umbralAutorizacion", "descuentoDeterioroPct", "costoAjusteMedida"):
+    for campo in ("recargoValor", "umbralAutorizacion", "descuentoDeterioroPct", "costoAjusteMedida", "costoDomicilio"):
         valores[campo] = Decimal(str(valores[campo]))
     valores["categoriasNoRetornables"] = tuple(valores["categoriasNoRetornables"] or ())
     return Politica(**valores)
@@ -167,6 +179,8 @@ def errores_politica(p: Politica) -> dict[str, str]:
         errores["umbralAutorizacion"] = "El umbral de autorizacion no puede ser negativo"
     if p.costoAjusteMedida < 0:
         errores["costoAjusteMedida"] = "El costo del ajuste no puede ser negativo"
+    if p.costoDomicilio < 0:
+        errores["costoDomicilio"] = "El costo del delivery no puede ser negativo"
     if not 1 <= p.diasEntregaEnLinea <= 60:
         errores["diasEntregaEnLinea"] = "El plazo para entregar la prenda debe estar entre 1 y 60 dias"
     if not 1 <= p.diasRetiroCambio <= 60:
@@ -410,9 +424,13 @@ def destino_por_condicion(condicion: str) -> str:
 #   calcularCredito(pagado - recargo - deterioro) -> credito(monto) -> mostrarCredito(monto)
 # Secuencia CU6: lifeline "CalcularMontoReembolso" -> calcularMonto(pagado - recargo - deterioro) -> monto y medio de reembolso()
 # ==================================================================
-def credito_del_caso(valor, recargo, descuento) -> Decimal:
-    """Valor a favor del cliente: lo que pago, menos recargo y deterioro."""
-    return max(dinero(Decimal(str(valor)) - Decimal(str(recargo)) - Decimal(str(descuento))), Decimal("0.00"))
+def credito_del_caso(valor, recargo, descuento, costo_domicilio=0) -> Decimal:
+    """Valor de la prenda devuelta a favor del cliente: lo que pago, menos recargo,
+    deterioro y el delivery que le toca pagar ([CU31] [CU32])."""
+    return max(
+        dinero(Decimal(str(valor)) - Decimal(str(recargo)) - Decimal(str(descuento)) - Decimal(str(costo_domicilio))),
+        Decimal("0.00"),
+    )
 
 
 # --- CU4/CU5: cambios ------------------------------------------------------------
@@ -621,7 +639,7 @@ def supera_umbral(monto, politica: Politica) -> bool:
 
 # Estados en los que el caso ocupa unidades de la venta: una solicitud abierta
 # tambien cuenta, para que no se pida dos veces la misma prenda.
-ESTADOS_ABIERTOS = ("PendienteEntrega", "EnInspeccion", "EnRevision", "Aprobada", "CambioPendiente")
+ESTADOS_ABIERTOS = ("PendienteEntrega", "EnInspeccion", "EnRevision", "Aprobada", "CambioPendiente", "EnvioDomicilio")
 ESTADOS_QUE_OCUPAN = ESTADOS_ABIERTOS + ("Completada",)
 
 
@@ -1147,10 +1165,10 @@ async def _crear_venta_cambio(
     # Paso 1: total de los productos nuevos al precio de hoy.
     total = dinero(sum(Decimal(str(p.venta)) * cantidad for p, cantidad, _ in productos))
     pago = MetodoPago(
-        tipo=f"Credito por devolucion {caso.codigo}",
+        tipo=f"Valor de prenda devuelta {caso.codigo}",
         estado="Activo",
         monto=min(credito, total),
-        origen="credito_devolucion",
+        origen="prenda_devuelta",
         consumidoEn=datetime.now(timezone.utc),
     )
     session.add(pago)
@@ -1333,11 +1351,18 @@ async def resolver_caso(
     puede_autorizar: bool,
 ) -> None:
     """Ejecuta la resolucion de un caso aprobado en la transaccion del llamador."""
+    from app.services import domicilio
+
     producto = linea.producto
+    # [CU32]: si el cliente eligio delivery, la prenda nueva se le lleva a su casa;
+    #   ese viaje se suma antes de calcular cuanto le queda a favor.
+    a_domicilio = caso.modalidadEntrega == "domicilio" and res.tipo in TIPOS_CAMBIO
+    if a_domicilio:
+        domicilio.cargar_costo_entrega(caso, politica)
     # Paso 1: lo que el cliente pago por esas prendas.
     valor = dinero(linea.precio_pagado * caso.cantidad)
     # Paso 2: credito a favor del cliente = lo que pago - recargo por demora - descuento por deterioro.
-    credito = credito_del_caso(valor, caso.recargo, caso.descuentoDeterioro)
+    credito = credito_del_caso(valor, caso.recargo, caso.descuentoDeterioro, caso.costoDomicilio)
     es_defecto = caso.condicion == "defectuosa"
     tipo = res.tipo
     # Paso 3: si la empresa no devuelve dinero (y no es defecto), no se puede elegir reembolso.
@@ -1462,6 +1487,10 @@ async def resolver_caso(
     elif tipo == "devolucion":
         await reembolsar(session, caso, venta, credito, res.metodo_reembolso, res.cuenta_destino, id_usuario)
 
+    if a_domicilio:
+        # [CU32]: la prenda nueva sale con el repartidor; el caso se completa cuando la entrega.
+        await domicilio.preparar_entrega(session, caso, politica)
+        return
     caso.estado = "Completada"
     caso.fechaResolucion = datetime.now(timezone.utc)
     # Aviso al cliente de que su solicitud termino (y si se le devolvio plata, con su nota de devolucion).
@@ -1489,7 +1518,7 @@ async def completar_cambio_pendiente(
 ) -> None:
     """CU8 paso 5: el cliente retira la prenda trasladada o apartada (o la
     reposicion de la lista de espera); tambien puede preferir que le devuelvan el dinero."""
-    credito = credito_del_caso(dinero(linea.precio_pagado * caso.cantidad), caso.recargo, caso.descuentoDeterioro)
+    credito = credito_del_caso(dinero(linea.precio_pagado * caso.cantidad), caso.recargo, caso.descuentoDeterioro, caso.costoDomicilio)
     # Si el cliente ya no quiere esperar: se le devuelve el dinero. Si viene a retirar: se le entrega la prenda.
     if accion != "entregar":
         await liberar_reserva(session, caso)
@@ -1513,6 +1542,12 @@ async def completar_cambio_pendiente(
         else:
             await entregar_prenda(session, caso, inv, caso.cantidad)
         await _liquidar(session, caso, venta, dinero(caso.diferencia), res, politica, id_usuario)
+        if caso.modalidadEntrega == "domicilio":
+            # [CU32]: la prenda que llego se le envia a su casa.
+            from app.services import domicilio
+
+            await domicilio.preparar_entrega(session, caso, politica)
+            return
     caso.estado = "Completada"
     caso.fechaResolucion = datetime.now(timezone.utc)
     await avisar_resultado(session, caso)
@@ -1541,7 +1576,8 @@ async def aplicar_vencimientos(session: AsyncSession, *, id_tenant: int | None =
             select(Devolucion)
             .where(
                 *filtros,
-                ((Devolucion.estado == "PendienteEntrega") & (Devolucion.fechaLimiteEntrega < ahora))
+                ((Devolucion.estado == "PendienteEntrega") & (Devolucion.fechaLimiteEntrega < ahora)
+                 & (Devolucion.modalidadEntrega == "sucursal"))
                 | ((Devolucion.estado == "CambioPendiente") & (Devolucion.fechaLimiteRetiro < ahora)),
             )
             .with_for_update(skip_locked=True)
@@ -1565,7 +1601,7 @@ async def aplicar_vencimientos(session: AsyncSession, *, id_tenant: int | None =
         venta = await session.get(Venta, caso.idVenta)
         linea = await linea_de_venta(session, venta, caso.idProducto)
         precio = linea.precio_pagado if linea else Decimal("0")
-        credito = credito_del_caso(dinero(precio * caso.cantidad), caso.recargo, caso.descuentoDeterioro)
+        credito = credito_del_caso(dinero(precio * caso.cantidad), caso.recargo, caso.descuentoDeterioro, caso.costoDomicilio)
         caso.tipo, caso.idProductoNuevo, caso.tallaNueva, caso.diferencia = "devolucion", None, None, Decimal("0.00")
         caso.estado = "Completada"
         # El dinero queda pendiente: el personal lo entrega (efectivo/QR) o reintenta la tarjeta.

@@ -119,7 +119,7 @@ export class PrepareDeviceComponent implements OnInit {
     this.sucursal.set(prep?.codigoSucursal ?? null);
     if (prep) this.sucursales.set([{ codigoSucursal: prep.codigoSucursal, nombre: prep.sucursalNombre } as InventoryLocation]);
     if (!this.offlineSync.enLinea()) return;
-    firstValueFrom(this.http.get<InventoryLocation[]>(`${API_URL}/api/inventory/locations`))
+    firstValueFrom(this.http.get<InventoryLocation[]>(`${API_URL}/api/sync/sucursales`))
       .then(l => {
         this.sucursales.set(l);
         if (this.sucursal() === null && l.length === 1) this.sucursal.set(l[0].codigoSucursal);

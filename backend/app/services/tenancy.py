@@ -23,7 +23,21 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
 from app.models import Plan, Producto, Rol, Sucursal, Tenant, Usuario, TENANT_POR_DEFECTO
+from app.schemas.tenancy import SuscripcionOut
 from app.security import get_current_payload
+
+
+def suscripcion_out(sus) -> SuscripcionOut | None:
+    """Suscripcion con su estado visible (CU22 paso 2)."""
+    if sus is None:
+        return None
+    from app.services.suscripciones import describir
+
+    info = describir(sus)
+    return SuscripcionOut.model_validate(sus).model_copy(update={
+        "estadoVisible": info.clave, "etiqueta": info.etiqueta, "diasRestantes": info.dias_restantes,
+        "finGracia": info.fin_gracia, "fechaSuspension": sus.fechaSuspension, "motivoSuspension": sus.motivoSuspension,
+    })
 
 # Valor centinela de los limites del plan: -1 == sin tope.
 ILIMITADO = -1
@@ -87,6 +101,7 @@ async def cargar_contexto(session: AsyncSession, id_tenant: int) -> ContextoTena
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="El tenant no existe")
 
     tenant, plan = fila
+    # [CU25] pasos 2 y 3.
     if tenant.estado != "Activo":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -116,11 +131,12 @@ def require_feature(flag: str):
 
     async def dependency(ctx: ContextoTenant = Depends(contexto_actual)) -> ContextoTenant:
         if not ctx.permite(flag):
+            # [CU25] flujo alternativo 1.
             raise HTTPException(
                 status_code=status.HTTP_402_PAYMENT_REQUIRED,
                 detail=(
-                    f"El plan {ctx.plan.nombre} no incluye esta funcionalidad. "
-                    "Actualiza tu suscripcion para habilitarla."
+                    f"Funcionalidad no incluida en su plan ({ctx.plan.nombre}). "
+                    "Mejore su plan para habilitarla."
                 ),
             )
         return ctx
@@ -135,7 +151,8 @@ async def contar_recurso(session: AsyncSession, recurso: str, id_tenant: int) ->
         # El cupo de usuarios del plan es de PERSONAL: los clientes que se
         # registran en la vitrina no consumen licencias (sin esto, unas pocas
         # altas de clientes bloqueaban crear cajeros o bajar de plan).
-        stmt = stmt.join(Rol, Rol.codigoRol == Usuario.codigoRol).where(Rol.nombreRol != "Cliente")
+        stmt = stmt.join(Rol, Rol.codigoRol == Usuario.codigoRol).where(Rol.nombreRol != "Cliente", Usuario.activo.is_(True))
+        # [CU24]: un empleado dado de baja libera su licencia.
     total = await session.scalar(stmt)
     return int(total or 0)
 
@@ -172,6 +189,7 @@ async def exigir_cupo(session: AsyncSession, ctx: ContextoTenant, recurso: str) 
     if limite == ILIMITADO:
         return
 
+    # [CU25] paso 5 y flujo alternativo 2.
     usados = await contar_recurso(session, recurso, ctx.tenant.idTenant)
     if usados >= limite:
         raise HTTPException(

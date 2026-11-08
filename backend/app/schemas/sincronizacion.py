@@ -16,6 +16,8 @@ class OperacionIn(BaseModel):
     tipo: TipoOperacion
     # Lo que el dispositivo cree: se compara con el token, nunca se usa como fuente (RNF02).
     idTenant: int | None = None
+    # Quien la registro en el dispositivo ([CU24] alt. 3): puede no ser quien la envia.
+    idUsuario: int | None = None
     codigoSucursal: int | None = None
     fechaOperacion: datetime
     dependeDe: UUID | None = None

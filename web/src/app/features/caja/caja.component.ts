@@ -162,7 +162,7 @@ export class CajaComponent implements OnInit {
     if (prep) this.sucursales.set([{ codigoSucursal: prep.codigoSucursal, nombre: prep.sucursalNombre } as InventoryLocation]);
     const inicial = local?.codigoSucursal ?? prep?.codigoSucursal ?? null;
     if (this.offlineSync.enLinea()) {
-      const lista = await firstValueFrom(this.http.get<InventoryLocation[]>(`${API_URL}/api/inventory/locations`)).catch(() => []);
+      const lista = await firstValueFrom(this.http.get<InventoryLocation[]>(`${API_URL}/api/sync/sucursales`)).catch(() => []);
       if (lista.length) this.sucursales.set(lista);
       const codigo = inicial ?? (lista.length === 1 ? lista[0].codigoSucursal : null);
       if (codigo !== null) await this.elegirSucursal(codigo);

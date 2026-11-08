@@ -2,9 +2,14 @@ import { Injectable, signal } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 import {
+  Activacion,
   BitacoraEntrada,
+  EmpresaCreada,
   EmpresaIn,
   EmpresaOut,
+  PagoSuscripcion,
+  PlanAdmin,
+  PlanIn,
   EstadoTenant,
   FiltrosBitacora,
   Paginado,
@@ -40,8 +45,16 @@ export class PlatformService {
     private notificationService: NotificationService,
   ) {}
 
+  /** El backend marca algunos errores con el campo (CU21 alt. 1): {campo, mensaje}. */
   private detalle(err: unknown, porDefecto: string): string {
-    return (err as { error?: { detail?: string } })?.error?.detail || porDefecto;
+    const detalle = (err as { error?: { detail?: string | { mensaje?: string } } })?.error?.detail;
+    if (detalle && typeof detalle === 'object') return detalle.mensaje || porDefecto;
+    return detalle || porDefecto;
+  }
+
+  campoConError(err: unknown): string | null {
+    const detalle = (err as { error?: { detail?: { campo?: string } } })?.error?.detail;
+    return detalle && typeof detalle === 'object' ? detalle.campo ?? null : null;
   }
 
   async cargar(): Promise<void> {
@@ -77,17 +90,98 @@ export class PlatformService {
     }
   }
 
-  async crearEmpresa(payload: EmpresaIn): Promise<boolean> {
+  /** [CU21]: devuelve la empresa creada, o el error con su campo para marcarlo en el formulario. */
+  async crearEmpresa(payload: EmpresaIn): Promise<{ creada: EmpresaCreada | null; campo: string | null; error: string | null }> {
     try {
       const creada = await firstValueFrom(
-        this.http.post<EmpresaOut>(`${API_URL}/api/platform/tenants`, payload)
+        this.http.post<EmpresaCreada>(`${API_URL}/api/platform/tenants`, payload)
       );
-      this.empresasSignal.update((lista) => [...lista, creada]);
+      this.empresasSignal.update((lista) => [...lista, creada.empresa]);
       await this.refrescarResumen();
-      this.notificationService.success('Empresa creada', `${creada.tenant.nombre} ya puede operar con el plan ${creada.plan.nombre}.`);
+      this.notificationService.success('Empresa creada', `${creada.empresa.tenant.nombre} quedó activa con el plan ${creada.empresa.plan.nombre}.`);
+      return { creada, campo: null, error: null };
+    } catch (err) {
+      return { creada: null, campo: this.campoConError(err), error: this.detalle(err, 'Revisá los datos e intentá de nuevo.') };
+    }
+  }
+
+  async reenviarActivacion(idTenant: number): Promise<Activacion | null> {
+    try {
+      return await firstValueFrom(this.http.post<Activacion>(`${API_URL}/api/platform/tenants/${idTenant}/activacion`, {}));
+    } catch (err) {
+      this.notificationService.error('No se pudo reenviar', this.detalle(err, 'Intentá de nuevo.'));
+      return null;
+    }
+  }
+
+  // --- [CU22] Suscripciones ----------------------------------------------
+
+  async suscripciones(): Promise<EmpresaOut[]> {
+    try {
+      const lista = await firstValueFrom(this.http.get<EmpresaOut[]>(`${API_URL}/api/platform/suscripciones`));
+      this.empresasSignal.set(lista);
+      return lista;
+    } catch (err) {
+      this.notificationService.error('Error', this.detalle(err, 'No se pudieron cargar las suscripciones.'));
+      return [];
+    }
+  }
+
+  async accionSuscripcion(idTenant: number, accion: 'renovar' | 'suspender' | 'reactivar' | 'cancelar', cuerpo: object = {}): Promise<boolean> {
+    try {
+      const empresa = await firstValueFrom(this.http.post<EmpresaOut>(`${API_URL}/api/platform/tenants/${idTenant}/${accion}`, cuerpo));
+      this.reemplazar(empresa);
+      await this.refrescarResumen();
+      this.notificationService.success('Suscripción actualizada', `${empresa.tenant.nombre}: ${empresa.suscripcion?.etiqueta ?? ''}`);
       return true;
     } catch (err) {
-      this.notificationService.error('No se pudo crear la empresa', this.detalle(err, 'Revisá los datos e intentá de nuevo.'));
+      this.notificationService.error('No se pudo actualizar', this.detalle(err, 'Intentá de nuevo.'));
+      return false;
+    }
+  }
+
+  pagos(idTenant: number): Promise<PagoSuscripcion[]> {
+    return firstValueFrom(this.http.get<PagoSuscripcion[]>(`${API_URL}/api/platform/tenants/${idTenant}/pagos`)).catch(() => []);
+  }
+
+  async revisarVencimientos(): Promise<{ porVencer: number; enGracia: number; suspendidas: number } | null> {
+    try {
+      return await firstValueFrom(this.http.post<{ porVencer: number; enGracia: number; suspendidas: number }>(`${API_URL}/api/platform/suscripciones/revisar`, {}));
+    } catch (err) {
+      this.notificationService.error('Error', this.detalle(err, 'No se pudo revisar los vencimientos.'));
+      return null;
+    }
+  }
+
+  // --- [CU23] Planes -----------------------------------------------------
+
+  planes(): Promise<PlanAdmin[]> {
+    return firstValueFrom(this.http.get<PlanAdmin[]>(`${API_URL}/api/platform/planes`)).catch((err) => {
+      this.notificationService.error('Error', this.detalle(err, 'No se pudieron cargar los planes.'));
+      return [];
+    });
+  }
+
+  async guardarPlan(plan: PlanIn, idPlan: number | null): Promise<{ plan: PlanAdmin | null; campo: string | null; error: string | null }> {
+    try {
+      const guardado = await firstValueFrom(
+        idPlan === null
+          ? this.http.post<PlanAdmin>(`${API_URL}/api/platform/planes`, plan)
+          : this.http.put<PlanAdmin>(`${API_URL}/api/platform/planes/${idPlan}`, plan)
+      );
+      this.notificationService.success('Plan guardado', guardado.nombre);
+      return { plan: guardado, campo: null, error: null };
+    } catch (err) {
+      return { plan: null, campo: this.campoConError(err), error: this.detalle(err, 'Revisá los valores.') };
+    }
+  }
+
+  async eliminarPlan(idPlan: number): Promise<boolean> {
+    try {
+      await firstValueFrom(this.http.delete(`${API_URL}/api/platform/planes/${idPlan}`));
+      return true;
+    } catch (err) {
+      this.notificationService.error('No se pudo eliminar', this.detalle(err, 'Intentá de nuevo.'));
       return false;
     }
   }

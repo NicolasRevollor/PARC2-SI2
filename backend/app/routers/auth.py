@@ -175,6 +175,12 @@ async def login(payload: LoginRequest, request: Request, session: AsyncSession =
             detail="La suscripcion de tu organizacion esta suspendida. Contacta al administrador de la plataforma.",
         )
 
+    # [CU24] flujo alternativo 3: un empleado dado de baja ya no entra.
+    if not usuario.activo:
+        await registrar_bitacora(session, "Intento de inicio de sesion de un usuario dado de baja", usuario.idUser, ip)
+        await session.commit()
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Su cuenta fue dada de baja")
+
     usuario.intentosFallidos = 0
     usuario.bloqueadoHasta = None
     usuario.vecesBloqueado = 0
@@ -253,8 +259,11 @@ async def refresh_sincronizacion(payload: RefreshRequest, session: AsyncSession 
     decoded = decode_token(payload.refresh_token)
     if not es_refresh_token(decoded):
         raise HTTPException(status_code=401, detail="Refresh token invalido")
-    usuario = await session.get(Usuario, int(decoded["sub"]))
-    if not usuario or usuario.requiereActivacion:
+    try:
+        usuario = await session.get(Usuario, int(decoded["sub"]))
+    except (KeyError, TypeError, ValueError):
+        usuario = None
+    if not usuario or usuario.requiereActivacion or not usuario.activo:
         raise HTTPException(status_code=401, detail="Usuario no existe")
     claims = await build_user_claims(session, usuario)
     claims = {**claims, "permisosSync": claims.get("permisos", []), "permisos": ["sync.enviar"]}
@@ -280,6 +289,8 @@ async def refresh(payload: RefreshRequest, session: AsyncSession = Depends(get_d
     # Mismas puertas que el login: sin esto, una cuenta bloqueada por un
     # administrador o una empresa suspendida seguian operando hasta 7 dias
     # renovando el token.
+    if not usuario.activo:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Su cuenta fue dada de baja")
     if usuario.requiereActivacion:
         raise HTTPException(status_code=status.HTTP_423_LOCKED, detail=MENSAJE_REQUIERE_ACTIVACION)
     estado_tenant = await session.scalar(
@@ -421,6 +432,11 @@ async def reset_password(payload: ResetPasswordRequest, request: Request, sessio
     usuario.intentosFallidos = 0
     usuario.bloqueadoHasta = None
     ip = request.client.host if request.client else "0.0.0.0"
-    await registrar_bitacora(session, "Contrasena restablecida mediante recuperacion", usuario.idUser, ip)
+    # [CU21] [CU24]: el primer cambio con el enlace de activacion activa la cuenta.
+    activacion = not usuario.cuentaActivada
+    usuario.cuentaActivada = True
+    await registrar_bitacora(
+        session, "Cuenta activada" if activacion else "Contrasena restablecida mediante recuperacion", usuario.idUser, ip
+    )
     await session.commit()
     return PasswordChangedResponse(message="Contrasena restablecida correctamente")

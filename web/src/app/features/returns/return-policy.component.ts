@@ -107,6 +107,17 @@ import { PoliticaDevolucion } from '../../core/models';
             </div>
           </section>
 
+          <!-- [CU31] [CU32] delivery: primero se recoge la prenda, se revisa y despues se entrega la nueva -->
+          <section class="space-y-3">
+            <p class="ys-etiqueta">Recojo y entrega a domicilio</p>
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <label class="flex items-center gap-2 text-xs text-gray-700 mt-5"><input type="checkbox" [(ngModel)]="p.permiteDomicilio" data-testid="permite-domicilio" /> Ofrecer delivery</label>
+              <label *ngIf="p.permiteDomicilio" class="text-xs text-gray-700">Costo de cada viaje (Bs)
+                <input type="number" min="0" [(ngModel)]="p.costoDomicilio" class="ys-campo" /></label>
+              <p *ngIf="p.permiteDomicilio" class="text-[11px] text-gray-500 sm:mt-5">Se descuenta del valor de la prenda devuelta. Es gratis si la prenda tiene defecto de fábrica o la tienda se equivocó.</p>
+            </div>
+          </section>
+
           <label class="block text-xs text-gray-700">Condiciones que ve el cliente
             <textarea rows="3" maxlength="1000" [(ngModel)]="p.condiciones" class="ys-campo"></textarea></label>
         </fieldset>

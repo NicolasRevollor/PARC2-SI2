@@ -18,6 +18,8 @@ import {
   SolicitudDevolucionIn,
   StockSucursal,
   VentaDevolucion,
+  NotaDevolucion,
+  ViajeDomicilio,
 } from '../models';
 import { NotificationService } from './notification.service';
 import { environment } from '../../../environments/environment';
@@ -53,6 +55,7 @@ export const ETIQUETA_ESTADO: Record<string, string> = {
   EnRevision: 'En revisión',
   Aprobada: 'Aprobada',
   CambioPendiente: 'Cambio pendiente',
+  EnvioDomicilio: 'En camino a domicilio',
   Completada: 'Completada',
   Rechazada: 'Rechazada',
   Anulada: 'Anulada',
@@ -104,7 +107,11 @@ export function textoPlazo(horas: number): string {
 }
 
 /** Estados en los que el caso sigue abierto (bandeja de trabajo). */
-export const ESTADOS_ABIERTOS = 'PendienteEntrega,EnInspeccion,EnRevision,Aprobada,CambioPendiente';
+export const ESTADOS_ABIERTOS = 'PendienteEntrega,EnInspeccion,EnRevision,Aprobada,CambioPendiente,EnvioDomicilio';
+
+/** [CU31] [CU32] */
+export const ETIQUETA_FRANJA: Record<string, string> = { manana: 'Mañana (9 a 13)', tarde: 'Tarde (14 a 19)' };
+export const ETIQUETA_VIAJE: Record<string, string> = { recojo: 'Recojo', entrega: 'Entrega' };
 
 /**
  * Devoluciones y cambios (CU1–CU11 del documento del segundo parcial).
@@ -298,8 +305,66 @@ export class ReturnsService {
       firstValueFrom(this.http.post<DevolucionOut>(`${API_URL}/api/returns/solicitudes`, payload)),
       'No se pudo enviar la solicitud.',
     );
-    if (caso) this.notificationService.success('Solicitud enviada', `Llevá la prenda a la sucursal con el código ${caso.codigo}.`);
+    if (caso) {
+      this.notificationService.success(
+        'Solicitud enviada',
+        caso.modalidadEntrega === 'domicilio'
+          ? `Te avisaremos el día en que el repartidor pase a recoger la prenda (${caso.codigo}).`
+          : `Llevá la prenda a la sucursal con el código ${caso.codigo}.`,
+      );
+    }
     return caso;
+  }
+
+  // --- [CU31] [CU32] Recojo y entrega a domicilio -------------------------
+  // Control: backend/app/routers/domicilio.py -> services/domicilio.py (ControlDelivery)
+
+  async viajes(filtros: { estado?: string; tipo?: string } = {}): Promise<ViajeDomicilio[]> {
+    const params: Record<string, string> = {};
+    if (filtros.estado) params['estado'] = filtros.estado;
+    if (filtros.tipo) params['tipo'] = filtros.tipo;
+    return (
+      (await this.pedir(
+        firstValueFrom(this.http.get<ViajeDomicilio[]>(`${API_URL}/api/returns/domicilio`, { params })),
+        'No se pudieron cargar los recojos y entregas.',
+      )) ?? []
+    );
+  }
+
+  async viajesDelCaso(idDevolucion: number): Promise<ViajeDomicilio[]> {
+    return (
+      (await this.pedir(
+        firstValueFrom(this.http.get<ViajeDomicilio[]>(`${API_URL}/api/returns/domicilio/caso/${idDevolucion}`)),
+        '',
+        false,
+      )) ?? []
+    );
+  }
+
+  /** programar | completar | fallido | cancelar */
+  async accionViaje(idEntrega: number, accion: 'programar' | 'completar' | 'fallido' | 'cancelar', cuerpo: object = {}): Promise<ViajeDomicilio | null> {
+    return this.pedir(
+      firstValueFrom(this.http.post<ViajeDomicilio>(`${API_URL}/api/returns/domicilio/${idEntrega}/${accion}`, cuerpo)),
+      'No se pudo actualizar el viaje.',
+    );
+  }
+
+  // --- [CU7] Nota de devolucion -------------------------------------------
+  // Control: backend/app/services/nota_devolucion.py (GenerarNotaDevolucion, ExportarNotaDevolucion)
+
+  notaDevolucion(idDevolucion: number): Promise<NotaDevolucion | null> {
+    return this.pedir(
+      firstValueFrom(this.http.get<NotaDevolucion>(`${API_URL}/api/returns/${idDevolucion}/nota-devolucion`)),
+      'No se pudo generar la nota de devolución.',
+    );
+  }
+
+  async abrirNotaPdf(idDevolucion: number): Promise<void> {
+    const blob = await this.pedir(
+      firstValueFrom(this.http.get(`${API_URL}/api/returns/${idDevolucion}/nota-devolucion.pdf`, { responseType: 'blob' })),
+      'No se pudo generar el PDF de la nota.',
+    );
+    if (blob) window.open(URL.createObjectURL(blob), '_blank');
   }
 
   // [CU2] [CU3] POST /api/returns/fotos

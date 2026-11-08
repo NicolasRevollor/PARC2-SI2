@@ -9,8 +9,9 @@ import { ReturnHistoryComponent } from './return-history.component';
 import { ReturnRefundsComponent } from './return-refunds.component';
 import { ReturnInventoryComponent } from './return-inventory.component';
 import { ReturnPolicyComponent } from './return-policy.component';
+import { ReturnDeliveryComponent } from './return-delivery.component';
 
-type Pestana = 'bandeja' | 'historial' | 'reembolsos' | 'inventario' | 'politica';
+type Pestana = 'bandeja' | 'domicilio' | 'historial' | 'reembolsos' | 'inventario' | 'politica';
 
 /**
  * Módulo "Devoluciones y Cambios" (CU1–CU11 de docs/iconix/2do parcial SI2.md).
@@ -32,6 +33,7 @@ type Pestana = 'bandeja' | 'historial' | 'reembolsos' | 'inventario' | 'politica
     ReturnRefundsComponent,
     ReturnInventoryComponent,
     ReturnPolicyComponent,
+    ReturnDeliveryComponent,
   ],
   template: `
     <div class="p-6 md:p-8 space-y-6 max-w-[1400px] mx-auto animate-in fade-in duration-200">
@@ -56,7 +58,7 @@ type Pestana = 'bandeja' | 'historial' | 'reembolsos' | 'inventario' | 'politica
         <div class="ys-tarjeta p-4"><p class="ys-mini">Por resolver</p><p class="text-2xl font-bold text-gray-900">{{ contar('Aprobada') }}</p>
           <p class="text-[11px] text-gray-500">{{ contar('EnRevision') }} en revisión del Administrador</p></div>
         <div class="ys-tarjeta p-4"><p class="ys-mini">Cambios pendientes</p><p class="text-2xl font-bold" [ngClass]="contar('CambioPendiente') ? 'text-amber-700' : 'text-gray-900'">{{ contar('CambioPendiente') }}</p>
-          <p class="text-[11px] text-gray-500">Esperando stock o retiro</p></div>
+          <p class="text-[11px] text-gray-500">Esperando stock o retiro<span *ngIf="contar('EnvioDomicilio')"> · {{ contar('EnvioDomicilio') }} en camino a domicilio</span></p></div>
         <div class="ys-tarjeta p-4"><p class="ys-mini">Por autorizar</p><p class="text-2xl font-bold" [ngClass]="porAutorizar() ? 'text-amber-700' : 'text-gray-900'">{{ porAutorizar() }}</p>
           <p class="text-[11px] text-gray-500">Montos sobre el umbral o límite mensual</p></div>
       </div>
@@ -70,6 +72,7 @@ type Pestana = 'bandeja' | 'historial' | 'reembolsos' | 'inventario' | 'politica
       </div>
 
       <app-return-tray #bandeja *ngIf="pestana() === 'bandeja'" [politica]="politica()" (cambio)="refrescar()"></app-return-tray>
+      <app-return-delivery *ngIf="pestana() === 'domicilio'" [puedeOperar]="puede('devolucion.registrar')" (cambio)="refrescar()"></app-return-delivery>
       <app-return-history *ngIf="pestana() === 'historial'"></app-return-history>
       <app-return-refunds *ngIf="pestana() === 'reembolsos'" (cambio)="refrescar()"></app-return-refunds>
       <app-return-inventory *ngIf="pestana() === 'inventario'" [puedeGestionar]="puede('devolucion.inspeccionar')"></app-return-inventory>
@@ -107,6 +110,8 @@ export class ReturnsComponent implements OnInit {
 
   readonly pestanas = computed(() => [
     { id: 'bandeja' as Pestana, etiqueta: 'Bandeja', icono: 'inbox' },
+    // [CU31] [CU32]
+    { id: 'domicilio' as Pestana, etiqueta: 'Recojos y entregas', icono: 'local_shipping' },
     { id: 'historial' as Pestana, etiqueta: 'Historial y análisis', icono: 'query_stats' },
     { id: 'reembolsos' as Pestana, etiqueta: 'Reembolsos pendientes', icono: 'currency_exchange' },
     { id: 'inventario' as Pestana, etiqueta: 'Inventario devuelto', icono: 'inventory_2' },

@@ -45,13 +45,19 @@ const VARIANTES: TipoDevolucion[] = ['cambio_talla', 'cambio_color'];
           <p class="text-xs text-gray-500 mt-1">{{ caso.cliente_nombre }} · {{ caso.cantidad }} u. · inspección: {{ resultado() }}</p>
         </div>
 
-        <!-- Crédito disponible (CU5 paso 1, CU6 paso 1) -->
+        <!-- Valor de la prenda devuelta a favor del cliente (CU5 paso 1, CU6 paso 1) -->
         <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
           <div class="p-2 rounded-lg bg-gray-50 border border-gray-200"><p class="ys-mini">Pagado</p><p class="font-bold text-gray-900">Bs {{ caso.valor.toFixed(2) }}</p></div>
           <div class="p-2 rounded-lg bg-gray-50 border border-gray-200"><p class="ys-mini">Recargo demora</p><p class="font-bold text-gray-900">− Bs {{ caso.recargo.toFixed(2) }}</p></div>
           <div class="p-2 rounded-lg bg-gray-50 border border-gray-200"><p class="ys-mini">Deterioro</p><p class="font-bold text-gray-900">− Bs {{ caso.descuentoDeterioro.toFixed(2) }}</p></div>
-          <div class="p-2 rounded-lg bg-indigo-50 border border-indigo-200"><p class="ys-mini">Crédito</p><p class="font-bold text-indigo-700">Bs {{ caso.credito.toFixed(2) }}</p></div>
+          <div class="p-2 rounded-lg bg-indigo-50 border border-indigo-200"><p class="ys-mini">Valor a favor</p><p class="font-bold text-indigo-700">Bs {{ caso.credito.toFixed(2) }}</p></div>
         </div>
+        <!-- [CU31] [CU32] delivery -->
+        <p *ngIf="caso.modalidadEntrega === 'domicilio'" class="text-xs text-indigo-700" data-testid="aviso-domicilio">
+          <span class="material-symbols-outlined text-[14px] align-middle">local_shipping</span>
+          La prenda vino por delivery (Bs {{ caso.costoDomicilio.toFixed(2) }} ya descontados).
+          <span *ngIf="esCambio()">La prenda nueva no se entrega aquí: sale a domicilio<span *ngIf="costoEntrega()"> (+ Bs {{ costoEntrega().toFixed(2) }} del viaje)</span>.</span>
+        </p>
 
         <div>
           <p class="ys-etiqueta">Resolución</p>
@@ -268,9 +274,16 @@ export class ReturnResolveComponent implements OnInit {
   });
 
   /** Estimación de la diferencia (el servidor la recalcula). */
+  /** [CU32] El viaje de la entrega se cobra al resolver un cambio con delivery (gratis si la culpa es de la tienda). */
+  readonly costoEntrega = computed(() =>
+    this.caso.modalidadEntrega === 'domicilio' && this.esCambio() && !['defecto', 'equivocado'].includes(this.caso.motivoCategoria ?? '')
+      ? this.politica?.costoDomicilio ?? 0
+      : 0,
+  );
+
   readonly diferencia = computed(() => {
     const catalogo = this.archiveService.products();
-    const credito = this.caso.credito;
+    const credito = this.caso.credito - this.costoEntrega();
     if (this.esVariante()) {
       const nueva = catalogo.find((p) => p.idProducto === this.idProductoNuevo());
       if (!nueva) return 0;

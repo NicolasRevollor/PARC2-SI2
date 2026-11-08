@@ -173,6 +173,51 @@ class _ReturnsScreenState extends State<ReturnsScreen> {
     }
   }
 
+  // [CU7] Emitir nota de devolucion: lo que devolvio y el dinero que se le devolvio.
+  Future<void> _verNota(CasoDevolucion caso) async {
+    Map<String, dynamic> nota;
+    try {
+      nota = await _service.getNotaDevolucion(caso.idDevolucion);
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+      return;
+    }
+    if (!mounted) return;
+    String bs(dynamic v) => 'Bs ${(v as num).toDouble().toStringAsFixed(2)}';
+    final prendas = (nota['prendasDevueltas'] as List).cast<Map<String, dynamic>>();
+    final descuentos = (nota['descuentos'] as List).cast<Map<String, dynamic>>();
+    final estilo = GoogleFonts.outfit(fontSize: 12);
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Nota de devolución ${nota['numero']}', style: GoogleFonts.outfit(fontSize: 15, fontWeight: FontWeight.bold)),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('${nota['empresa']} · ${nota['tipo']}', style: GoogleFonts.outfit(fontSize: 11, color: _gris)),
+              const SizedBox(height: 8),
+              Text('Lo que devolviste', style: GoogleFonts.outfit(fontSize: 11, fontWeight: FontWeight.bold)),
+              for (final p in prendas)
+                Text('${p['producto']} talla ${p['talla'] ?? '-'} × ${p['cantidad']} · ${bs(p['subtotal'])}\n${p['motivo']} · ${p['estadoAlRecibirla']}',
+                    style: estilo),
+              const SizedBox(height: 6),
+              for (final d in descuentos) Text('− ${d['concepto']}: ${bs(d['monto'])}', style: estilo),
+              Text('Valor a tu favor: ${bs(nota['valorAFavor'])}', style: estilo),
+              const SizedBox(height: 8),
+              Text('Te devolvimos ${bs(nota['montoDevuelto'])}',
+                  style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.green.shade800)),
+              Text('${nota['medio']} · ${nota['estadoReembolso']}', style: estilo),
+            ],
+          ),
+        ),
+        actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cerrar'))],
+      ),
+    );
+  }
+
   /// QR de la solicitud y su linea de tiempo (CU2 paso 6, CU11).
   Future<void> _verCaso(CasoDevolucion caso) async {
     await showModalBottomSheet<void>(
@@ -291,9 +336,19 @@ class _ReturnsScreenState extends State<ReturnsScreen> {
               style: GoogleFonts.outfit(fontSize: 12),
             ),
             Text(_fecha(c.fecha, hora: true), style: GoogleFonts.outfit(fontSize: 11, color: _gris)),
-            if (c.estado == 'PendienteEntrega')
+            if (c.estado == 'PendienteEntrega' && c.modalidadEntrega != 'domicilio')
               Text('Entregá la prenda en ${c.sucursalNombre ?? 'la sucursal'} hasta el ${_fecha(c.fechaLimiteEntrega, hora: true)}.',
                   style: aviso),
+            // [CU31] [CU32] delivery
+            if (c.estado == 'PendienteEntrega' && c.modalidadEntrega == 'domicilio')
+              Text('El repartidor pasará a recoger la prenda: te avisamos el día.', style: aviso),
+            if (c.estado == 'EnInspeccion' && c.modalidadEntrega == 'domicilio')
+              Text('Recogimos tu prenda y la estamos revisando.', style: aviso),
+            if (c.estado == 'EnvioDomicilio')
+              Text('Tu prenda nueva va en camino a tu casa.', style: aviso),
+            if (c.costoDomicilio > 0)
+              Text('Delivery: Bs ${c.costoDomicilio.toStringAsFixed(2)} descontados del valor de la prenda.',
+                  style: GoogleFonts.outfit(fontSize: 11, color: _gris)),
             if (c.estado == 'CambioPendiente')
               Text('Tu cambio te espera en ${c.sucursalEntregaNombre ?? 'la sucursal'}'
                   '${c.fechaLimiteRetiro != null ? ' hasta el ${_fecha(c.fechaLimiteRetiro)}' : ''}.', style: aviso),
@@ -306,6 +361,8 @@ class _ReturnsScreenState extends State<ReturnsScreen> {
             Row(
               children: [
                 _boton('QR Y SEGUIMIENTO', () => _verCaso(c)),
+                // [CU7]
+                if (c.montoDevuelto > 0) _boton('NOTA', () => _verNota(c)),
                 if (c.estado == 'PendienteEntrega') _boton('CANCELAR', () => _cancelar(c)),
               ],
             ),
@@ -542,6 +599,12 @@ class _SolicitudSheetState extends State<_SolicitudSheet> {
   int? _sucursal;
   int _cantidad = 1;
   final _detalle = TextEditingController();
+  // [CU31]: la lleva el cliente o la recoge el repartidor.
+  bool _domicilio = false;
+  String _franja = 'manana';
+  final _direccion = TextEditingController();
+  final _referencia = TextEditingController();
+  final _telefono = TextEditingController();
   bool _enviando = false;
   String? _error;
 
@@ -577,6 +640,9 @@ class _SolicitudSheetState extends State<_SolicitudSheet> {
   @override
   void dispose() {
     _detalle.dispose();
+    _direccion.dispose();
+    _referencia.dispose();
+    _telefono.dispose();
     super.dispose();
   }
 
@@ -639,7 +705,18 @@ class _SolicitudSheetState extends State<_SolicitudSheet> {
     }
   }
 
-  bool get _puedeEnviar => !_enviando && _sucursal != null && (!_esVariante || _idProductoNuevo != null);
+  bool get _puedeEnviar =>
+      !_enviando &&
+      _sucursal != null &&
+      (!_esVariante || _idProductoNuevo != null) &&
+      (!_domicilio || (_direccion.text.trim().length >= 8 && _telefono.text.replaceAll(RegExp(r'\D'), '').length >= 7));
+
+  String get _costoDelivery {
+    final costo = widget.politica?.costoDomicilio ?? 0;
+    if (costo == 0 || _motivoCategoria == 'defecto' || _motivoCategoria == 'equivocado') return 'El delivery es sin costo para vos.';
+    final viajes = _tipo == 'devolucion' ? 'solo el recojo' : 'recojo y entrega';
+    return 'Cada viaje cuesta Bs ${costo.toStringAsFixed(2)} ($viajes) y se descuenta del valor de la prenda.';
+  }
 
   // [CU2] MisComprasUI.elegirSucursalYConfirmar() -> ControlDevoluciones.enviarSolicitud()
   // Robustez CU2: mensaje 16: elegirSucursalYConfirmar() -> 17: enviarSolicitud(...) -> 23: mostrarCodigoQR(fecha limite)
@@ -659,6 +736,15 @@ class _SolicitudSheetState extends State<_SolicitudSheet> {
         tipo: _tipo,
         idProductoNuevo: _tipo == 'devolucion' ? null : _idProductoNuevo,
         codigoSucursal: _sucursal!,
+        modalidadEntrega: _domicilio ? 'domicilio' : 'sucursal',
+        domicilio: _domicilio
+            ? {
+                'direccion': _direccion.text.trim(),
+                'referencia': _referencia.text.trim().isEmpty ? null : _referencia.text.trim(),
+                'telefono': _telefono.text.trim(),
+                'franja': _franja,
+              }
+            : null,
       );
       if (!mounted) return;
       Navigator.of(context).pop(caso);
@@ -795,12 +881,50 @@ class _SolicitudSheetState extends State<_SolicitudSheet> {
             DropdownButtonFormField<int>(
               value: _sucursal,
               isExpanded: true,
-              decoration: const InputDecoration(labelText: 'Sucursal donde entregás la prenda'),
+              decoration: InputDecoration(labelText: _domicilio ? 'Sucursal que recibe la prenda' : 'Sucursal donde entregás la prenda'),
               items: _sucursales
                   .map((s) => DropdownMenuItem(value: s.codigoSucursal, child: Text(s.nombre, style: GoogleFonts.outfit(fontSize: 12))))
                   .toList(),
               onChanged: (v) => setState(() => _sucursal = v),
             ),
+            // [CU31] [CU32]: primero se recoge la prenda y se revisa; despues se lleva la nueva.
+            if (widget.politica?.permiteDomicilio != false) ...[
+              const SizedBox(height: 12),
+              Wrap(spacing: 6, children: [
+                ChoiceChip(
+                  label: Text('La llevo a la sucursal', style: GoogleFonts.outfit(fontSize: 11)),
+                  selected: !_domicilio,
+                  onSelected: (_) => setState(() => _domicilio = false),
+                ),
+                ChoiceChip(
+                  label: Text('Que la recojan en mi casa', style: GoogleFonts.outfit(fontSize: 11)),
+                  selected: _domicilio,
+                  onSelected: (_) => setState(() => _domicilio = true),
+                ),
+              ]),
+              if (_domicilio) ...[
+                TextField(controller: _direccion, onChanged: (_) => setState(() {}),
+                    decoration: const InputDecoration(labelText: 'Dirección (calle, número, zona)')),
+                TextField(controller: _referencia, decoration: const InputDecoration(labelText: 'Referencia (opcional)')),
+                TextField(controller: _telefono, keyboardType: TextInputType.phone, onChanged: (_) => setState(() {}),
+                    decoration: const InputDecoration(labelText: 'Teléfono')),
+                DropdownButtonFormField<String>(
+                  value: _franja,
+                  decoration: const InputDecoration(labelText: 'Horario'),
+                  items: const [
+                    DropdownMenuItem(value: 'manana', child: Text('Mañana (9 a 13)')),
+                    DropdownMenuItem(value: 'tarde', child: Text('Tarde (14 a 19)')),
+                  ],
+                  onChanged: (v) => setState(() => _franja = v ?? 'manana'),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Primero el repartidor recoge la prenda y la revisamos en la sucursal.'
+                  '${_tipo == 'devolucion' ? '' : ' Si está en orden, te llevamos la prenda nueva a la misma dirección.'} $_costoDelivery',
+                  style: GoogleFonts.outfit(fontSize: 11, color: _gris),
+                ),
+              ],
+            ],
             const SizedBox(height: 12),
             TextField(
               controller: _detalle,

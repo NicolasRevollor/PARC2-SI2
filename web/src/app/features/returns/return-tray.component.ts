@@ -61,7 +61,10 @@ type Accion = 'inspeccionar' | 'resolver' | 'completar' | 'revisar' | 'detalle';
             <p><span class="font-semibold">Motivo:</span> {{ etiqueta(motivos, c.motivoCategoria || '') }}<span *ngIf="c.motivo"> — {{ c.motivo }}</span></p>
             <p><span class="font-semibold">Pide:</span> {{ etiqueta(tipos, c.tipo) }}
               <span *ngIf="c.producto_nuevo_nombre"> → {{ c.producto_nuevo_nombre }} talla {{ c.tallaNueva }}</span></p>
-            <p *ngIf="c.estado === 'PendienteEntrega'" class="text-amber-700">Debe entregarla en {{ c.sucursal_nombre }} hasta el {{ c.fechaLimiteEntrega | date: 'dd/MM/yyyy' }}</p>
+            <p *ngIf="c.estado === 'PendienteEntrega' && c.modalidadEntrega !== 'domicilio'" class="text-amber-700">Debe entregarla en {{ c.sucursal_nombre }} hasta el {{ c.fechaLimiteEntrega | date: 'dd/MM/yyyy' }}</p>
+            <!-- [CU31] [CU32] -->
+            <p *ngIf="c.estado === 'PendienteEntrega' && c.modalidadEntrega === 'domicilio'" class="text-indigo-700">Esperando el recojo a domicilio (Recojos y entregas)</p>
+            <p *ngIf="c.estado === 'EnvioDomicilio'" class="text-indigo-700">La prenda nueva va en camino al domicilio del cliente</p>
             <p *ngIf="c.estado === 'CambioPendiente'" class="text-amber-700">
               {{ c.opcionSinStock === 'espera' ? 'Lista de espera' : 'Apartada en ' + c.sucursal_entrega_nombre }}
               <span *ngIf="c.fechaLimiteRetiro"> · retirar hasta {{ c.fechaLimiteRetiro | date: 'dd/MM' }}</span>
@@ -75,7 +78,7 @@ type Accion = 'inspeccionar' | 'resolver' | 'completar' | 'revisar' | 'detalle';
             <button *ngIf="esperaAutorizacion(c) && puede('devolucion.autorizar')" (click)="autorizar(c)" class="ys-btn">
               <span class="material-symbols-outlined text-[16px]">verified_user</span> Autorizar
             </button>
-            <button *ngIf="(c.estado === 'PendienteEntrega' || c.estado === 'EnInspeccion') && puede('devolucion.inspeccionar') && !esperaAutorizacion(c)"
+            <button *ngIf="((c.estado === 'PendienteEntrega' && c.modalidadEntrega !== 'domicilio') || c.estado === 'EnInspeccion') && puede('devolucion.inspeccionar') && !esperaAutorizacion(c)"
                     (click)="abrir('inspeccionar', c)" class="ys-btn">
               <span class="material-symbols-outlined text-[16px]">fact_check</span> Inspeccionar
             </button>

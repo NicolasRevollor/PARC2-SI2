@@ -5,6 +5,7 @@ import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 import {
   ETIQUETA_ESTADO,
+  ETIQUETA_FRANJA,
   ETIQUETA_MOTIVO,
   ETIQUETA_TIPO,
   ReturnsService,
@@ -24,8 +25,11 @@ import {
   StockSucursal,
   TipoSolicitud,
   VentaDevolucion,
+  ViajeDomicilio,
 } from '../../../core/models';
 import { QrCodeComponent } from '../../../shared/components/qr-code.component';
+import { NotaDevolucionComponent } from '../../../shared/components/nota-devolucion.component';
+import { CuBadgeComponent } from '../../../shared/components/cu-badge.component';
 import { environment } from '../../../../environments/environment';
 
 const API_URL = environment.apiUrl;
@@ -39,7 +43,7 @@ const API_URL = environment.apiUrl;
 @Component({
   selector: 'app-customer-returns',
   standalone: true,
-  imports: [CommonModule, FormsModule, QrCodeComponent],
+  imports: [CommonModule, FormsModule, QrCodeComponent, NotaDevolucionComponent, CuBadgeComponent],
   template: `
     <div class="p-4 sm:p-8 space-y-8 max-w-5xl mx-auto animate-in fade-in duration-200">
       <div>
@@ -93,21 +97,34 @@ const API_URL = environment.apiUrl;
           </div>
           <p class="text-xs text-gray-500">{{ c.producto_nombre }} {{ c.tallaOriginal }}
             <span *ngIf="c.producto_nuevo_nombre"> → {{ c.producto_nuevo_nombre }} {{ c.tallaNueva }}</span> · {{ c.fecha | date: 'dd/MM/yyyy' }}</p>
-          <p *ngIf="c.estado === 'PendienteEntrega'" class="text-xs text-amber-700">Entregá la prenda en {{ c.sucursal_nombre }} hasta el {{ c.fechaLimiteEntrega | date: 'dd/MM/yyyy HH:mm' }}</p>
+          <p *ngIf="c.estado === 'PendienteEntrega' && c.modalidadEntrega !== 'domicilio'" class="text-xs text-amber-700">Entregá la prenda en {{ c.sucursal_nombre }} hasta el {{ c.fechaLimiteEntrega | date: 'dd/MM/yyyy HH:mm' }}</p>
+          <!-- [CU31] [CU32] seguimiento del delivery -->
+          <div *ngIf="c.modalidadEntrega === 'domicilio'" class="text-xs space-y-0.5" data-testid="delivery-cliente">
+            <p *ngFor="let v of viajesDe(c.idDevolucion)" [ngClass]="v.estado === 'Completado' ? 'text-emerald-700' : v.estado === 'Fallido' ? 'text-rose-600' : 'text-indigo-700'">
+              <span class="material-symbols-outlined text-[14px] align-middle">{{ v.tipo === 'recojo' ? 'move_to_inbox' : 'local_shipping' }}</span>
+              {{ textoViaje(v) }}
+            </p>
+          </div>
           <p *ngIf="c.estado === 'CambioPendiente'" class="text-xs text-amber-700">Tu cambio te espera en {{ c.sucursal_entrega_nombre }}
             <span *ngIf="c.fechaLimiteRetiro"> hasta el {{ c.fechaLimiteRetiro | date: 'dd/MM/yyyy' }}</span></p>
           <p *ngIf="c.motivoRechazo" class="text-xs text-rose-600">{{ c.motivoRechazo }}</p>
           <p *ngIf="c.montoDevuelto > 0" class="text-xs text-emerald-700">Reembolso de Bs {{ c.montoDevuelto.toFixed(2) }} ({{ c.metodoReembolso }})</p>
           <p *ngIf="c.montoDevuelto > 0" class="text-xs text-emerald-700">Nota de devolución {{ c.codigo }}: te devolvimos Bs {{ c.montoDevuelto.toFixed(2) }}</p>
+          <p *ngIf="c.costoDomicilio > 0" class="text-[11px] text-gray-500">Delivery: Bs {{ c.costoDomicilio.toFixed(2) }} descontados del valor de la prenda.</p>
           <div class="flex flex-wrap gap-2 pt-1">
             <button (click)="mostrarQr(c)" class="ys-btn-sec"><span class="material-symbols-outlined text-[16px]">qr_code_2</span> Código QR</button>
             <button (click)="comprobante(c)" class="ys-btn-sec"><span class="material-symbols-outlined text-[16px]">picture_as_pdf</span> Comprobante</button>
+            <!-- [CU7] -->
+            <button *ngIf="c.montoDevuelto > 0" (click)="nota.set(c.idDevolucion)" class="ys-btn-sec" data-testid="ver-nota-cliente">
+              <span class="material-symbols-outlined text-[16px]">receipt_long</span> Nota de devolución</button>
             <button *ngIf="c.estado === 'PendienteEntrega'" (click)="cancelar(c)" class="ys-btn-sec">Cancelar</button>
           </div>
         </div>
       </section>
 
     </div>
+
+    <app-nota-devolucion *ngIf="nota() as id" [idDevolucion]="id" (cerrar)="nota.set(null)"></app-nota-devolucion>
 
     <!-- QR de una solicitud -->
     <div *ngIf="qr() as q" class="ys-modal" (click)="qr.set(null)">
@@ -174,10 +191,37 @@ const API_URL = environment.apiUrl;
             <input type="number" min="1" [max]="s.linea.disponibles" [ngModel]="cantidad()" (ngModelChange)="cantidad.set(+$event)" class="ys-campo" />
           </div>
           <div>
-            <p class="ys-etiqueta">Sucursal de entrega</p>
+            <p class="ys-etiqueta">{{ modalidad() === 'domicilio' ? 'Sucursal que la recibe' : 'Sucursal de entrega' }}</p>
             <select [(ngModel)]="sucursal" class="ys-campo">
               <option *ngFor="let l of sucursales()" [ngValue]="l.codigoSucursal">{{ l.nombre }}</option>
             </select>
+          </div>
+        </div>
+
+        <!-- [CU31]: la lleva el cliente o la recoge el repartidor (y despues de revisarla le llevan la nueva, CU32) -->
+        <div *ngIf="politica()?.permiteDomicilio !== false" class="space-y-2">
+          <div class="flex items-center gap-2">
+            <p class="ys-etiqueta">¿Cómo nos das la prenda?</p>
+            <app-cu-badge cu="CU31"></app-cu-badge>
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <button type="button" (click)="modalidad.set('sucursal')" class="ys-opcion text-xs" [class.ys-opcion-activa]="modalidad() === 'sucursal'">La llevo a la sucursal</button>
+            <button type="button" (click)="modalidad.set('domicilio')" class="ys-opcion text-xs" [class.ys-opcion-activa]="modalidad() === 'domicilio'" data-testid="elegir-domicilio">Que la recojan en mi casa</button>
+          </div>
+          <div *ngIf="modalidad() === 'domicilio'" class="space-y-2 p-3 rounded-lg border border-indigo-200">
+            <input class="ys-campo mt-0" [(ngModel)]="dom.direccion" name="dir" placeholder="Dirección (calle, número, zona)" data-testid="direccion" />
+            <div class="grid grid-cols-2 gap-2">
+              <input class="ys-campo mt-0" [(ngModel)]="dom.referencia" name="ref" placeholder="Referencia (opcional)" />
+              <input class="ys-campo mt-0" [(ngModel)]="dom.telefono" name="tel" placeholder="Teléfono" data-testid="telefono" />
+              <label class="text-[11px] text-gray-500">Día preferido<input type="date" class="ys-campo mt-0" [(ngModel)]="dom.fechaPreferida" [min]="hoy" name="fp" /></label>
+              <label class="text-[11px] text-gray-500">Horario
+                <select class="ys-campo mt-0" [(ngModel)]="dom.franja" name="fr"><option value="manana">Mañana (9 a 13)</option><option value="tarde">Tarde (14 a 19)</option></select></label>
+            </div>
+            <p class="text-[11px] text-gray-600">
+              Primero el repartidor recoge la prenda y la revisamos en la sucursal.
+              <span *ngIf="tipo() !== 'devolucion'"> Si está en orden, te llevamos la prenda nueva a la misma dirección.</span>
+              {{ costoTexto() }}
+            </p>
           </div>
         </div>
         <div>
@@ -189,7 +233,7 @@ const API_URL = environment.apiUrl;
           <input type="file" accept="image/*" (change)="subir($event)" class="text-xs text-gray-600 mt-1" />
           <div class="flex gap-2 mt-2" *ngIf="fotos().length"><img *ngFor="let f of fotos()" [src]="f" alt="Foto" class="w-12 h-12 object-cover rounded" /></div>
         </div>
-        <p class="text-[11px] text-gray-500">Vas a recibir un código con QR y una fecha límite para entregar la prenda. Si pediste una variante disponible, te la apartamos hasta esa fecha.</p>
+        <p *ngIf="modalidad() === 'sucursal'" class="text-[11px] text-gray-500">Vas a recibir un código con QR y una fecha límite para entregar la prenda. Si pediste una variante disponible, te la apartamos hasta esa fecha.</p>
         <button (click)="enviar(s.venta, s.linea)" [disabled]="!puedeEnviar() || enviando()" class="ys-btn w-full">
           {{ enviando() ? 'Enviando…' : 'Enviar solicitud' }}
         </button>
@@ -231,6 +275,14 @@ export class CustomerReturnsComponent implements OnInit {
   readonly enviando = signal<boolean>(false);
   sucursal: number | null = null;
   detalle = '';
+  // [CU31]
+  readonly modalidad = signal<'sucursal' | 'domicilio'>('sucursal');
+  dom: { direccion: string; referencia: string; telefono: string; fechaPreferida: string; franja: 'manana' | 'tarde' } =
+    { direccion: '', referencia: '', telefono: '', fechaPreferida: '', franja: 'manana' };
+  readonly hoy = new Date().toISOString().slice(0, 10);
+  readonly viajes = signal<Record<number, ViajeDomicilio[]>>({});
+  // [CU7]
+  readonly nota = signal<number | null>(null);
 
   /** Fuera del plazo de cambio solo queda el motivo defecto de fábrica (garantía). */
   readonly motivosPermitidos = computed(() =>
@@ -278,6 +330,10 @@ export class CustomerReturnsComponent implements OnInit {
     ]);
     this.compras.set(compras);
     this.casos.set(casos);
+    // [CU31] [CU32] seguimiento de los viajes de los casos con delivery
+    const conDelivery = casos.filter((c) => c.modalidadEntrega === 'domicilio');
+    const listas = await Promise.all(conDelivery.map((c) => this.returnsService.viajesDelCaso(c.idDevolucion)));
+    this.viajes.set(Object.fromEntries(conDelivery.map((c, i) => [c.idDevolucion, listas[i]])));
     this.politica.set(await this.returnsService.politica(compras[0]?.idTenant));
     this.cargando.set(false);
   }
@@ -329,6 +385,7 @@ export class CustomerReturnsComponent implements OnInit {
     this.cantidad.set(1);
     this.detalle = '';
     this.fotos.set([]);
+    this.modalidad.set('sucursal');
     this.sucursal = venta.codigoSucursal;
     this.elegirTipo('cambio_talla');
     const [productos, sucursales] = await Promise.all([
@@ -386,7 +443,29 @@ export class CustomerReturnsComponent implements OnInit {
     const s = this.seleccion();
     if (!s || this.sucursal === null) return false;
     if (this.cantidad() < 1 || this.cantidad() > s.linea.disponibles) return false;
+    if (this.modalidad() === 'domicilio' && (this.dom.direccion.trim().length < 8 || this.dom.telefono.replace(/\D/g, '').length < 7)) return false;
     return !['cambio_talla', 'cambio_color'].includes(this.tipo()) || this.idProductoNuevo() !== null;
+  }
+
+  /** [CU31] [CU32] gratis si la culpa es de la tienda. */
+  costoTexto(): string {
+    const costo = this.politica()?.costoDomicilio ?? 0;
+    if (['defecto', 'equivocado'].includes(this.motivo()) || !costo) return 'El delivery es sin costo para vos.';
+    const viajes = this.tipo() === 'devolucion' ? 1 : 2;
+    return `Cada viaje cuesta Bs ${costo.toFixed(2)} (${viajes === 1 ? 'solo el recojo' : 'recojo y entrega'}) y se descuenta del valor de la prenda.`;
+  }
+
+  viajesDe(id: number): ViajeDomicilio[] {
+    return this.viajes()[id] ?? [];
+  }
+
+  textoViaje(v: ViajeDomicilio): string {
+    const que = v.tipo === 'recojo' ? 'Recojo de tu prenda' : 'Entrega de tu prenda nueva';
+    if (v.estado === 'Programado') return `${que}: ${new Date(v.fechaProgramada + 'T12:00:00').toLocaleDateString('es-BO', { weekday: 'long', day: '2-digit', month: '2-digit' })} por la ${ETIQUETA_FRANJA[v.franja ?? ''] ?? ''} (${v.repartidor})`;
+    if (v.estado === 'Completado') return `${que}: hecho`;
+    if (v.estado === 'Fallido') return `${que}: no pudimos (${v.observaciones}). Lo volvemos a programar.`;
+    if (v.estado === 'Cancelado') return `${que}: cancelado`;
+    return `${que}: te avisamos el día`;
   }
 
   // [CU2] MisComprasUI.elegirSucursalYConfirmar() -> ControlDevoluciones.enviarSolicitud() (backend POST /api/returns/solicitudes)
@@ -405,6 +484,11 @@ export class CustomerReturnsComponent implements OnInit {
       idProductoNuevo: this.idProductoNuevo(),
       codigoSucursal: this.sucursal,
       fotos: this.fotos(),
+      modalidadEntrega: this.modalidad(),
+      domicilio: this.modalidad() === 'domicilio'
+        ? { direccion: this.dom.direccion.trim(), referencia: this.dom.referencia.trim() || null, telefono: this.dom.telefono.trim(),
+            fechaPreferida: this.dom.fechaPreferida || null, franja: this.dom.franja }
+        : null,
     });
     this.enviando.set(false);
     if (caso) {

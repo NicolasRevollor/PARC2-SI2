@@ -240,9 +240,22 @@ async def cerrar_caja(
     caja.idUsuarioCierre, caja.fechaCierre = id_usuario, ahora
     caja.operacionesPendientes = pendientes
     caja.estado = decision.estado
+    if decision.estado == POR_APROBAR:
+        await avisar_aprobacion(session, caja)
     if decision.estado == CERRADA and decision.requiere_justificacion:
         # Lo cerro quien podia aprobarlo (flujo alternativo 1).
         caja.idAprobador, caja.fechaAprobacion = id_usuario, ahora
+
+
+async def avisar_aprobacion(session: AsyncSession, caja: Caja) -> None:
+    """[CU20] alt. 1: el cierre espera la aprobacion del Encargado."""
+    from app.services import notificaciones as notif
+
+    await notif.notificar_personal(
+        session, caja.idTenant, tipo="caja", referencia=f"caja-{caja.idCaja}",
+        titulo="Cierre de caja por aprobar",
+        mensaje=f"La caja {caja.idCaja} cerro con una diferencia de Bs {caja.diferencia}: revisela en Apertura y cierre de caja.",
+    )
 
 
 # ==== [CU20] ControlCaja.revisarCierresProvisionales() =============
@@ -279,5 +292,7 @@ async def revisar_cierres_provisionales(session: AsyncSession, id_tenant: int) -
         config = await configuracion(session, id_tenant)
         excede = abs(dinero(caja.diferencia)) > dinero(config.umbralDiferenciaCaja)
         caja.estado = POR_APROBAR if excede and caja.idAprobador is None else CERRADA
+        if caja.estado == POR_APROBAR:
+            await avisar_aprobacion(session, caja)
         convertidas += 1
     return convertidas

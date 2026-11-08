@@ -16,3 +16,5 @@ openpyxl==3.1.5
 pytest==8.3.4
 httpx==0.28.1
 google-genai==2.24.0
+# [CU29] modelos de Machine Learning (regresion, clasificacion, KMeans, IsolationForest)
+scikit-learn==1.9.1

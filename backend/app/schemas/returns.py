@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 # Ya no existe "nota_credito": si sobra plata, siempre se devuelve en dinero ("devolucion").
 TipoDevolucion = Literal["cambio_talla", "cambio_color", "cambio_medida", "cambio_producto", "devolucion"]
 EstadoDevolucion = Literal[
-    "PendienteEntrega", "EnInspeccion", "EnRevision", "Aprobada", "CambioPendiente",
+    "PendienteEntrega", "EnInspeccion", "EnRevision", "Aprobada", "CambioPendiente", "EnvioDomicilio",
     "Completada", "Rechazada", "Anulada", "Cancelada",
 ]
 MotivoCategoria = Literal["talla", "medida", "color", "defecto", "equivocado", "no_desea"]
@@ -50,6 +50,22 @@ class SolicitudIn(BaseModel):
     idProductoNuevo: int | None = None
     codigoSucursal: int
     fotos: list[str] = Field(default_factory=list, max_length=5)
+    # [CU31]: "sucursal" (la lleva el cliente) o "domicilio" (la recoge el repartidor).
+    modalidadEntrega: Literal["sucursal", "domicilio"] = "sucursal"
+    domicilio: "DomicilioIn | None" = None
+
+
+class DomicilioIn(BaseModel):
+    """[CU31] Donde y cuando pasa el repartidor."""
+
+    direccion: str = Field(min_length=8, max_length=255)
+    referencia: str | None = Field(default=None, max_length=255)
+    telefono: str = Field(min_length=7, max_length=20)
+    fechaPreferida: date | None = None
+    franja: Literal["manana", "tarde"] | None = None
+
+
+SolicitudIn.model_rebuild()
 
 
 # --- CU3: inspeccion --------------------------------------------------------------
@@ -160,6 +176,9 @@ class DevolucionOut(BaseModel):
     recargo: float
     descuentoDeterioro: float
     credito: float
+    # [CU31] [CU32]
+    modalidadEntrega: str = "sucursal"
+    costoDomicilio: float = 0.0
     montoDevuelto: float
     metodoReembolso: str | None
     estadoReembolso: str | None
@@ -278,6 +297,9 @@ class PoliticaIn(BaseModel):
     diasEntregaEnLinea: int = Field(ge=1, le=60)
     diasRetiroCambio: int = Field(ge=1, le=60)
     costoAjusteMedida: float = Field(ge=0)
+    # [CU31] [CU32]: delivery (las versiones viejas de la politica no lo tenian).
+    permiteDomicilio: bool = True
+    costoDomicilio: float = Field(default=15, ge=0)
     condiciones: str = Field(min_length=10, max_length=1000)
 
 

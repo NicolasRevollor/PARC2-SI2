@@ -9,14 +9,16 @@ import {
   ReturnsService,
   claseEstado,
 } from '../../core/services/returns.service';
-import { DevolucionDetalle, QrDevolucion } from '../../core/models';
+import { DevolucionDetalle, QrDevolucion, ViajeDomicilio } from '../../core/models';
 import { QrCodeComponent } from '../../shared/components/qr-code.component';
+import { NotaDevolucionComponent } from '../../shared/components/nota-devolucion.component';
+import { ETIQUETA_FRANJA } from '../../core/services/returns.service';
 
 /** Detalle completo de un caso con su línea de tiempo (CU11 paso 5) y su QR. */
 @Component({
   selector: 'app-return-detail',
   standalone: true,
-  imports: [CommonModule, QrCodeComponent],
+  imports: [CommonModule, QrCodeComponent, NotaDevolucionComponent],
   template: `
     <div class="ys-modal">
       <div class="ys-modal-caja max-w-3xl">
@@ -40,12 +42,16 @@ import { QrCodeComponent } from '../../shared/components/qr-code.component';
               <button (click)="comprobante(c.idDevolucion)" class="ys-btn-sec mt-2 w-full">
                 <span class="material-symbols-outlined text-[16px]">picture_as_pdf</span> Comprobante
               </button>
+              <!-- [CU7] la nota sale solo si se devolvio dinero -->
+              <button *ngIf="c.montoDevuelto > 0" (click)="verNota.set(true)" class="ys-btn mt-2 w-full" data-testid="ver-nota">
+                <span class="material-symbols-outlined text-[16px]">receipt_long</span> Nota de devolución
+              </button>
             </div>
           </div>
 
           <div class="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
             <div class="p-2 rounded-lg bg-gray-50 border border-gray-200"><p class="ys-mini">Resolución</p><p class="font-semibold text-gray-900">{{ etiqueta(tipos, c.tipo) }}</p></div>
-            <div class="p-2 rounded-lg bg-gray-50 border border-gray-200"><p class="ys-mini">Crédito</p><p class="font-semibold text-gray-900">Bs {{ c.credito.toFixed(2) }}</p></div>
+            <div class="p-2 rounded-lg bg-gray-50 border border-gray-200"><p class="ys-mini">Valor a favor</p><p class="font-semibold text-gray-900">Bs {{ c.credito.toFixed(2) }}</p></div>
             <div class="p-2 rounded-lg bg-gray-50 border border-gray-200"><p class="ys-mini">Inspección</p><p class="font-semibold text-gray-900">{{ c.condicion ? etiqueta(resultados, c.condicion) : '—' }}</p></div>
             <div class="p-2 rounded-lg bg-gray-50 border border-gray-200"><p class="ys-mini">Inventario</p><p class="font-semibold text-gray-900">{{ c.destinoInventario === 'vendible' ? 'Vendible' : c.destinoInventario === 'no_vendible' ? 'No vendible' : '—' }}</p></div>
           </div>
@@ -69,6 +75,16 @@ import { QrCodeComponent } from '../../shared/components/qr-code.component';
               <span *ngIf="c.autorizador_nombre"> · autorizó {{ c.autorizador_nombre }}</span></p>
           </div>
 
+          <!-- [CU31] [CU32] recojo y entrega a domicilio -->
+          <div *ngIf="viajes().length" class="space-y-1" data-testid="viajes-caso">
+            <p class="ys-etiqueta">Delivery <span class="text-gray-400 font-normal normal-case">(Bs {{ c.costoDomicilio.toFixed(2) }} a cargo del cliente)</span></p>
+            <p *ngFor="let v of viajes()" class="text-xs text-gray-700">
+              <span class="font-semibold">{{ v.tipo === 'recojo' ? 'Recojo' : 'Entrega' }}:</span> {{ v.estado }}
+              <span *ngIf="v.fechaProgramada"> · {{ v.fechaProgramada | date: 'dd/MM' }} {{ franja(v.franja) }} · {{ v.repartidor }}</span>
+              · {{ v.direccion }}
+            </p>
+          </div>
+
           <div *ngIf="c.fotos.length" class="flex gap-2 flex-wrap">
             <a *ngFor="let f of c.fotos" [href]="f" target="_blank" rel="noopener"><img [src]="f" alt="Foto de la prenda" class="w-16 h-16 object-cover rounded border border-gray-200" /></a>
           </div>
@@ -87,6 +103,7 @@ import { QrCodeComponent } from '../../shared/components/qr-code.component';
         </div>
       </div>
     </div>
+    <app-nota-devolucion *ngIf="verNota()" [idDevolucion]="idDevolucion" (cerrar)="verNota.set(false)"></app-nota-devolucion>
   `,
 })
 export class ReturnDetailComponent implements OnInit {
@@ -100,6 +117,8 @@ export class ReturnDetailComponent implements OnInit {
   readonly reembolsos = ETIQUETA_REEMBOLSO;
   readonly caso = signal<DevolucionDetalle | null>(null);
   readonly qr = signal<QrDevolucion | null>(null);
+  readonly viajes = signal<ViajeDomicilio[]>([]);
+  readonly verNota = signal(false);
 
   constructor(private returnsService: ReturnsService) {}
 
@@ -110,6 +129,11 @@ export class ReturnDetailComponent implements OnInit {
     ]);
     this.caso.set(caso);
     this.qr.set(qr);
+    if (caso?.modalidadEntrega === 'domicilio') this.viajes.set(await this.returnsService.viajesDelCaso(this.idDevolucion));
+  }
+
+  franja(clave: string | null): string {
+    return clave ? ETIQUETA_FRANJA[clave] ?? clave : '';
   }
 
   etiqueta(mapa: Record<string, string>, valor: string): string {

@@ -4,15 +4,26 @@ import { FormsModule } from '@angular/forms';
 import { TeamService } from '../../core/services/team.service';
 import { InventoryService } from '../../core/services/inventory.service';
 import { NotificationService } from '../../core/services/notification.service';
-import { TeamMember, StaffRole } from '../../core/models';
-import { hasDigit, hasLower, hasSpecial, hasUpper, hasMinLength, isStrong } from '../../shared/utils/password-rules';
+import { TenantService } from '../../core/services/tenant.service';
+import { AuthService } from '../../core/services/auth.service';
+import { TeamMember, StaffRole, StaffCreado } from '../../core/models';
+import { CuBadgeComponent } from '../../shared/components/cu-badge.component';
 
 const STAFF_ROLES: StaffRole[] = ['Administrador', 'Encargado de Sucursal', 'Cajero'];
+
+// ==== DIAGRAMA <-> CODIGO (informe Parcial 2) ====================
+// [CU24] Gestionar empleados y asignacion a sucursales
+// Boundary: PersonalUI -> este componente
+// Control: backend/app/routers/team.py -> create_staff_user, dar_de_baja,
+//   reincorporar, asignar_sucursales, reenviar_activacion
+// [CU25] el cupo de usuarios del plan lo verifica exigir_cupo() en el backend;
+//   aca solo se muestra el consumo para avisar antes.
+// ==================================================================
 
 @Component({
   selector: 'app-team',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, CuBadgeComponent],
   template: `
     <div class="p-6 md:p-8 space-y-6 max-w-7xl mx-auto animate-in fade-in duration-200">
 
@@ -21,8 +32,15 @@ const STAFF_ROLES: StaffRole[] = ['Administrador', 'Encargado de Sucursal', 'Caj
         <div>
           <span class="text-[11px] font-bold uppercase tracking-wider text-indigo-600">Gobernanza de Seguridad y RBAC</span>
           <h1 class="text-2xl font-bold text-gray-900 tracking-tight mt-0.5">Directorio de Personal y Nodos de Acceso</h1>
+          <app-cu-badge cu="CU24" [conNombre]="true" class="block mt-1"></app-cu-badge>
           <p class="text-xs text-gray-500 mt-1">
-            Permisos basados en roles, registros de actividad y autorización de nodos administrativos.
+            Cada empleado recibe un correo para activar su cuenta y definir su contraseña. Dar de baja no borra sus ventas ni su bitácora.
+          </p>
+          <p *ngIf="tenantService.uso() && tenantService.plan()" class="text-xs mt-1" data-testid="cupo-usuarios"
+             [ngClass]="cupoLleno() ? 'text-amber-700 font-semibold' : 'text-gray-500'">
+            <app-cu-badge cu="CU25"></app-cu-badge>
+            Usuarios del plan {{ tenantService.plan()!.nombre }}: {{ tenantService.uso()!.usuarios }} de {{ tenantService.formatearLimite(tenantService.plan()!.maxUsuarios) }}
+            <span *ngIf="cupoLleno()"> · alcanzó el límite: mejore el plan para agregar más.</span>
           </p>
         </div>
 
@@ -42,6 +60,8 @@ const STAFF_ROLES: StaffRole[] = ['Administrador', 'Encargado de Sucursal', 'Caj
         <div
           *ngFor="let member of teamService.teamMembers()"
           class="bg-[#18191d] rounded-xl border border-gray-200 p-5 shadow-xs hover:border-gray-300 transition-all flex flex-col justify-between"
+          [class.opacity-60]="!member.activo"
+          data-testid="miembro"
         >
           <div>
             <div class="flex items-start justify-between mb-3.5">
@@ -63,6 +83,14 @@ const STAFF_ROLES: StaffRole[] = ['Administrador', 'Encargado de Sucursal', 'Caj
               </span>
             </div>
 
+            <!-- [CU24] estado de la cuenta: activa, pendiente de activación o dada de baja -->
+            <div class="flex items-center gap-2 flex-wrap text-[11px]" data-testid="estado-miembro">
+              <span *ngIf="!member.activo" class="ys-chip border-rose-300 text-rose-600">Dado de baja {{ member.fechaBaja | date: 'dd/MM/yyyy' }}</span>
+              <span *ngIf="member.activo && !member.cuentaActivada" class="ys-chip border-amber-300 text-amber-700">Pendiente de activación</span>
+              <span *ngIf="member.activo && member.cuentaActivada" class="ys-chip border-emerald-300 text-emerald-700">Activo</span>
+              <button *ngIf="member.activo && !member.cuentaActivada" (click)="reenviar(member)" class="text-indigo-600 hover:underline bg-transparent cursor-pointer">Reenviar activación</button>
+            </div>
+
             <div class="mt-3.5 pt-3 border-t border-gray-100">
               <p class="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">Permisos Activos:</p>
               <div class="flex flex-wrap gap-1.5">
@@ -78,7 +106,7 @@ const STAFF_ROLES: StaffRole[] = ['Administrador', 'Encargado de Sucursal', 'Caj
             <div class="mt-3.5 pt-3 border-t border-gray-100">
               <label class="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1.5 block">Cambiar Rol</label>
               <select
-                [disabled]="savingRoleFor() === member.idUser"
+                [disabled]="savingRoleFor() === member.idUser || !member.activo"
                 [value]="member.rol"
                 (change)="onRoleChange(member, $event)"
                 class="w-full px-2.5 py-1.5 border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none disabled:bg-gray-50 disabled:text-gray-400"
@@ -90,7 +118,7 @@ const STAFF_ROLES: StaffRole[] = ['Administrador', 'Encargado de Sucursal', 'Caj
             <!-- CU24: sucursales asignadas (el Encargado solo ve las suyas en el CU11) -->
             <div class="mt-3.5 pt-3 border-t border-gray-100">
               <p class="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">Sucursales asignadas</p>
-              <div class="flex flex-wrap gap-1.5">
+              <div class="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto">
                 <label *ngFor="let s of inventoryService.locations()"
                        class="flex items-center gap-1 px-2 py-0.5 rounded border border-gray-200 text-[11px] text-gray-700 cursor-pointer"
                        [class.opacity-50]="savingBranchesFor() === member.idUser">
@@ -104,6 +132,16 @@ const STAFF_ROLES: StaffRole[] = ['Administrador', 'Encargado de Sucursal', 'Caj
                 {{ member.sucursales.length ? 'Solo ve los registros de estas sucursales.' : 'Sin asignar: ve toda la empresa.' }}
               </p>
             </div>
+          </div>
+
+          <!-- [CU24] alternativo 3: baja y reincorporación -->
+          <div *ngIf="member.idUser !== miId()" class="mt-3.5 pt-3 border-t border-gray-100 flex justify-end">
+            <button *ngIf="member.activo" (click)="pedirBaja.set(member)" class="ys-btn-sec py-1 text-xs" data-testid="dar-baja">
+              <span class="material-symbols-outlined text-[16px]">person_off</span> Dar de baja
+            </button>
+            <button *ngIf="!member.activo" (click)="reincorporar(member)" class="ys-btn-sec py-1 text-xs">
+              <span class="material-symbols-outlined text-[16px]">person_add</span> Reincorporar
+            </button>
           </div>
         </div>
       </div>
@@ -139,7 +177,7 @@ const STAFF_ROLES: StaffRole[] = ['Administrador', 'Encargado de Sucursal', 'Caj
 
     <!-- Modal: Crear usuario de personal -->
     <div *ngIf="showCreateModal()" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4 animate-in fade-in duration-150">
-      <div class="bg-[#18191d] max-w-md w-full rounded-2xl border border-gray-200 shadow-xl p-6 md:p-8 relative">
+      <div class="bg-[#18191d] max-w-md w-full max-h-[92vh] overflow-y-auto rounded-2xl border border-gray-200 shadow-xl p-6 md:p-8 relative">
         <button (click)="closeCreateModal()" class="absolute top-4 right-4 text-gray-400 hover:text-gray-700 p-1">
           <span class="material-symbols-outlined text-[20px]">close</span>
         </button>
@@ -159,10 +197,6 @@ const STAFF_ROLES: StaffRole[] = ['Administrador', 'Encargado de Sucursal', 'Caj
             <input type="email" [(ngModel)]="form.email" name="email" required class="w-full mt-1 px-3.5 py-2 border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none" />
           </div>
           <div>
-            <label class="text-xs font-bold text-gray-700 uppercase tracking-wide">Contraseña</label>
-            <input type="password" [(ngModel)]="form.password" name="password" required class="w-full mt-1 px-3.5 py-2 border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none" />
-          </div>
-          <div>
             <label class="text-xs font-bold text-gray-700 uppercase tracking-wide">Rol</label>
             <select [(ngModel)]="form.rol" name="rol" required class="w-full mt-1 px-3.5 py-2 border border-gray-200 rounded-lg text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none">
               <option *ngFor="let rol of staffRoles" [value]="rol">{{ rol }}</option>
@@ -170,7 +204,7 @@ const STAFF_ROLES: StaffRole[] = ['Administrador', 'Encargado de Sucursal', 'Caj
           </div>
           <div *ngIf="form.rol !== 'Administrador'">
             <label class="text-xs font-bold text-gray-700 uppercase tracking-wide">Sucursales</label>
-            <div class="flex flex-wrap gap-1.5 mt-1">
+            <div class="flex flex-wrap gap-1.5 mt-1 max-h-40 overflow-y-auto">
               <label *ngFor="let s of inventoryService.locations()"
                      class="flex items-center gap-1 px-2 py-0.5 rounded border border-gray-200 text-[11px] text-gray-700 cursor-pointer">
                 <input type="checkbox" [checked]="form.sucursales.includes(s.codigoSucursal)" (change)="alternarSucursalNueva(s.codigoSucursal)" />
@@ -179,30 +213,8 @@ const STAFF_ROLES: StaffRole[] = ['Administrador', 'Encargado de Sucursal', 'Caj
             </div>
           </div>
 
-          <!-- Checklist en vivo de reglas de contraseña -->
-          <div class="p-3 bg-gray-50 rounded-lg border border-gray-200 space-y-1.5">
-            <p class="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-2">Requisitos de contraseña:</p>
-            <div class="flex items-center space-x-2 text-xs" [class.text-emerald-600]="hasMinLength(form.password)" [class.text-gray-400]="!hasMinLength(form.password)">
-              <span>{{ hasMinLength(form.password) ? '✓' : '○' }}</span>
-              <span>Mínimo 10 caracteres</span>
-            </div>
-            <div class="flex items-center space-x-2 text-xs" [class.text-emerald-600]="hasLower(form.password)" [class.text-gray-400]="!hasLower(form.password)">
-              <span>{{ hasLower(form.password) ? '✓' : '○' }}</span>
-              <span>Al menos 1 minúscula</span>
-            </div>
-            <div class="flex items-center space-x-2 text-xs" [class.text-emerald-600]="hasUpper(form.password)" [class.text-gray-400]="!hasUpper(form.password)">
-              <span>{{ hasUpper(form.password) ? '✓' : '○' }}</span>
-              <span>Al menos 1 mayúscula</span>
-            </div>
-            <div class="flex items-center space-x-2 text-xs" [class.text-emerald-600]="hasDigit(form.password)" [class.text-gray-400]="!hasDigit(form.password)">
-              <span>{{ hasDigit(form.password) ? '✓' : '○' }}</span>
-              <span>Al menos 1 número</span>
-            </div>
-            <div class="flex items-center space-x-2 text-xs" [class.text-emerald-600]="hasSpecial(form.password)" [class.text-gray-400]="!hasSpecial(form.password)">
-              <span>{{ hasSpecial(form.password) ? '✓' : '○' }}</span>
-              <span>Al menos 1 carácter especial</span>
-            </div>
-          </div>
+          <p class="text-[11px] text-gray-500">Sin contraseña: el empleado la define con el enlace de activación que le llega por correo (vale 72 horas).</p>
+          <p *ngIf="form.rol !== 'Administrador' && !form.sucursales.length" class="text-[11px] text-amber-700">Sin sucursales asignadas verá los datos de toda la empresa.</p>
 
           <p *ngIf="createError()" class="text-xs text-rose-600">{{ createError() }}</p>
 
@@ -216,6 +228,30 @@ const STAFF_ROLES: StaffRole[] = ['Administrador', 'Encargado de Sucursal', 'Caj
         </form>
       </div>
     </div>
+
+    <!-- [CU24] paso 5 y CU21 alt. 3: si el correo no salió, el enlace para entregarlo en persona -->
+    <div *ngIf="enlace() as e" class="ys-modal">
+      <div class="ys-modal-caja max-w-md ys-tarjeta space-y-3">
+        <h3 class="text-lg font-bold text-gray-900">No se pudo enviar el correo</h3>
+        <p class="text-xs text-gray-600">La cuenta de {{ e.miembro.nombre }} quedó creada. Entréguele este enlace para que la active, o reenvíelo más tarde:</p>
+        <input readonly class="ys-campo font-mono text-[11px]" [value]="e.enlaceActivacion" data-testid="enlace-activacion" />
+        <div class="flex gap-2">
+          <button (click)="copiar(e.enlaceActivacion!)" class="ys-btn-sec flex-1">Copiar enlace</button>
+          <button (click)="enlace.set(null)" class="ys-btn flex-1">Listo</button>
+        </div>
+      </div>
+    </div>
+
+    <div *ngIf="pedirBaja() as m" class="ys-modal">
+      <div class="ys-modal-caja max-w-md ys-tarjeta space-y-3">
+        <h3 class="text-lg font-bold text-gray-900">Dar de baja a {{ m.nombre }}</h3>
+        <p class="text-xs text-gray-600">Sus sesiones dejan de valer de inmediato. Sus ventas y su bitácora se conservan, y lo que registró sin conexión antes de la baja se acepta al sincronizar.</p>
+        <div class="flex gap-2">
+          <button (click)="pedirBaja.set(null)" class="ys-btn-sec flex-1">Volver</button>
+          <button (click)="darDeBaja(m)" [disabled]="saving()" class="ys-btn flex-1" data-testid="confirmar-baja">Dar de baja</button>
+        </div>
+      </div>
+    </div>
   `
 })
 export class TeamComponent implements OnInit {
@@ -227,10 +263,12 @@ export class TeamComponent implements OnInit {
   savingRoleFor = signal<number | null>(null);
   savingBranchesFor = signal<number | null>(null);
 
-  form: { nombre: string; email: string; password: string; rol: StaffRole; sucursales: number[] } = {
+  enlace = signal<StaffCreado | null>(null);
+  pedirBaja = signal<TeamMember | null>(null);
+
+  form: { nombre: string; email: string; rol: StaffRole; sucursales: number[] } = {
     nombre: '',
     email: '',
-    password: '',
     rol: 'Cajero',
     sucursales: [],
   };
@@ -238,10 +276,71 @@ export class TeamComponent implements OnInit {
   constructor(
     public teamService: TeamService,
     public inventoryService: InventoryService,
+    public tenantService: TenantService,
+    private authService: AuthService,
     private notificationService: NotificationService,
   ) {}
 
+  miId(): number | null {
+    const id = this.authService.currentUser()?.id;
+    return id ? Number(id) : null;
+  }
+
+  cupoLleno(): boolean {
+    const plan = this.tenantService.plan();
+    const uso = this.tenantService.uso();
+    return !!plan && !!uso && plan.maxUsuarios !== -1 && uso.usuarios >= plan.maxUsuarios;
+  }
+
+  private detalle(err: unknown, porDefecto: string): string {
+    return (err as { error?: { detail?: string } })?.error?.detail || porDefecto;
+  }
+
+  private mostrarActivacion(creado: StaffCreado, titulo: string): void {
+    if (creado.correoEnviado) {
+      this.notificationService.success(titulo, `Se envió el enlace de activación a ${creado.miembro.correo}.`);
+    } else {
+      this.enlace.set(creado);
+    }
+  }
+
+  reenviar(member: TeamMember): void {
+    this.teamService
+      .reenviarActivacion(member.idUser)
+      .then((creado) => this.mostrarActivacion(creado, 'Activación reenviada'))
+      .catch((err) => this.notificationService.error('Error', this.detalle(err, 'No se pudo reenviar la activación.')));
+  }
+
+  copiar(texto: string): void {
+    void navigator.clipboard?.writeText(texto);
+    this.notificationService.success('Copiado', 'El enlace quedó en el portapapeles.');
+  }
+
+  darDeBaja(member: TeamMember): void {
+    this.saving.set(true);
+    this.teamService
+      .cambiarEstado(member.idUser, 'baja')
+      .then(() => {
+        this.pedirBaja.set(null);
+        this.notificationService.success('Baja registrada', `"${member.nombre}" ya no puede ingresar.`);
+        void this.tenantService.cargarContexto();
+      })
+      .catch((err) => this.notificationService.error('Error', this.detalle(err, 'No se pudo dar de baja.')))
+      .finally(() => this.saving.set(false));
+  }
+
+  reincorporar(member: TeamMember): void {
+    this.teamService
+      .cambiarEstado(member.idUser, 'alta')
+      .then(() => {
+        this.notificationService.success('Reincorporado', `"${member.nombre}" vuelve a tener acceso.`);
+        void this.tenantService.cargarContexto();
+      })
+      .catch((err) => this.notificationService.error('No se pudo reincorporar', this.detalle(err, 'Intentá de nuevo.')));
+  }
+
   ngOnInit() {
+    if (!this.tenantService.contexto()) void this.tenantService.cargarContexto();
     this.teamService.loadTeam();
     this.teamService.loadAuditLog();
     if (this.inventoryService.locations().length === 0) void this.inventoryService.loadLocations();
@@ -274,36 +373,12 @@ export class TeamComponent implements OnInit {
     return 'bg-gray-100 text-gray-600 border-gray-200';
   }
 
-  hasLower(value: string): boolean {
-    return hasLower(value);
-  }
-
-  hasUpper(value: string): boolean {
-    return hasUpper(value);
-  }
-
-  hasDigit(value: string): boolean {
-    return hasDigit(value);
-  }
-
-  hasSpecial(value: string): boolean {
-    return hasSpecial(value);
-  }
-
-  hasMinLength(value: string): boolean {
-    return hasMinLength(value);
-  }
-
   canSubmitCreate(): boolean {
-    return (
-      this.form.nombre.trim().length > 0 &&
-      this.form.email.trim().length > 0 &&
-      isStrong(this.form.password)
-    );
+    return this.form.nombre.trim().length >= 2 && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(this.form.email.trim());
   }
 
   openCreateModal() {
-    this.form = { nombre: '', email: '', password: '', rol: 'Cajero', sucursales: [] };
+    this.form = { nombre: '', email: '', rol: 'Cajero', sucursales: [] };
     this.createError.set(null);
     this.showCreateModal.set(true);
   }
@@ -320,10 +395,11 @@ export class TeamComponent implements OnInit {
 
     this.teamService
       .createStaffUser({ ...this.form, sucursales: this.form.rol === 'Administrador' ? [] : this.form.sucursales })
-      .then(() => {
+      .then((creado) => {
         this.saving.set(false);
         this.showCreateModal.set(false);
-        this.notificationService.success('Usuario creado', `"${this.form.nombre}" fue agregado al equipo.`);
+        this.mostrarActivacion(creado, 'Empleado registrado');
+        void this.tenantService.cargarContexto();
       })
       .catch((err) => {
         this.saving.set(false);

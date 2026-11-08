@@ -3,6 +3,7 @@ import { CommonModule } from '@angular/common';
 
 /** Nombre de cada caso de uso del informe (sección 2.6). */
 export const CASOS_DE_USO: Record<string, string> = {
+  CU7: 'Emitir nota de devolución',
   CU11: 'Consultar historial y análisis de devoluciones',
   CU12: 'Preparar dispositivo para operación sin conexión',
   CU13: 'Consultar catálogo, precios y existencias sin conexión',
@@ -13,6 +14,18 @@ export const CASOS_DE_USO: Record<string, string> = {
   CU18: 'Resolver conflictos de sincronización',
   CU19: 'Registrar cambio de prenda sin conexión',
   CU20: 'Gestionar apertura y cierre de caja',
+  CU21: 'Registrar empresa contratante (tenant)',
+  CU22: 'Administrar estado de las suscripciones',
+  CU23: 'Configurar planes de suscripción',
+  CU24: 'Gestionar empleados y asignación a sucursales',
+  CU25: 'Verificar límites y funcionalidades del plan',
+  CU26: 'Solicitar reporte generativo en lenguaje natural',
+  CU27: 'Solicitar reporte generativo por voz',
+  CU28: 'Exportar reporte a PDF o Excel',
+  CU29: 'Entrenar y evaluar modelos de Machine Learning',
+  CU30: 'Visualizar dashboard analítico inteligente',
+  CU31: 'Recoger a domicilio la prenda devuelta',
+  CU32: 'Entregar a domicilio la prenda del cambio',
 };
 
 /**

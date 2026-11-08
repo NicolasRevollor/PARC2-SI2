@@ -114,6 +114,20 @@ def _configuracion_out(fila) -> ConfiguracionOut:
     )
 
 
+@router.get("/sucursales")
+async def mis_sucursales(
+    session: AsyncSession = Depends(get_db),
+    auth: dict = Depends(get_current_payload),
+    id_tenant: int = Depends(tenant_actual),
+):
+    """[CU12] [CU20]: las sucursales en las que trabaja el usuario (todas si no tiene asignadas)."""
+    visibles = await alcance_sucursales(session, auth)
+    stmt = select(Sucursal.codigoSucursal, Sucursal.nombre).where(Sucursal.idTenant == id_tenant).order_by(Sucursal.nombre)
+    if visibles is not None:
+        stmt = stmt.where(Sucursal.codigoSucursal.in_(sorted(visibles)))
+    return [{"codigoSucursal": c, "nombre": n} for c, n in (await session.execute(stmt)).all()]
+
+
 @router.get("/preparacion", response_model=PreparacionOut)
 async def preparacion(
     codigoSucursal: int,

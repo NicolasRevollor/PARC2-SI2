@@ -23,7 +23,7 @@ from app.schemas.tenancy import (
 from app.security import get_current_payload, require_permiso
 from app.services.bitacora import registrar_bitacora
 from app.services.suscripciones import abrir_suscripcion, suscripcion_vigente
-from app.services.tenancy import cargar_contexto, excesos_para_plan, tenant_actual, uso_actual
+from app.services.tenancy import cargar_contexto, excesos_para_plan, suscripcion_out, tenant_actual, uso_actual
 
 router = APIRouter(prefix="/api", tags=["tenant"])
 
@@ -35,7 +35,7 @@ async def listar_planes(
 ):
     """Catalogo de planes. Visible para cualquier usuario autenticado: es lo
     que alimenta la pantalla de comparacion/mejora de plan."""
-    planes = (await session.execute(select(Plan).order_by(Plan.orden))).scalars().all()
+    planes = (await session.execute(select(Plan).where(Plan.activo.is_(True)).order_by(Plan.orden))).scalars().all()
     return [PlanOut.model_validate(p) for p in planes]
 
 
@@ -51,9 +51,9 @@ async def mi_tenant(
         tenant=TenantOut.model_validate(ctx.tenant),
         plan=PlanOut.model_validate(ctx.plan),
         uso=UsoTenantOut(**await uso_actual(session, id_tenant)),
-        suscripcion=SuscripcionOut.model_validate(sus) if sus else None,
+        suscripcion=suscripcion_out(sus),
     )
-    await session.commit()  # persiste una renovacion automatica, si la hubo
+    await session.commit()  # persiste un vencimiento recien aplicado (CU22)
     return salida
 
 
@@ -76,6 +76,8 @@ async def cambiar_plan(
     ).scalar_one_or_none()
     if nuevo is None:
         raise HTTPException(status_code=404, detail=f"El plan '{payload.codigo}' no existe")
+    if not nuevo.activo:
+        raise HTTPException(status_code=409, detail=f"El plan {nuevo.nombre} no esta disponible para nuevas contrataciones")
 
     uso = await uso_actual(session, id_tenant)
     excedidos = excesos_para_plan(uso, nuevo)
@@ -110,5 +112,5 @@ async def cambiar_plan(
         tenant=TenantOut.model_validate(ctx.tenant),
         plan=PlanOut.model_validate(ctx.plan),
         uso=UsoTenantOut(**uso),
-        suscripcion=SuscripcionOut.model_validate(sus) if sus else None,
+        suscripcion=suscripcion_out(sus),
     )

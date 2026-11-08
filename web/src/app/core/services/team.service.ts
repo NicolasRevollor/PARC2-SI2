@@ -1,7 +1,7 @@
 import { Injectable, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
-import { TeamMember, AuditLogEntry, StaffUserIn, ChangeRoleIn, StaffRole } from '../models';
+import { TeamMember, AuditLogEntry, StaffUserIn, ChangeRoleIn, StaffRole, StaffCreado } from '../models';
 import { NotificationService } from './notification.service';
 import { environment } from '../../../environments/environment';
 
@@ -42,11 +42,24 @@ export class TeamService {
     });
   }
 
-  createStaffUser(payload: StaffUserIn): Promise<TeamMember> {
+  /** [CU24] paso 5: se crea sin contraseña y recibe el enlace de activación. */
+  createStaffUser(payload: StaffUserIn): Promise<StaffCreado> {
     return firstValueFrom(
-      this.http.post<TeamMember>(`${API_URL}/api/team`, payload)
-    ).then((member) => {
-      this.teamMembersSignal.update((list) => [...list, member]);
+      this.http.post<StaffCreado>(`${API_URL}/api/team`, payload)
+    ).then((creado) => {
+      this.teamMembersSignal.update((list) => [...list, creado.miembro]);
+      return creado;
+    });
+  }
+
+  reenviarActivacion(idUser: number): Promise<StaffCreado> {
+    return firstValueFrom(this.http.post<StaffCreado>(`${API_URL}/api/team/${idUser}/activacion`, {}));
+  }
+
+  /** [CU24] alternativo 3: baja sin borrar su trazabilidad; `alta` la deshace. */
+  cambiarEstado(idUser: number, accion: 'baja' | 'alta'): Promise<TeamMember> {
+    return firstValueFrom(this.http.post<TeamMember>(`${API_URL}/api/team/${idUser}/${accion}`, {})).then((member) => {
+      this.teamMembersSignal.update((list) => list.map((m) => (m.idUser === idUser ? member : m)));
       return member;
     });
   }

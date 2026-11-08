@@ -217,6 +217,20 @@ export interface TeamMember {
   permisos: string[];
   /** Sucursales asignadas (CU24); vacío = toda la empresa. */
   sucursales: number[];
+  /** [CU24] baja sin borrar su trazabilidad y cuenta pendiente de activación. */
+  activo: boolean;
+  cuentaActivada: boolean;
+  fechaBaja: string | null;
+}
+
+/** [CU21] [CU24] Si el correo no salió, el enlace para entregarlo en persona. */
+export interface Activacion {
+  correoEnviado: boolean;
+  enlaceActivacion: string | null;
+}
+
+export interface StaffCreado extends Activacion {
+  miembro: TeamMember;
 }
 
 export type StaffRole = 'Administrador' | 'Encargado de Sucursal' | 'Cajero';
@@ -224,7 +238,6 @@ export type StaffRole = 'Administrador' | 'Encargado de Sucursal' | 'Cajero';
 export interface StaffUserIn {
   nombre: string;
   email: string;
-  password: string;
   rol: StaffRole;
   sucursales?: number[];
 }
@@ -530,7 +543,17 @@ export interface PlanOut {
   permiteOffline: boolean;
   permiteMultiSucursal: boolean;
   orden: number;
+  /** [CU23] desactivado: no se ofrece en nuevas contrataciones. */
+  activo: boolean;
 }
+
+/** [CU23] Plan visto desde la consola de plataforma. */
+export interface PlanAdmin extends PlanOut {
+  empresas: number;
+  empresasExcedidas: string[];
+}
+
+export type PlanIn = Omit<PlanOut, 'idPlan'>;
 
 export interface TenantOut {
   idTenant: number;
@@ -538,6 +561,7 @@ export interface TenantOut {
   slug: string;
   estado: string;
   fechaAlta: string;
+  nit: string | null;
 }
 
 /** Suscripción vigente de la empresa (migración 023). */
@@ -546,8 +570,24 @@ export interface SuscripcionOut {
   idPlan: number;
   fechaInicio: string;
   fechaVencimiento: string;
-  estado: 'Activa' | 'Suspendida' | 'Vencida' | 'Finalizada' | string;
+  estado: 'Activa' | 'Gracia' | 'Suspendida' | 'Cancelada' | 'Finalizada' | string;
   precioMensual: number;
+  /** [CU22] Activa | PorVencer | Gracia | Suspendida | Cancelada y su texto. */
+  estadoVisible: string;
+  etiqueta: string;
+  diasRestantes: number;
+  finGracia: string | null;
+  fechaSuspension: string | null;
+  motivoSuspension: string | null;
+}
+
+export interface PagoSuscripcion {
+  idPago: number;
+  meses: number;
+  monto: number;
+  vencimientoAnterior: string;
+  vencimientoNuevo: string;
+  fecha: string;
 }
 
 export interface UsoTenantOut {
@@ -582,13 +622,20 @@ export interface ResumenPlataforma {
   porPlan: { codigo: string; nombre: string; empresas: number }[];
 }
 
+/** [CU21] paso 2: sin contraseña, el administrador la crea con el enlace de activación. */
 export interface EmpresaIn {
   nombre: string;
+  nit: string;
   slug: string;
   codigoPlan: string;
+  fechaInicio: string;
+  fechaVencimiento: string;
   adminNombre: string;
   adminCorreo: string;
-  adminPassword: string;
+}
+
+export interface EmpresaCreada extends Activacion {
+  empresa: EmpresaOut;
 }
 
 export interface Paginado<T> {
@@ -693,6 +740,7 @@ export type EstadoDevolucion =
   | 'EnRevision'
   | 'Aprobada'
   | 'CambioPendiente'
+  | 'EnvioDomicilio'
   | 'Completada'
   | 'Rechazada'
   | 'Anulada'
@@ -724,6 +772,69 @@ export interface SolicitudDevolucionIn {
   idProductoNuevo?: number | null;
   codigoSucursal: number;
   fotos?: string[];
+  /** [CU31] "domicilio": la prenda la recoge el repartidor. */
+  modalidadEntrega?: 'sucursal' | 'domicilio';
+  domicilio?: DomicilioIn | null;
+}
+
+/** [CU31] Donde y cuando pasa el repartidor. */
+export interface DomicilioIn {
+  direccion: string;
+  referencia?: string | null;
+  telefono: string;
+  fechaPreferida?: string | null;
+  franja?: 'manana' | 'tarde' | null;
+}
+
+/** [CU31] [CU32] Un viaje del repartidor: recojo de la prenda devuelta o entrega de la nueva. */
+export interface ViajeDomicilio {
+  idEntrega: number;
+  idDevolucion: number;
+  tipo: 'recojo' | 'entrega';
+  estado: 'Solicitado' | 'Programado' | 'Completado' | 'Fallido' | 'Cancelado';
+  direccion: string;
+  referencia: string | null;
+  telefono: string;
+  fechaPreferida: string | null;
+  franja: 'manana' | 'tarde' | null;
+  fechaProgramada: string | null;
+  repartidor: string | null;
+  costo: number;
+  intentos: number;
+  observaciones: string | null;
+  fechaRegistro: string;
+  fechaCompletado: string | null;
+  codigoSucursal: number | null;
+  codigo?: string;
+  estadoCaso?: string;
+  tipoCaso?: string;
+  cliente?: string;
+  producto?: string;
+  sucursal?: string | null;
+  tallaOriginal?: string | null;
+  tallaNueva?: string | null;
+}
+
+/** [CU7] Nota de devolucion: lo que el cliente devolvio y el dinero que se le devolvio. */
+export interface NotaDevolucion {
+  numero: string;
+  empresa: string;
+  fechaEmision: string;
+  tipo: string;
+  cliente: string | null;
+  sucursal: string | null;
+  atendidoPor: string | null;
+  venta: { idVenta: number; fecha: string };
+  prendasDevueltas: { producto: string; talla: string | null; color: string | null; cantidad: number; precioUnitario: number; subtotal: number; motivo: string; estadoAlRecibirla: string }[];
+  recogidaADomicilio: { fecha: string | null; repartidor: string | null; direccion: string } | null;
+  valorPrendas: number;
+  descuentos: { concepto: string; monto: number }[];
+  valorAFavor: number;
+  prendaEntregada: { producto: string; talla: string | null; color: string | null; valor: number; diferencia: number } | null;
+  montoDevuelto: number;
+  medio: string;
+  estadoReembolso: string;
+  referencia: string | null;
 }
 
 export interface ChecklistInspeccion {
@@ -791,7 +902,11 @@ export interface DevolucionOut {
   valor: number;
   recargo: number;
   descuentoDeterioro: number;
+  /** Valor de la prenda devuelta a favor del cliente (ya no hay notas de credito: siempre es dinero o prenda). */
   credito: number;
+  /** [CU31] [CU32] */
+  modalidadEntrega: 'sucursal' | 'domicilio';
+  costoDomicilio: number;
   montoDevuelto: number;
   metodoReembolso: string | null;
   estadoReembolso: string | null;
@@ -916,6 +1031,9 @@ export interface PoliticaDevolucion {
   diasRetiroCambio: number;
   costoAjusteMedida: number;
   condiciones: string;
+  /** [CU31] [CU32] delivery: si se ofrece y cuanto cuesta cada viaje. */
+  permiteDomicilio: boolean;
+  costoDomicilio: number;
   idTenant?: number;
   version?: number;
   idPolitica?: number | null;

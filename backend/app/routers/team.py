@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import func, select
@@ -11,10 +11,12 @@ from app.schemas.team import (
     AsignarSucursalesIn,
     AuditLogOut,
     ChangeRoleIn,
+    StaffCreadoOut,
     StaffUserIn,
     TeamMemberOut,
 )
 from app.security import hash_password, require_permiso
+from app.services import acceso, cuentas
 from app.services.alcance import sucursales_asignadas
 from app.services.bitacora import registrar_bitacora
 from app.services.tenancy import ContextoTenant, contexto_actual, exigir_cupo, tenant_actual
@@ -34,6 +36,9 @@ async def _miembro(session: AsyncSession, u: Usuario) -> TeamMemberOut:
         rol=claims["rol"],
         permisos=claims["permisos"],
         sucursales=await sucursales_asignadas(session, u.idUser),
+        activo=u.activo,
+        cuentaActivada=u.cuentaActivada,
+        fechaBaja=u.fechaBaja,
     )
 
 
@@ -154,7 +159,15 @@ async def activate_account(
     return ActivateAccountResponse(message="Cuenta reactivada correctamente")
 
 
-@router.post("", response_model=TeamMemberOut, status_code=201)
+# ==== DIAGRAMA <-> CODIGO (informe Parcial 2) ====================
+# [CU24] Gestionar empleados y asignacion a sucursales
+# Pantalla (boundary) que lo usa: web/src/app/features/team/team.component.ts
+# Control: ControlPersonal.registrarEmpleado()
+# En palabras simples: revisa el cupo de usuarios del plan (CU25) y que las
+#   sucursales sean de la empresa, crea al empleado sin contrasena y le manda el
+#   enlace para activarse.
+# ==================================================================
+@router.post("", response_model=StaffCreadoOut, status_code=201)
 async def create_staff_user(
     payload: StaffUserIn,
     request: Request,
@@ -162,6 +175,7 @@ async def create_staff_user(
     current: dict = Depends(require_permiso("usuario.admin")),
     ctx: ContextoTenant = Depends(contexto_actual),
 ):
+    # Paso 4 y flujo alternativo 1: limite de usuarios del plan.
     await exigir_cupo(session, ctx, "usuarios")
     existing = (
         await session.execute(
@@ -169,7 +183,8 @@ async def create_staff_user(
         )
     ).first()
     if existing:
-        raise HTTPException(status_code=409, detail="El correo ya esta registrado")
+        # Flujo alternativo 2: sin decir de que empresa es.
+        raise HTTPException(status_code=409, detail="El correo ya esta en uso")
 
     rol = (
         await session.execute(
@@ -182,9 +197,10 @@ async def create_staff_user(
     nuevo = Usuario(
         nombre=payload.nombre,
         correo=payload.email,
-        contraseña=hash_password(payload.password),
+        contraseña=cuentas.contrasena_provisional(),
         codigoRol=rol.codigoRol,
         idTenant=ctx.tenant.idTenant,
+        cuentaActivada=False,
     )
     session.add(nuevo)
     await session.flush()
@@ -196,7 +212,91 @@ async def create_staff_user(
     )
     await session.commit()
     await session.refresh(nuevo)
-    return await _miembro(session, nuevo)
+    # Paso 5: correo de activacion; si falla, el empleado ya quedo registrado.
+    enviado, enlace = await cuentas.enviar_activacion(nuevo, ctx.tenant.nombre)
+    return StaffCreadoOut(miembro=await _miembro(session, nuevo), correoEnviado=enviado, enlaceActivacion=None if enviado else enlace)
+
+
+async def _de_mi_empresa(session: AsyncSession, id_user: int, id_tenant: int) -> Usuario:
+    usuario = await session.get(Usuario, id_user)
+    if not usuario or usuario.idTenant != id_tenant:
+        # Flujo alternativo 4.
+        raise HTTPException(status_code=404, detail="Usuario no encontrado")
+    return usuario
+
+
+@router.post("/{idUser}/activacion", response_model=StaffCreadoOut)
+async def reenviar_activacion(
+    idUser: int,
+    session: AsyncSession = Depends(get_db),
+    _: dict = Depends(require_permiso("usuario.admin")),
+    ctx: ContextoTenant = Depends(contexto_actual),
+):
+    usuario = await _de_mi_empresa(session, idUser, ctx.tenant.idTenant)
+    if usuario.cuentaActivada:
+        raise HTTPException(status_code=409, detail="El usuario ya activo su cuenta")
+    enviado, enlace = await cuentas.enviar_activacion(usuario, ctx.tenant.nombre)
+    return StaffCreadoOut(miembro=await _miembro(session, usuario), correoEnviado=enviado, enlaceActivacion=None if enviado else enlace)
+
+
+# ==== DIAGRAMA <-> CODIGO (informe Parcial 2) ====================
+# [CU24] Flujo alternativo 3: dar de baja
+# Control: ControlPersonal.darDeBaja()
+# En palabras simples: el usuario no se borra (sus ventas y su bitacora siguen con
+#   su nombre). Queda inactivo: sus sesiones dejan de valer en el proximo pedido
+#   (services/acceso.py) y lo que registro sin conexion ANTES de la baja se sigue
+#   aceptando al sincronizar (services/operaciones_offline.py).
+# ==================================================================
+@router.post("/{idUser}/baja", response_model=TeamMemberOut)
+async def dar_de_baja(
+    idUser: int,
+    request: Request,
+    session: AsyncSession = Depends(get_db),
+    current: dict = Depends(require_permiso("usuario.admin")),
+    id_tenant: int = Depends(tenant_actual),
+):
+    usuario = await _de_mi_empresa(session, idUser, id_tenant)
+    if int(current["sub"]) == idUser:
+        raise HTTPException(status_code=400, detail="No puede darse de baja a si mismo")
+    if not usuario.activo:
+        raise HTTPException(status_code=409, detail="El usuario ya esta dado de baja")
+    rol = await session.get(Rol, usuario.codigoRol)
+    if rol is not None and rol.nombreRol == "Administrador":
+        otros = await session.scalar(
+            select(func.count()).select_from(Usuario).join(Rol, Rol.codigoRol == Usuario.codigoRol)
+            .where(Rol.nombreRol == "Administrador", Usuario.idTenant == id_tenant, Usuario.activo.is_(True), Usuario.idUser != idUser)
+        )
+        if not otros:
+            raise HTTPException(status_code=400, detail="Debe quedar al menos un Administrador")
+    usuario.activo = False
+    usuario.fechaBaja = datetime.now(timezone.utc)
+    ip = request.client.host if request.client else "0.0.0.0"
+    await registrar_bitacora(session, f"Baja de {usuario.correo}", int(current["sub"]), ip)
+    await session.commit()
+    acceso.invalidar(id_user=idUser)
+    return await _miembro(session, usuario)
+
+
+@router.post("/{idUser}/alta", response_model=TeamMemberOut)
+async def reincorporar(
+    idUser: int,
+    request: Request,
+    session: AsyncSession = Depends(get_db),
+    current: dict = Depends(require_permiso("usuario.admin")),
+    ctx: ContextoTenant = Depends(contexto_actual),
+):
+    """Deshacer una baja: vuelve a ocupar una licencia del plan."""
+    usuario = await _de_mi_empresa(session, idUser, ctx.tenant.idTenant)
+    if usuario.activo:
+        raise HTTPException(status_code=409, detail="El usuario ya esta activo")
+    await exigir_cupo(session, ctx, "usuarios")
+    usuario.activo = True
+    usuario.fechaBaja = None
+    ip = request.client.host if request.client else "0.0.0.0"
+    await registrar_bitacora(session, f"Reincorporacion de {usuario.correo}", int(current["sub"]), ip)
+    await session.commit()
+    acceso.invalidar(id_user=idUser)
+    return await _miembro(session, usuario)
 
 
 @router.patch("/{idUser}/role", response_model=TeamMemberOut)

@@ -1,6 +1,6 @@
 # ==== DIAGRAMA <-> CODIGO (informe Parcial 2) ====================
 # Este archivo = las ENTIDADES del "Modelo de dominio" (seccion 3.1 del informe)
-# y del diagrama de clases de la base de datos (36 clases = 36 tablas).
+# y del diagrama de clases de la base de datos (40 clases = 40 tablas).
 # Cada clase de abajo dice en que paquete del modelo de dominio esta.
 # En los diagramas de robustez son los circulos con raya abajo (entity).
 # ==================================================================
@@ -16,6 +16,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    LargeBinary,
     Numeric,
     String,
     Text,
@@ -61,6 +62,8 @@ class Plan(Base):
     permiteOffline: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     permiteMultiSucursal: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     orden: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    # Migracion 027 ([CU23] alt. 2): desactivado no se ofrece en nuevas contrataciones.
+    activo: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
 
 # [Modelo de dominio] Paquete "Plataforma SaaS" -> entidad Tenant  (tabla "tenant")
@@ -73,6 +76,8 @@ class Tenant(Base):
     estado: Mapped[str] = mapped_column(String(20), default="Activo", nullable=False)
     fechaAlta: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=_ahora_utc, nullable=False)
     idPlan: Mapped[int] = mapped_column(ForeignKey("plan.idPlan", onupdate="CASCADE"), nullable=False)
+    # Migracion 027 ([CU21]): NIT de la empresa contratante.
+    nit: Mapped[str | None] = mapped_column(String(20), unique=True)
 
     plan: Mapped["Plan"] = relationship()
 
@@ -90,12 +95,31 @@ class Suscripcion(Base):
     idPlan: Mapped[int] = mapped_column(ForeignKey("plan.idPlan", onupdate="CASCADE"), nullable=False)
     fechaInicio: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=_ahora_utc, nullable=False)
     fechaVencimiento: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
-    # Activa | Suspendida | Vencida | Finalizada
+    # Activa | Gracia | Suspendida | Cancelada (vigentes o terminadas por el CU22) y
+    # Finalizada (reemplazada por un cambio de plan). "Por vencer" no se guarda: se calcula.
     estado: Mapped[str] = mapped_column(String(12), default="Activa", nullable=False)
     precioMensual: Mapped[float] = mapped_column(Numeric(10, 2), default=0.00, nullable=False)
     creadoEn: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=_ahora_utc, nullable=False)
     # Migracion 026 ([CU17] alternativo 5): las operaciones sin conexion anteriores se aceptan.
     fechaSuspension: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+    # Migracion 027 ([CU22] alt. 1).
+    motivoSuspension: Mapped[str | None] = mapped_column(String(255))
+
+
+# [Modelo de dominio] Paquete "Plataforma SaaS" -> entidad PagoSuscripcion  (tabla "pago_suscripcion")
+# [CU22] Administrar estado de las suscripciones (pago simulado de la renovacion)
+class PagoSuscripcion(Base):
+    __tablename__ = "pago_suscripcion"
+
+    idPago: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    idSuscripcion: Mapped[int] = mapped_column(ForeignKey("suscripcion.idSuscripcion", ondelete="CASCADE", onupdate="CASCADE"), nullable=False)
+    idTenant: Mapped[int] = mapped_column(ForeignKey("tenant.idTenant", ondelete="CASCADE", onupdate="CASCADE"), nullable=False)
+    meses: Mapped[int] = mapped_column(Integer, nullable=False)
+    monto: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
+    vencimientoAnterior: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+    vencimientoNuevo: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), nullable=False)
+    fecha: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=_ahora_utc, nullable=False)
+    idUsuario: Mapped[int | None] = mapped_column(ForeignKey("Usuario.idUser", ondelete="SET NULL", onupdate="CASCADE"))
 
 
 # [Modelo de dominio] Paquete "Ubicacion" -> entidad Ciudad  (tabla "Ciudad")
@@ -158,6 +182,11 @@ class Usuario(Base):
     idTenant: Mapped[int] = mapped_column(
         ForeignKey("tenant.idTenant", onupdate="CASCADE"), default=TENANT_POR_DEFECTO, nullable=False
     )
+    # Migracion 027 ([CU24]): baja del empleado sin borrar su trazabilidad.
+    activo: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    fechaBaja: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+    # Migracion 027 ([CU21] [CU24]): falso hasta que defina su contrasena con el enlace.
+    cuentaActivada: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
     rol: Mapped["Rol"] = relationship()
 
@@ -528,6 +557,70 @@ class ConfiguracionOperacion(Base):
     horasRetiroReserva: Mapped[int] = mapped_column(Integer, default=48, nullable=False)
 
 
+# [Modelo de dominio] Paquete "Inteligencia artificial" -> entidad ReporteSolicitud  (tabla "reporte_solicitud")
+# [CU26] [CU27] Historial y favoritos de los reportes generativos
+class ReporteSolicitud(Base):
+    __tablename__ = "reporte_solicitud"
+
+    idSolicitud: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    idTenant: Mapped[int] = mapped_column(ForeignKey("tenant.idTenant", ondelete="CASCADE", onupdate="CASCADE"), nullable=False)
+    idUsuario: Mapped[int | None] = mapped_column(ForeignKey("Usuario.idUser", ondelete="SET NULL", onupdate="CASCADE"))
+    texto: Mapped[str] = mapped_column(String(500), nullable=False)
+    origen: Mapped[str] = mapped_column(String(5), default="texto", nullable=False)  # texto | voz
+    motor: Mapped[str] = mapped_column(String(40), nullable=False)
+    interpretacion: Mapped[dict | None] = mapped_column(JSONB)
+    titulo: Mapped[str | None] = mapped_column(String(150))
+    estado: Mapped[str] = mapped_column(String(12), nullable=False)  # Generado | SinDatos | Aclaracion | Rechazado
+    filas: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    favorita: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    fecha: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=_ahora_utc, nullable=False)
+
+
+# [Modelo de dominio] Paquete "Inteligencia artificial" -> entidad ReporteExportacion  (tabla "reporte_exportacion")
+# [CU28] Exportar reporte a PDF o Excel (los grandes se generan en segundo plano)
+class ReporteExportacion(Base):
+    __tablename__ = "reporte_exportacion"
+
+    idExportacion: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    idTenant: Mapped[int] = mapped_column(ForeignKey("tenant.idTenant", ondelete="CASCADE", onupdate="CASCADE"), nullable=False)
+    idUsuario: Mapped[int | None] = mapped_column(ForeignKey("Usuario.idUser", ondelete="SET NULL", onupdate="CASCADE"))
+    titulo: Mapped[str] = mapped_column(String(150), nullable=False)
+    formato: Mapped[str] = mapped_column(String(5), nullable=False)  # pdf | xlsx
+    estado: Mapped[str] = mapped_column(String(12), default="EnProceso", nullable=False)  # EnProceso | Lista | Fallida
+    filas: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    nombreArchivo: Mapped[str | None] = mapped_column(String(160))
+    archivo: Mapped[bytes | None] = mapped_column(LargeBinary)
+    error: Mapped[str | None] = mapped_column(String(255))
+    fecha: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=_ahora_utc, nullable=False)
+
+
+# [Modelo de dominio] Paquete "Inteligencia artificial" -> entidad ModeloIA  (tabla "modelo_ia")
+# [CU29] Entrenar y evaluar modelos de Machine Learning  /  [CU30] los usa el dashboard
+class ModeloIA(Base):
+    """Una version entrenada de un modelo de la empresa. "resultados" guarda lo
+    que muestra el dashboard (predicciones, segmentos o anomalias), calculado al
+    entrenar: el dashboard no vuelve a correr el modelo."""
+
+    __tablename__ = "modelo_ia"
+
+    idModeloIA: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    idTenant: Mapped[int] = mapped_column(ForeignKey("tenant.idTenant", ondelete="CASCADE", onupdate="CASCADE"), nullable=False)
+    tipo: Mapped[str] = mapped_column(String(20), nullable=False)  # demanda | devolucion | segmentacion | anomalias
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    estado: Mapped[str] = mapped_column(String(12), nullable=False)  # Entrenado | Publicado | Retirado | Fallido
+    algoritmo: Mapped[str | None] = mapped_column(String(60))
+    metricas: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+    cumpleUmbral: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    filasReales: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    filasSinteticas: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    parametros: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+    resultados: Mapped[dict] = mapped_column(JSONB, default=dict, nullable=False)
+    error: Mapped[str | None] = mapped_column(String(500))
+    fechaEntrenamiento: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=_ahora_utc, nullable=False)
+    fechaPublicacion: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+    idUsuario: Mapped[int | None] = mapped_column(ForeignKey("Usuario.idUser", ondelete="SET NULL", onupdate="CASCADE"))
+
+
 # [Modelo de dominio] Paquete "Caja" -> entidad Caja  (tabla "caja")
 # [CU20] Gestionar apertura y cierre de caja
 class Caja(Base):
@@ -757,6 +850,39 @@ class Devolucion(Base):
     # Migracion 026 ([CU19]): cambio registrado sin conexion.
     uuidOperacion: Mapped[str | None] = mapped_column(UUID(as_uuid=False), unique=True)
     origenRegistro: Mapped[str] = mapped_column(String(12), default="en_linea", nullable=False)
+    # Migracion 028 ([CU31] [CU32]): la prenda se recoge y la nueva se entrega en el domicilio.
+    modalidadEntrega: Mapped[str] = mapped_column(String(10), default="sucursal", nullable=False)
+    costoDomicilio: Mapped[float] = mapped_column(Numeric(12, 2), default=0.00, nullable=False)
+
+
+# [Modelo de dominio] Paquete "Posventa" -> entidad EntregaDomicilio  (tabla "entrega_domicilio")
+# [CU31] Recoger a domicilio la prenda devuelta  /  [CU32] Entregar a domicilio la prenda del cambio
+# Un viaje del repartidor: "recojo" (trae la prenda devuelta a la sucursal) o
+# "entrega" (lleva la prenda nueva al cliente, recien despues de la inspeccion).
+class EntregaDomicilio(Base):
+    __tablename__ = "entrega_domicilio"
+
+    idEntrega: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    idDevolucion: Mapped[int] = mapped_column(
+        ForeignKey("devolucion.idDevolucion", ondelete="CASCADE", onupdate="CASCADE"), nullable=False
+    )
+    idTenant: Mapped[int] = mapped_column(ForeignKey("tenant.idTenant", ondelete="CASCADE", onupdate="CASCADE"), nullable=False)
+    tipo: Mapped[str] = mapped_column(String(10), nullable=False)
+    estado: Mapped[str] = mapped_column(String(12), default="Solicitado", nullable=False)
+    codigoSucursal: Mapped[int | None] = mapped_column(ForeignKey("Sucursal.codigoSucursal", ondelete="SET NULL", onupdate="CASCADE"))
+    direccion: Mapped[str] = mapped_column(String(255), nullable=False)
+    referencia: Mapped[str | None] = mapped_column(String(255))
+    telefono: Mapped[str] = mapped_column(String(20), nullable=False)
+    fechaPreferida: Mapped[date | None] = mapped_column(Date)
+    franja: Mapped[str | None] = mapped_column(String(10))
+    fechaProgramada: Mapped[date | None] = mapped_column(Date)
+    repartidor: Mapped[str | None] = mapped_column(String(100))
+    costo: Mapped[float] = mapped_column(Numeric(12, 2), default=0.00, nullable=False)
+    intentos: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    observaciones: Mapped[str | None] = mapped_column(String(255))
+    fechaRegistro: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=_ahora_utc, nullable=False)
+    fechaCompletado: Mapped[datetime | None] = mapped_column(TIMESTAMP(timezone=True))
+    idUsuario: Mapped[int | None] = mapped_column(ForeignKey("Usuario.idUser", ondelete="SET NULL", onupdate="CASCADE"))
 
 
 # [Modelo de dominio] Paquete "Posventa" -> entidad PoliticaDevolucion  (tabla "politica_devolucion")
@@ -792,6 +918,9 @@ class PoliticaDevolucion(Base):
     diasRetiroCambio: Mapped[int] = mapped_column(Integer, nullable=False)
     costoAjusteMedida: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
     condiciones: Mapped[str] = mapped_column(String(1000), nullable=False)
+    # Migracion 028 ([CU31] [CU32]): delivery de devoluciones y cambios.
+    permiteDomicilio: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    costoDomicilio: Mapped[float] = mapped_column(Numeric(12, 2), default=15.00, nullable=False)
     creadoEn: Mapped[datetime] = mapped_column(TIMESTAMP(timezone=True), default=_ahora_utc, nullable=False)
     idUsuario: Mapped[int | None] = mapped_column(ForeignKey("Usuario.idUser", ondelete="SET NULL", onupdate="CASCADE"))
 

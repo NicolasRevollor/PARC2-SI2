@@ -23,6 +23,7 @@ from app.services.bitacora import registrar_bitacora
 from app.services import caja as caja_srv
 from app.services import sincronizacion as sync
 from app.services import notificaciones as notif
+from app.services.alcance import alcance_sucursales
 from app.services.tenancy import tenant_actual
 
 router = APIRouter(prefix="/api/sales", tags=["sales"])
@@ -270,6 +271,10 @@ async def _crear_venta(
         sucursal = await session.get(Sucursal, payload.codigoSucursal)
         if sucursal is None or (id_tenant_venta is not None and sucursal.idTenant != id_tenant_venta):
             raise HTTPException(status_code=400, detail="Sucursal inexistente")
+        if not es_autocompra:
+            visibles = await alcance_sucursales(session, auth)
+            if visibles is not None and payload.codigoSucursal not in visibles:
+                raise HTTPException(status_code=403, detail="No esta asignado a esa sucursal")
         id_tenant_venta = sucursal.idTenant
 
     total = 0.0

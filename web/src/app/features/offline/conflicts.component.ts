@@ -33,6 +33,12 @@ interface LineaComparada {
   disponible: number;
 }
 
+/** [CU18] alt. 2: lo que el servidor ofrece para reasignar una reserva sin existencia. */
+interface Alternativas {
+  variantes: { idProducto: number; nombre: string; talla: string | null; color: string | null; disponible: number }[];
+  sucursales: { codigoSucursal: number; nombre: string; disponible: number }[];
+}
+
 interface Conflicto {
   idConflicto: number;
   uuidOperacion: string;
@@ -49,7 +55,7 @@ interface Conflicto {
   usuario: string | null;
   fechaOperacion: string | null;
   datosDispositivo: { datos: Record<string, any> };
-  datosServidor: { lineas?: LineaComparada[]; nombre?: string; ci?: string } & Record<string, unknown>;
+  datosServidor: { lineas?: LineaComparada[]; nombre?: string; ci?: string; alternativas?: Alternativas } & Record<string, unknown>;
   decisiones: string[];
   soloAdministrador: boolean;
 }
@@ -108,9 +114,35 @@ interface Conflicto {
 
         <div *ngIf="c.estado === 'Pendiente'" class="space-y-2 border-t border-gray-100 pt-3">
           <input class="ys-campo" [(ngModel)]="observaciones[c.idConflicto]" [name]="'obs' + c.idConflicto" placeholder="Observaciones (quedan en la bitácora)" />
-          <div *ngIf="c.decisiones.includes('reasignar')" class="grid grid-cols-2 gap-2">
-            <input class="ys-campo" type="number" [(ngModel)]="extra(c).idProductoNuevo" [name]="'prod' + c.idConflicto" placeholder="Id. de la otra variante" />
-            <input class="ys-campo" type="number" [(ngModel)]="extra(c).codigoSucursalNueva" [name]="'suc' + c.idConflicto" placeholder="Código de otra sucursal" />
+          <!-- [CU18] alt. 2: reasignar eligiendo entre lo que hay, sin escribir códigos -->
+          <div *ngIf="c.decisiones.includes('reasignar')" class="space-y-2" data-testid="alternativas">
+            <ng-container *ngIf="c.datosServidor.alternativas as alt; else sinAlternativas">
+              <div *ngIf="alt.variantes.length">
+                <p class="ys-mini mb-1">Otra talla o color en la misma sucursal</p>
+                <div class="flex flex-wrap gap-1.5">
+                  <button *ngFor="let v of alt.variantes" (click)="elegirVariante(c, v.idProducto)" class="ys-opcion text-xs"
+                          [ngClass]="{ 'ys-opcion-activa': extra(c)['idProductoNuevo'] === v.idProducto }">
+                    {{ v.nombre }} · {{ v.talla || '—' }} · {{ v.color || '—' }} ({{ v.disponible }})
+                  </button>
+                </div>
+              </div>
+              <div *ngIf="alt.sucursales.length">
+                <p class="ys-mini mb-1">La misma prenda en otra sucursal</p>
+                <div class="flex flex-wrap gap-1.5">
+                  <button *ngFor="let s of alt.sucursales" (click)="elegirSucursal(c, s.codigoSucursal)" class="ys-opcion text-xs"
+                          [ngClass]="{ 'ys-opcion-activa': extra(c)['codigoSucursalNueva'] === s.codigoSucursal }">
+                    {{ s.nombre }} ({{ s.disponible }})
+                  </button>
+                </div>
+              </div>
+              <p *ngIf="!alt.variantes.length && !alt.sucursales.length" class="text-xs text-amber-700">No hay otra variante ni otra sucursal con existencia: solo se puede anular.</p>
+            </ng-container>
+            <ng-template #sinAlternativas>
+              <div class="grid grid-cols-2 gap-2">
+                <input class="ys-campo" type="number" [(ngModel)]="extra(c).idProductoNuevo" [name]="'prod' + c.idConflicto" placeholder="Id. de la otra variante" />
+                <input class="ys-campo" type="number" [(ngModel)]="extra(c).codigoSucursalNueva" [name]="'suc' + c.idConflicto" placeholder="Código de otra sucursal" />
+              </div>
+            </ng-template>
           </div>
           <div *ngIf="c.decisiones.includes('vincular_venta')" class="grid grid-cols-2 gap-2">
             <input class="ys-campo" type="number" [(ngModel)]="extra(c).idVenta" [name]="'venta' + c.idConflicto" placeholder="N.º de venta" />
@@ -145,6 +177,18 @@ export class ConflictsComponent implements OnInit {
 
   extra(c: Conflicto): Record<string, number | null> {
     return (this.extras[c.idConflicto] ??= {});
+  }
+
+  elegirVariante(c: Conflicto, idProducto: number): void {
+    const e = this.extra(c);
+    e['idProductoNuevo'] = e['idProductoNuevo'] === idProducto ? null : idProducto;
+    e['codigoSucursalNueva'] = null;
+  }
+
+  elegirSucursal(c: Conflicto, codigo: number): void {
+    const e = this.extra(c);
+    e['codigoSucursalNueva'] = e['codigoSucursalNueva'] === codigo ? null : codigo;
+    e['idProductoNuevo'] = null;
   }
 
   decision(clave: string | null): string {

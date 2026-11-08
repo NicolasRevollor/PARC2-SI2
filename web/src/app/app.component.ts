@@ -28,6 +28,11 @@ import { PwaService } from './core/services/pwa.service';
 import { PlatformComponent } from './features/platform/platform.component';
 import { PlatformAuditComponent } from './features/platform/platform-audit.component';
 import { PlatformBackupsComponent } from './features/platform/platform-backups.component';
+import { PlatformSubscriptionsComponent } from './features/platform/platform-subscriptions.component';
+import { PlatformPlansComponent } from './features/platform/platform-plans.component';
+import { ReportsIaComponent } from './features/reports-ia/reports-ia.component';
+import { ModelosIaComponent } from './features/modelos-ia/modelos-ia.component';
+import { DashboardAnaliticoComponent } from './features/dashboard-analitico/dashboard-analitico.component';
 import { BitacoraComponent } from './features/bitacora/bitacora.component';
 import { PERMISO_PLATAFORMA } from './core/services/platform.service';
 
@@ -62,7 +67,12 @@ import { PERMISO_PLATAFORMA } from './core/services/platform.service';
     BitacoraComponent,
     PlatformComponent,
     PlatformAuditComponent,
-    PlatformBackupsComponent
+    PlatformBackupsComponent,
+    PlatformSubscriptionsComponent,
+    PlatformPlansComponent,
+    ReportsIaComponent,
+    ModelosIaComponent,
+    DashboardAnaliticoComponent
   ],
   template: `
     <!-- Branded loader overlay: shown briefly when moving from the landing page
@@ -220,9 +230,31 @@ import { PERMISO_PLATAFORMA } from './core/services/platform.service';
               *ngIf="activeView() === 'bitacora'"
             ></app-bitacora>
 
+            <app-reports-ia
+              *ngIf="activeView() === 'reportes-ia'"
+            ></app-reports-ia>
+
+            <app-modelos-ia
+              *ngIf="activeView() === 'modelos-ia'"
+              (irDashboard)="onViewChange('dashboard-analitico')"
+            ></app-modelos-ia>
+
+            <app-dashboard-analitico
+              *ngIf="activeView() === 'dashboard-analitico'"
+              (irModelos)="onViewChange('modelos-ia')"
+            ></app-dashboard-analitico>
+
             <app-platform
               *ngIf="activeView() === 'platform'"
             ></app-platform>
+
+            <app-platform-subscriptions
+              *ngIf="activeView() === 'platform-suscripciones'"
+            ></app-platform-subscriptions>
+
+            <app-platform-plans
+              *ngIf="activeView() === 'platform-planes'"
+            ></app-platform-plans>
 
             <app-platform-audit
               *ngIf="activeView() === 'platform-bitacora'"
@@ -258,7 +290,9 @@ export class AppComponent {
     public authService: AuthService,
     private pwaService: PwaService,
   ) {
-    this.showLanding.set(!authService.isAuthenticated());
+    // [CU21] [CU24] Un enlace de activación o recuperación abre directo el login.
+    const conEnlace = new URLSearchParams(window.location.search).has('reset_token');
+    this.showLanding.set(!authService.isAuthenticated() && !conEnlace);
     // [CU13] Sin red, el personal arranca en la operacion sin conexion: el dashboard
     // solo mostraria errores de carga.
     if (authService.isAuthenticated() && !navigator.onLine) {
@@ -357,6 +391,16 @@ export class AppComponent {
         return 'Bitácora de Actividad';
       case 'platform':
         return 'Consola de Plataforma';
+      case 'platform-suscripciones':
+        return 'Suscripciones de las Empresas';
+      case 'platform-planes':
+        return 'Planes de Suscripción';
+      case 'reportes-ia':
+        return 'Reportes con IA';
+      case 'modelos-ia':
+        return 'Modelos de Machine Learning';
+      case 'dashboard-analitico':
+        return 'Dashboard Analítico Inteligente';
       case 'platform-bitacora':
         return 'Bitácora de la Plataforma';
       case 'platform-respaldos':

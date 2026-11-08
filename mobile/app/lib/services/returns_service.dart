@@ -98,6 +98,8 @@ class ReturnsService {
     required String tipo,
     int? idProductoNuevo,
     required int codigoSucursal,
+    String modalidadEntrega = 'sucursal',
+    Map<String, dynamic>? domicilio,
   }) async {
     final data = await _api.post('/api/returns/solicitudes', body: {
       'idVenta': idVenta,
@@ -108,8 +110,22 @@ class ReturnsService {
       'tipo': tipo,
       'idProductoNuevo': idProductoNuevo,
       'codigoSucursal': codigoSucursal,
+      // [CU31]: la prenda la recoge el repartidor.
+      'modalidadEntrega': modalidadEntrega,
+      if (domicilio != null) 'domicilio': domicilio,
     });
     return CasoDevolucion.fromJson(data as Map<String, dynamic>);
+  }
+
+  // [CU31] [CU32] GET /api/returns/domicilio/caso/{id}: recojo y entrega del caso.
+  Future<List<Map<String, dynamic>>> getViajes(int idDevolucion) async {
+    final data = await _api.get('/api/returns/domicilio/caso/$idDevolucion') as List;
+    return data.cast<Map<String, dynamic>>();
+  }
+
+  // [CU7] GenerarNotaDevolucion -> GET /api/returns/{id}/nota-devolucion
+  Future<Map<String, dynamic>> getNotaDevolucion(int idDevolucion) async {
+    return await _api.get('/api/returns/$idDevolucion/nota-devolucion') as Map<String, dynamic>;
   }
 
   // [CU2] flujo alternativo 3 -> POST /api/returns/{id}/cancelar

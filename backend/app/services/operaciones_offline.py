@@ -63,6 +63,7 @@ from app.services import devoluciones as dv
 from app.services import sincronizacion as sync
 from app.services.alcance import sucursales_asignadas, sucursales_visibles
 from app.services.bitacora import registrar_bitacora
+from app.services.horario import HORA_BOLIVIA
 
 logger = logging.getLogger("app.sincronizacion")
 
@@ -224,6 +225,26 @@ async def _validar_contexto(ctx: Contexto, op: OperacionIn) -> str | None:
     return None
 
 
+# ==== [CU24] Flujo alternativo 3 ===================================
+# La operacion queda a nombre de quien la registro en el dispositivo, aunque la
+# envie otro usuario de la empresa. Si ese empleado fue dado de baja, se acepta lo
+# que registro ANTES de la baja y se rechaza lo posterior.
+# ===================================================================
+def rechazo_por_baja(activo: bool, fecha_baja: datetime | None, fecha_operacion: datetime) -> str | None:
+    if activo or fecha_baja is None or dv.como_utc(fecha_operacion) < dv.como_utc(fecha_baja):
+        return None
+    return "La operacion se registro despues de la baja del empleado"
+
+
+async def autor_de(ctx: Contexto, op: OperacionIn) -> tuple[int, str | None]:
+    if op.idUsuario is None or op.idUsuario == ctx.id_usuario:
+        return ctx.id_usuario, None
+    autor = await ctx.session.get(Usuario, op.idUsuario)
+    if autor is None or autor.idTenant != ctx.id_tenant:
+        return ctx.id_usuario, None
+    return autor.idUser, rechazo_por_baja(autor.activo, autor.fechaBaja, op.fechaOperacion)
+
+
 def registro_para(op: OperacionIn, resultado: Resultado) -> tuple[str, str | None]:
     if resultado.estado == CONFIRMADA:
         return "Aplicada", f"Confirmada ({op.tipo})"
@@ -267,6 +288,9 @@ async def procesar_operacion(ctx: Contexto, op: OperacionIn) -> Resultado:
         return previo
 
     rechazo = await _validar_contexto(ctx, op)
+    autor, rechazo_autor = await autor_de(ctx, op)
+    rechazo = rechazo or rechazo_autor
+    ctx = replace(ctx, id_usuario=autor) if autor != ctx.id_usuario else ctx
     if rechazo:
         resultado = Resultado(RECHAZADA, motivo=rechazo)
     else:
@@ -449,7 +473,11 @@ async def aplicar_venta(ctx: Contexto, op: OperacionIn, autorizacion: Autorizaci
         inv = await _ajustar_faltante(session, linea.id_producto, sucursal, linea.cantidad, str(op.uuidOperacion)[:8])
         inv.cantidad_actual -= linea.cantidad
         session.add(DetalleVenta(cantidad=linea.cantidad, precio_unitario=linea.precio_local, idProducto=linea.id_producto, idVenta=venta.idVenta))
-        session.add(Movimiento(tipo="venta", cantidad=-linea.cantidad, motivo=f"Venta {venta.idVenta} (sin conexion)", idInv=inv.idInv))
+        # El motivo es exactamente "Venta N": asi lo buscan los reportes por sucursal,
+        # el CU1 y el CU11. Que vino sin conexion lo dice la referencia.
+        session.add(
+            Movimiento(tipo="venta", cantidad=-linea.cantidad, motivo=f"Venta {venta.idVenta}", idInv=inv.idInv, referencia="sin_conexion")
+        )
         session.add(Historial(idProducto=linea.id_producto, idCliente=id_cliente, idVenta=venta.idVenta))
     caja = await _caja(ctx, op, datos.uuidCaja)
     if caja is not None:
@@ -471,10 +499,14 @@ async def aplicar_reserva(ctx: Contexto, op: OperacionIn, autorizacion: Autoriza
     lineas = await _revisar_lineas(ctx, sucursal, datos.items)
     conflicto = clasificar_lineas(lineas, es_reserva=True)
     if conflicto is not None:
-        raise Conflicto(conflicto[0], conflicto[1], _datos_lineas(lineas), datos.deposito)
+        servidor = _datos_lineas(lineas)
+        if conflicto[0] == "reserva_sin_existencia":
+            servidor["alternativas"] = await alternativas_reserva(ctx, sucursal, lineas[0].id_producto)
+        raise Conflicto(conflicto[0], conflicto[1], servidor, datos.deposito)
 
     fecha = fecha_real(op)
-    limite = datos.fechaLimite.astimezone(timezone.utc) if datos.fechaLimite.tzinfo else datos.fechaLimite
+    # La hora de retiro se guarda en la de Bolivia: es la que ve el cliente.
+    limite = (datos.fechaLimite if datos.fechaLimite.tzinfo else datos.fechaLimite.replace(tzinfo=timezone.utc)).astimezone(HORA_BOLIVIA)
     pago = await _pago_efectivo(ctx, datos.deposito, fecha) if datos.deposito > 0 else None
     reserva = Reserva(
         fecha=limite.date(), horario=limite.time().replace(microsecond=0, tzinfo=None), estado="Pendiente", idCliente=id_cliente,
@@ -501,6 +533,33 @@ async def aplicar_reserva(ctx: Contexto, op: OperacionIn, autorizacion: Autoriza
         )
     await session.flush()
     return Resultado(CONFIRMADA, id_servidor=reserva.codigoReserva)
+
+
+async def alternativas_reserva(ctx: Contexto, sucursal: int, id_producto: int) -> dict:
+    """[CU18] alt. 2: otras variantes del mismo modelo en la sucursal y otras
+    sucursales con la misma prenda, con su existencia."""
+    producto = await ctx.session.get(Producto, id_producto)
+    variantes = []
+    if producto is not None and producto.idModelo is not None:
+        filas = (
+            await ctx.session.execute(
+                select(Producto.idProducto, Producto.nombre, Producto.talla, Producto.color,
+                       (Inventario.cantidad_actual - Inventario.cantidad_reservada).label("disponible"))
+                .join(Inventario, Inventario.idProducto == Producto.idProducto)
+                .where(Producto.idModelo == producto.idModelo, Inventario.codigoSucursal == sucursal,
+                       Inventario.cantidad_actual - Inventario.cantidad_reservada > 0)
+            )
+        ).mappings().all()
+        variantes = [dict(f) for f in filas]
+    otras = (
+        await ctx.session.execute(
+            select(Sucursal.codigoSucursal, Sucursal.nombre, (Inventario.cantidad_actual - Inventario.cantidad_reservada).label("disponible"))
+            .join(Inventario, Inventario.codigoSucursal == Sucursal.codigoSucursal)
+            .where(Inventario.idProducto == id_producto, Sucursal.idTenant == ctx.id_tenant, Sucursal.codigoSucursal != sucursal,
+                   Inventario.cantidad_actual - Inventario.cantidad_reservada > 0)
+        )
+    ).mappings().all()
+    return {"variantes": variantes, "sucursales": [dict(f) for f in otras]}
 
 
 async def liberar_prendas_reserva(session: AsyncSession, reserva: Reserva) -> None:
@@ -640,7 +699,7 @@ async def aplicar_cambio(ctx: Contexto, op: OperacionIn, autorizacion: Autorizac
             session.add(caso)
             await rt._nuevo_codigo(session, caso)
 
-            credito = dv.credito_del_caso(dv.dinero(linea.precio_pagado * caso.cantidad), caso.recargo, caso.descuentoDeterioro)
+            credito = dv.credito_del_caso(dv.dinero(linea.precio_pagado * caso.cantidad), caso.recargo, caso.descuentoDeterioro, caso.costoDomicilio)
             diferencia = dv.diferencia_variante(
                 precio_pagado=linea.precio_pagado, precio_actual_original=linea.producto.venta,
                 precio_actual_nueva=nuevo.venta, cantidad=caso.cantidad, credito=credito,

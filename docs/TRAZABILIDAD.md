@@ -191,7 +191,125 @@ Las reglas que corren en el dispositivo son las mismas en web y móvil: `core/of
 | CU4, CU5, CU6, CU14 | "La caja debe estar abierta" | Ahora se exige de verdad: cobrar o devolver efectivo con la caja cerrada responde error | Era precondición del informe y antes no existía la caja |
 | CU12 (permiso) | Encargado no tenía `venta.crear` ni `reserva.crear` | La migración 026 se los da | CU15, CU19 y CU20 lo nombran como actor |
 
+## Revisión del CU11 al CU20 (07/11/2026)
+
+Se revisó cada flujo contra el informe. Lo que se corrigió:
+
+| CU | Qué estaba mal | Cómo quedó |
+|---|---|---|
+| CU14 | La venta sin conexión dejaba el movimiento de stock como "Venta N (sin conexion)". Los reportes por sucursal, el CU1 y el CU11 buscan "Venta N", así que esas ventas quedaban **sin sucursal** | El motivo es "Venta N" y que vino sin conexión lo dice la referencia. La migración 027 corrige las ventas viejas |
+| CU12, CU20 | Preparar dispositivo y Caja ofrecían **todas** las sucursales, también aquellas en las que el usuario no trabaja | Ofrecen solo las asignadas (`GET /api/sync/sucursales`). El POS también rechaza cobrar en una sucursal ajena |
+| CU12 | "Clientes frecuentes" eran los registrados en orden alfabético | Son los que más compraron primero, incluidos los que compraron en la empresa sin estar registrados en ella |
+| CU15 | La fecha límite de la reserva se guardaba en hora UTC | Se guarda en la hora de Bolivia, que es la que ve el cliente |
+| CU18 | Para reasignar una reserva había que escribir el id de la prenda o el código de la sucursal | El conflicto trae las otras tallas/colores con existencia y las otras sucursales con la prenda: se elige con un botón |
+| CU20 | El Encargado no se enteraba de un cierre con diferencia que esperaba su aprobación | Recibe una notificación |
+| Dashboard (CU24 del P1) | El Encargado veía las ventas de toda la empresa | Ve solo sus sucursales, igual que en el CU30 |
+
+## Plataforma SaaS, reportes con IA y modelos (CU21 a CU30)
+
+Migración: `backend/database/migrations/027_saas_reportes_ia_modelos.sql` (después de la 026).
+
+| CU | Pantalla web (`web/src/app/`) | Menú | Control en el backend (`backend/app/`) |
+|---|---|---|---|
+| CU21 | `features/platform/platform.component.ts` | Superadmin → Empresas suscritas | `routers/platform.py` → `crear_empresa`, `reenviar_activacion` · `services/cuentas.py` (enlace de activación) |
+| CU22 | `features/platform/platform-subscriptions.component.ts` | Superadmin → Suscripciones | `routers/platform.py` → `renovar_suscripcion`, `suspender_suscripcion`, `reactivar_suscripcion`, `cancelar_suscripcion`, `revisar_por_cron` · `services/suscripciones.py` |
+| CU23 | `features/platform/platform-plans.component.ts` | Superadmin → Planes | `routers/platform.py` → `crear_plan`, `editar_plan`, `eliminar_plan` |
+| CU24 | `features/team/team.component.ts` | Personal y Nodos | `routers/team.py` → `create_staff_user`, `dar_de_baja`, `reincorporar`, `asignar_sucursales` |
+| CU25 | No tiene pantalla: corre en **cada** pedido | — | `services/acceso.py` (middleware: cuenta y suscripción) · `services/tenancy.py` → `require_feature`, `exigir_cupo` |
+| CU26 | `features/reports-ia/reports-ia.component.ts` | Reportes con IA | `routers/reportes_generativos.py` → `consultar` · `services/reportes_generativos.py` → `interpretar` (Gemini o reglas), `validar`, `ejecutar`, `resumir` |
+| CU27 | La misma pantalla, botón del micrófono | Reportes con IA | Navegador (reconocimiento de voz) o `routers/reportes_generativos.py` → `transcribir` |
+| CU28 | Reportes con IA (botones PDF/Excel) y `features/reports/reports.component.ts` | Reportes con IA · Reportes | `routers/reportes_generativos.py` → `exportar` · `services/exportacion.py` → `pdf`, `excel` |
+| CU29 | `features/modelos-ia/modelos-ia.component.ts` | Modelos de IA | `routers/inteligencia.py` → `datos_disponibles`, `entrenar`, `publicar` · `services/modelos_ia.py` |
+| CU30 | `features/dashboard-analitico/dashboard-analitico.component.ts` | Dashboard analítico | `routers/inteligencia.py` → `dashboard` |
+
+Los activadores de cuenta (CU21 paso 6 y CU24 paso 5) usan el mismo formulario que "Olvidé mi contraseña"
+(`features/auth/login.component.ts`): el enlace trae `&activar=1`, vale 72 horas y sirve una sola vez.
+
+### Qué responde el CU25
+
+| Situación | Respuesta | Mensaje |
+|---|---|---|
+| El plan no incluye la función (IA, sin conexión, varias sucursales) | 402 | "Funcionalidad no incluida en su plan…" |
+| Se llegó al límite de sucursales, usuarios o productos | 402 | Indica el recurso y el límite |
+| Suscripción en periodo de gracia y el pedido modifica algo | 403 | "…solo se permiten consultas hasta que se renueve" |
+| Suscripción suspendida o cancelada | 403 | "La suscripcion de su empresa esta suspendida…" |
+| Empleado dado de baja | 401 | "Su cuenta fue dada de baja" |
+
+Las operaciones sin conexión registradas antes de la suspensión o de la baja se aceptan al sincronizar (CU17).
+
+### Ciclo de la suscripción (CU22)
+
+`Activa` → faltan 7 días: **Por vencer** (aviso) → vence: **En periodo de gracia** (7 días, solo consulta) → **Suspendida**.
+Renovar registra un pago simulado y la deja Activa. La revisión la hace cada día el workflow
+`.github/workflows/respaldos-automaticos.yml` (y también se aplica sola cuando la empresa hace un pedido).
+
+### Modelos del CU29
+
+| Modelo | Tipo | Algoritmo | Métrica mínima para publicar |
+|---|---|---|---|
+| Predicción de demanda | Supervisado (regresión) | RandomForestRegressor | R² ≥ 0,25 (también muestra MAE) |
+| Probabilidad de devolución por talla | Supervisado (clasificación) | RandomForestClassifier | F1 ≥ 0,30 y exactitud ≥ 0,60 |
+| Segmentación de clientes | No supervisado | KMeans (k de 2 a 5, el de mejor silueta) | Silueta ≥ 0,25 |
+| Detección de anomalías | No supervisado | IsolationForest | Al menos 30 días con ventas |
+
+Con pocos datos reales se completan con **datos sintéticos** generados a partir de los reales (cantidad, semanas y
+estacionalidad elegibles); la versión queda marcada como entrenada con ellos.
+
+### Frases útiles para defender
+
+- "La IA **no escribe SQL**: devuelve una interpretación (métricas, agrupaciones, filtros) que el backend valida contra una lista cerrada y convierte en una consulta parametrizada de solo lectura, siempre filtrada por la empresa del token."
+- "Si no hay clave de Gemini, el reporte igual funciona con el **motor de reglas**; la pantalla dice cuál se usó."
+- "El plan se verifica **en el backend en cada pedido**: esconder un botón en la interfaz no es seguridad."
+- "Un modelo que no alcanza la métrica mínima **no se puede publicar**, y si un entrenamiento falla sigue la versión publicada anterior."
+
+### Diferencias con el informe (hay que actualizarlo)
+
+| Dónde | Dice el informe | Qué hace el sistema | Por qué |
+|---|---|---|---|
+| CU26, fila "Precondiciones" de la tabla del caso de uso (no la lista 2.6.1) | "...un plan con reportes generativos (Profesional)" | Los planes son Básico, Intermedio y Avanzado; la IA está en Intermedio y Avanzado | Así están configurados los planes (CU23) |
+| CU27 plataforma | "Web, Móvil" | Se dicta desde la web, que también funciona en el navegador del celular (PWA). La app Flutter es del Cliente y no tiene reportes | Los actores del CU27 son Administrador y Encargado |
+| CU28 alternativo 1 | "Supera la cantidad de filas permitida" | Más de 1000 filas se genera en segundo plano y llega una notificación; se descarga desde Reportes con IA → Exportaciones | El número no estaba en el informe |
+| CU22 | Estados | Además de los del informe, en la base existe "Finalizada" para suscripciones viejas reemplazadas por un cambio de plan | Historial de la migración 023 |
+
+## Delivery de devoluciones (CU31 y CU32) y nota de devolución (CU7)
+
+Migración: `backend/database/migrations/028_domicilio_nota_devolucion.sql` (después de la 027).
+
+El delivery son **dos casos de uso en orden**:
+
+1. **CU31 Recoger a domicilio la prenda devuelta.** En el CU2 el cliente elige "que la recojan en mi casa" (dirección, teléfono, día y horario). El personal programa el recojo (fecha, franja y repartidor); el repartidor la recoge y la prenda llega a la sucursal → pasa a **inspección (CU3)**. Mientras la prenda sigue en la casa del cliente, el sistema no deja inspeccionarla.
+2. **CU32 Entregar a domicilio la prenda del cambio.** Solo si la inspección aprobó la prenda y el caso es un **cambio** (CU4, CU5 o CU8): al resolverlo, la prenda nueva sale del stock y el caso queda **"En camino a domicilio"**. Cuando el repartidor la entrega, el caso se completa. Si es una devolución con reembolso no hay entrega: solo recojo.
+
+| CU | Pantalla web | Pantalla móvil | Control en el backend |
+|---|---|---|---|
+| CU31 | Cliente: `features/customer/returns/customer-returns.component.ts` (formulario del CU2). Personal: `features/returns/return-delivery.component.ts` (Devoluciones → **Recojos y entregas**) | `screens/returns_screen.dart` (formulario de solicitud) | `routers/domicilio.py` → `programar`, `completar`, `fallido`, `cancelar_recojo` · `services/domicilio.py` → `solicitar_recojo` |
+| CU32 | `features/returns/return-delivery.component.ts` | Estado "En camino a tu casa" | `services/devoluciones.py` → `resolver_caso` / `completar_cambio_pendiente` llaman a `domicilio.preparar_entrega` · `routers/domicilio.py` → `completar` |
+| CU7 | `shared/components/nota-devolucion.component.ts` (botón "Nota de devolución" en el detalle del caso y en "Mis solicitudes") | Botón **NOTA** en cada solicitud con reembolso | `routers/domicilio.py` → `nota_devolucion`, `nota_devolucion_pdf` · `services/nota_devolucion.py` |
+
+### Controles del CU7 (nota de devolución)
+
+| Control | Dónde | Qué hace |
+|---|---|---|
+| `GenerarNotaDevolucion` | `services/nota_devolucion.py` → `armar_nota()` | Junta **lo que el cliente devolvió** (prenda, talla, color, cantidad, motivo y estado en que llegó), cuánto valía, qué se descontó (recargo, deterioro, delivery), si se llevó otra prenda y **cuánto dinero se le devolvió**, por qué medio y en qué estado está el reembolso |
+| `GenerarNotaDevolucion.puedeEmitirse` | `puede_emitirse()` | Alternativo 1: si no se devolvió dinero (cambio sin saldo a favor) responde que corresponde el comprobante de cambio |
+| `ExportarNotaDevolucion` | `pdf()` | El PDF que se entrega al cliente |
+| `NotificarNotaDevolucion` | `services/devoluciones.py` → `avisar_resultado()` | Aviso en la app y correo "Nota de devolución DEV-…: le devolvimos Bs …" |
+
+### Reglas del delivery
+
+- Cada viaje cuesta lo que fija la política (CU9: "Recojo y entrega a domicilio", por defecto Bs 15). Se **descuenta del valor de la prenda devuelta** (o suma a la diferencia del cambio).
+- Es **gratis** si el motivo es defecto de fábrica o prenda equivocada (la culpa es de la tienda).
+- Si el repartidor no encuentra al cliente, el viaje queda "Fallido" y se reprograma. El cliente también puede llevarla o retirarla en la sucursal.
+- Si se cancela el recojo, el cliente vuelve a tener plazo para llevarla a la sucursal y no se le cobra.
+- Una solicitud con recojo pendiente no se anula sola por vencimiento.
+
+### Sin "crédito"
+
+Ya no quedan notas de crédito en pantallas ni en datos: la venta del cambio por otro producto se paga con el
+"Valor de prenda devuelta" (antes "Crédito por devolución"), las pantallas dicen "Valor a favor" y la venta sin
+conexión ya no menciona la nota de crédito como medio de pago.
+
 ## Modelo de dominio (sección 3.1) y diagrama de clases de la BD
 
-Las 36 entidades están en `backend/app/models/__init__.py`. Arriba de cada clase dice su paquete:
+Las 41 entidades (36 hasta la migración 026, más `PagoSuscripcion`, `ReporteSolicitud`, `ReporteExportacion` y `ModeloIA` de la 027 y `EntregaDomicilio` de la 028) están en `backend/app/models/__init__.py`. Arriba de cada clase dice su paquete:
 busca, por ejemplo, `entidad Devolucion` o `Paquete "Posventa"`.

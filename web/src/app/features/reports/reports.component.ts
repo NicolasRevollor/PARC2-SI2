@@ -6,6 +6,9 @@ import { InventoryService } from '../../core/services/inventory.service';
 import { ArchiveService } from '../../core/services/archive.service';
 import { AnalisisSucursales, ConsolidadoSucursales, InventarioReporteOut, VentaReporteOut } from '../../core/models';
 import { TenantService } from '../../core/services/tenant.service';
+import { IaService } from '../../core/services/ia.service';
+import { CuBadgeComponent } from '../../shared/components/cu-badge.component';
+import { InventoryReportFiltros, SalesReportFiltros } from '../../core/models';
 import {
   InventoryReportFormState,
   REPORT_FILTER_ALL,
@@ -20,7 +23,7 @@ type ReportsTab = 'ventas' | 'inventario' | 'sucursales';
 @Component({
   selector: 'app-reports',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, CuBadgeComponent],
   template: `
     <div class="p-6 md:p-8 space-y-6 max-w-7xl mx-auto animate-in fade-in duration-200">
 
@@ -30,8 +33,9 @@ type ReportsTab = 'ventas' | 'inventario' | 'sucursales';
           <span class="text-[11px] font-bold uppercase tracking-wider text-indigo-600">Administración</span>
           <h1 class="text-2xl font-bold text-gray-900 tracking-tight mt-0.5">Reportes de Ventas e Inventario</h1>
           <p class="text-xs text-gray-500 mt-1">
-            Reportes filtrables en pantalla, exportables a CSV y PDF.
+            Reportes filtrables en pantalla. Se exportan a PDF o Excel con el formato formal del reporte y los filtros con los que se generó.
           </p>
+          <app-cu-badge cu="CU28" [conNombre]="true" class="block mt-1"></app-cu-badge>
         </div>
       </div>
 
@@ -114,12 +118,23 @@ type ReportsTab = 'ventas' | 'inventario' | 'sucursales';
           >
             {{ downloadingSalesCsv() ? 'Descargando...' : 'Descargar CSV' }}
           </button>
+          <!-- [CU28] precondicion: el reporte esta en pantalla; alternativo 2: sin datos no se exporta -->
           <button
-            (click)="descargarVentasPdf()"
-            [disabled]="downloadingSalesPdf()"
+            (click)="exportarVentas('pdf')"
+            [disabled]="downloadingSalesPdf() || !salesReport()?.filas?.length"
+            [title]="salesReport()?.filas?.length ? 'Exporta el reporte que está en pantalla' : 'Primero genere un reporte con datos (Ver)'"
             class="px-4 py-2 bg-[#18191d] hover:bg-gray-50 border border-gray-200 text-gray-700 rounded-lg text-xs font-bold tracking-wide uppercase transition-colors shadow-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            data-testid="ventas-pdf"
           >
-            {{ downloadingSalesPdf() ? 'Descargando...' : 'Descargar PDF' }}
+            {{ downloadingSalesPdf() ? 'Exportando...' : 'Exportar PDF' }}
+          </button>
+          <button
+            (click)="exportarVentas('xlsx')"
+            [disabled]="downloadingSalesPdf() || !salesReport()?.filas?.length"
+            class="px-4 py-2 bg-[#18191d] hover:bg-gray-50 border border-gray-200 text-gray-700 rounded-lg text-xs font-bold tracking-wide uppercase transition-colors shadow-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            data-testid="ventas-excel"
+          >
+            Exportar Excel
           </button>
         </div>
       </div>
@@ -197,11 +212,19 @@ type ReportsTab = 'ventas' | 'inventario' | 'sucursales';
             {{ downloadingInventoryCsv() ? 'Descargando...' : 'Descargar CSV' }}
           </button>
           <button
-            (click)="descargarInventarioPdf()"
-            [disabled]="downloadingInventoryPdf()"
+            (click)="exportarInventario('pdf')"
+            [disabled]="downloadingInventoryPdf() || !inventoryReport()?.filas?.length"
+            [title]="inventoryReport()?.filas?.length ? 'Exporta el reporte que está en pantalla' : 'Primero genere un reporte con datos (Ver)'"
             class="px-4 py-2 bg-[#18191d] hover:bg-gray-50 border border-gray-200 text-gray-700 rounded-lg text-xs font-bold tracking-wide uppercase transition-colors shadow-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {{ downloadingInventoryPdf() ? 'Descargando...' : 'Descargar PDF' }}
+            {{ downloadingInventoryPdf() ? 'Exportando...' : 'Exportar PDF' }}
+          </button>
+          <button
+            (click)="exportarInventario('xlsx')"
+            [disabled]="downloadingInventoryPdf() || !inventoryReport()?.filas?.length"
+            class="px-4 py-2 bg-[#18191d] hover:bg-gray-50 border border-gray-200 text-gray-700 rounded-lg text-xs font-bold tracking-wide uppercase transition-colors shadow-xs cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Exportar Excel
           </button>
         </div>
       </div>
@@ -418,7 +441,26 @@ export class ReportsComponent implements OnInit {
     public inventoryService: InventoryService,
     public archiveService: ArchiveService,
     private tenantService: TenantService,
+    private iaService: IaService,
   ) {}
+
+  /** [CU28] Filtros con los que se genero lo que esta en pantalla (no los del formulario si se cambiaron despues). */
+  private filtrosVentasMostrados: SalesReportFiltros | null = null;
+  private filtrosInventarioMostrados: InventoryReportFiltros | null = null;
+
+  async exportarVentas(formato: 'pdf' | 'xlsx') {
+    if (!this.filtrosVentasMostrados || !this.salesReport()?.filas?.length) return;
+    this.downloadingSalesPdf.set(true);
+    await this.iaService.exportar({ origen: 'ventas', formato, ...this.filtrosVentasMostrados });
+    this.downloadingSalesPdf.set(false);
+  }
+
+  async exportarInventario(formato: 'pdf' | 'xlsx') {
+    if (!this.filtrosInventarioMostrados || !this.inventoryReport()?.filas?.length) return;
+    this.downloadingInventoryPdf.set(true);
+    await this.iaService.exportar({ origen: 'inventario', formato, ...this.filtrosInventarioMostrados });
+    this.downloadingInventoryPdf.set(false);
+  }
 
   /** Gating cosmetico: el backend igual responde 402 si el plan no lo incluye. */
   puedeUsarIA(): boolean {
@@ -479,17 +521,21 @@ export class ReportsComponent implements OnInit {
     if (error) return;
 
     this.loadingSales.set(true);
-    this.reportsService.getSalesReport(buildSalesFiltros(this.salesForm)).then((res) => {
+    const filtros = buildSalesFiltros(this.salesForm);
+    this.reportsService.getSalesReport(filtros).then((res) => {
       this.loadingSales.set(false);
       this.salesReport.set(res);
+      this.filtrosVentasMostrados = res ? filtros : null;
     });
   }
 
   verInventario() {
     this.loadingInventory.set(true);
-    this.reportsService.getInventoryReport(buildInventoryFiltros(this.inventoryForm)).then((res) => {
+    const filtros = buildInventoryFiltros(this.inventoryForm);
+    this.reportsService.getInventoryReport(filtros).then((res) => {
       this.loadingInventory.set(false);
       this.inventoryReport.set(res);
+      this.filtrosInventarioMostrados = res ? filtros : null;
     });
   }
 
@@ -504,17 +550,6 @@ export class ReportsComponent implements OnInit {
     });
   }
 
-  descargarVentasPdf() {
-    const error = validateDateRange(this.salesForm.fechaDesde, this.salesForm.fechaHasta);
-    this.salesDateError.set(error);
-    if (error) return;
-
-    this.downloadingSalesPdf.set(true);
-    this.reportsService.downloadSalesPdf(buildSalesFiltros(this.salesForm)).then(() => {
-      this.downloadingSalesPdf.set(false);
-    });
-  }
-
   descargarInventarioCsv() {
     this.downloadingInventoryCsv.set(true);
     this.reportsService.downloadInventoryCsv(buildInventoryFiltros(this.inventoryForm)).then(() => {
@@ -522,10 +557,4 @@ export class ReportsComponent implements OnInit {
     });
   }
 
-  descargarInventarioPdf() {
-    this.downloadingInventoryPdf.set(true);
-    this.reportsService.downloadInventoryPdf(buildInventoryFiltros(this.inventoryForm)).then(() => {
-      this.downloadingInventoryPdf.set(false);
-    });
-  }
 }

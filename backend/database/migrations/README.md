@@ -222,6 +222,11 @@ docker exec ropaDocker psql -U yimysito -d ropaDB -c \
    FROM "rol" r LEFT JOIN "asignacion_permiso" ap ON ap."codigoRol" = r."codigoRol"
    GROUP BY r."codigoRol", r."nombreRol" ORDER BY r."codigoRol";'
 
+# Cada plan tiene al menos 3 empresas (migracion 029 agrega Sopocachi al plan Avanzado):
+docker exec ropaDocker psql -U yimysito -d ropaDB -c \
+  'SELECT p."nombre", COUNT(t."idTenant") FROM "plan" p LEFT JOIN "tenant" t ON t."idPlan" = p."idPlan"
+   WHERE p."activo" GROUP BY p."nombre" ORDER BY 2;'
+
 # Caja, conflictos y configuracion de la operacion sin conexion (migracion 026):
 docker exec ropaDocker psql -U yimysito -d ropaDB -c '\d "caja"'
 docker exec ropaDocker psql -U yimysito -d ropaDB -c '\d "conflicto_sincronizacion"'

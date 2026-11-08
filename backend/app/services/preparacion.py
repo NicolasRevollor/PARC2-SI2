@@ -12,7 +12,7 @@ from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models import Cliente, DetalleReserva, DetalleVenta, Inventario, Producto, Reserva, Sucursal, Usuario, Venta
@@ -40,7 +40,14 @@ def _consultas(id_tenant: int, sucursal: int, autorizadas: set[int] | None) -> d
     return {
         "sucursales": sucursales.order_by(Sucursal.nombre),
         "inventario": select(Inventario).where(Inventario.codigoSucursal == sucursal).order_by(Inventario.idInv),
-        "clientes": select(Cliente).join(Usuario, Usuario.idUser == Cliente.idUser).where(Usuario.idTenant == id_tenant).order_by(Cliente.nombre),
+        # [CU12] paso 4: datos minimos de los clientes frecuentes, los que mas compran primero.
+        "clientes": select(Cliente)
+        .join(Usuario, Usuario.idUser == Cliente.idUser)
+        .where(or_(Usuario.idTenant == id_tenant, Cliente.idCliente.in_(select(Venta.idCliente).where(Venta.idVenta.in_(_ventas_de_la_empresa(id_tenant))))))
+        .order_by(
+            select(func.count(Venta.idVenta)).where(Venta.idCliente == Cliente.idCliente).correlate(Cliente).scalar_subquery().desc(),
+            Cliente.nombre,
+        ),
         "reservas": select(Reserva).where(Reserva.codigoSucursal == sucursal, Reserva.estado.in_(ESTADOS_RESERVA_VIGENTE)).order_by(Reserva.fecha),
         "ventas": select(Venta).where(Venta.idVenta.in_(_ventas_de_la_empresa(id_tenant)), Venta.fecha >= desde).order_by(Venta.fecha.desc()),
     }

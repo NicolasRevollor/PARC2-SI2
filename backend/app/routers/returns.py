@@ -27,7 +27,10 @@
   CU4  POST /{id}/resolver                  cambio de talla, color o medida
   CU5                                       cambio por otro producto (nueva venta enlazada)
   CU6                                       reembolso (+ /reembolso/reintentar y /confirmar)
-  CU7  GET  /{id}/comprobante.pdf            nota de devolucion (cuanto dinero se devolvio)
+  CU7  GET  /{id}/nota-devolucion(.pdf)      nota de devolucion: que se devolvio y cuanto dinero
+                                            (routers/domicilio.py + services/nota_devolucion.py)
+  CU31 recojo a domicilio de la prenda devuelta     (routers/domicilio.py)
+  CU32 entrega a domicilio de la prenda del cambio  (routers/domicilio.py)
        GET  /comparar-tallas                 una talla es mas grande o mas chica (medidas en cm)
   CU8  POST /{id}/completar-cambio          cambio pendiente por falta de stock
   CU9  GET/PUT /api/returns/politica        politica versionada
@@ -99,6 +102,7 @@ from app.schemas.returns import (
 from app.security import get_current_payload, require_permiso
 from app.services import caja as caja_srv
 from app.services import devoluciones as dv
+from app.services import domicilio as domicilio_srv
 from app.services import notificaciones as notif
 from app.services.alcance import alcance_sucursales, recortar
 from app.services.excel import libro_excel
@@ -203,7 +207,9 @@ def _fila_a_out(fila) -> DevolucionOut:
         valor=float(valor),
         recargo=float(d.recargo),
         descuentoDeterioro=float(d.descuentoDeterioro),
-        credito=float(dv.credito_del_caso(valor, d.recargo, d.descuentoDeterioro)),
+        credito=float(dv.credito_del_caso(valor, d.recargo, d.descuentoDeterioro, d.costoDomicilio)),
+        modalidadEntrega=d.modalidadEntrega,
+        costoDomicilio=float(d.costoDomicilio),
         montoDevuelto=float(d.montoDevuelto),
         metodoReembolso=d.metodoReembolso,
         estadoReembolso=d.estadoReembolso,
@@ -374,7 +380,7 @@ async def guardar_politica(
     # Paso 1: tomamos los valores del formulario y los limpiamos.
     datos = payload.model_dump()
     datos["categoriasNoRetornables"] = tuple(sorted({c.strip() for c in datos["categoriasNoRetornables"] if c.strip()}))
-    for campo in ("recargoValor", "umbralAutorizacion", "descuentoDeterioroPct", "costoAjusteMedida"):
+    for campo in ("recargoValor", "umbralAutorizacion", "descuentoDeterioroPct", "costoAjusteMedida", "costoDomicilio"):
         datos[campo] = Decimal(str(datos[campo]))
     politica = dv.Politica(**datos)
     # Secuencia CU9: validarPolitica(valores positivos, garantia >= plazo de cambio)
@@ -1576,8 +1582,14 @@ async def solicitar_en_linea(
     caso.fechaLimiteEntrega = ahora + timedelta(days=politica.diasEntregaEnLinea)
     if nuevo is not None:
         caso.idProductoNuevo, caso.tallaNueva = nuevo.idProducto, nuevo.talla
+    if payload.modalidadEntrega == "domicilio" and payload.domicilio is None:
+        raise HTTPException(status_code=400, detail="Indique la direccion para el recojo a domicilio")
     session.add(caso)
     await _nuevo_codigo(session, caso)
+    # [CU31]: la prenda la recoge el repartidor en vez de llevarla el cliente.
+    if payload.modalidadEntrega == "domicilio":
+        await session.flush()
+        await domicilio_srv.solicitar_recojo(session, caso, domicilio_srv.DatosDomicilio(**payload.domicilio.model_dump()), politica)
     # CU2 paso 6: la variante pedida se aparta a su nombre hasta la fecha limite.
     if nuevo is not None:
         # Secuencia CU2: [opt pidio una variante con stock en la sucursal] apartarVariante(cantidad, hasta la fecha limite) a "Inventario"
@@ -1591,11 +1603,15 @@ async def solicitar_en_linea(
     )
     # Aviso al cliente (app + correo): recibimos su solicitud y hasta cuando tiene para llevar la prenda.
     sucursal = await session.get(Sucursal, payload.codigoSucursal)
+    if caso.modalidadEntrega == "domicilio":
+        costo = f" El delivery cuesta Bs {dv.dinero(caso.costoDomicilio):.2f} por viaje." if caso.costoDomicilio else " El delivery es sin costo."
+        mensaje = f"Le avisaremos el dia en que el repartidor pase a recoger la prenda.{costo}"
+    else:
+        mensaje = (f"Lleve la prenda a la sucursal {sucursal.nombre if sucursal else ''} hasta el "
+                   f"{notif.fecha_texto(caso.fechaLimiteEntrega)} y muestre el codigo {caso.codigo} (o su QR).")
     await notif.notificar_cliente(
         session, caso.idCliente, id_tenant, tipo="devolucion", referencia=caso.codigo,
-        titulo=f"Recibimos su solicitud {caso.codigo}",
-        mensaje=(f"Lleve la prenda a la sucursal {sucursal.nombre if sucursal else ''} hasta el "
-                 f"{notif.fecha_texto(caso.fechaLimiteEntrega)} y muestre el codigo {caso.codigo} (o su QR)."),
+        titulo=f"Recibimos su solicitud {caso.codigo}", mensaje=mensaje,
     )
     await session.commit()
     notif.programar_correos(background_tasks)
@@ -1859,6 +1875,9 @@ async def inspeccionar(
     # Secuencia CU3: [break la solicitud no esta "En inspeccion" ni "Pendiente de entrega"] -> 409 (estado actual) -> mostrarMensaje(estado actual)
     if caso.estado not in ("EnInspeccion", "PendienteEntrega"):
         raise HTTPException(status_code=409, detail=f"El caso esta {caso.estado}: solo se inspecciona una solicitud pendiente")
+    # [CU31]: con delivery, la prenda se inspecciona recien cuando el repartidor la trajo.
+    if caso.estado == "PendienteEntrega" and caso.modalidadEntrega == "domicilio":
+        raise HTTPException(status_code=409, detail="La prenda todavia no fue recogida: registre el recojo en Recojos y entregas")
     # Paso 1: si la solicitud necesitaba permiso del Encargado, se exige antes de inspeccionar.
     _exigir_autorizacion_previa(caso, auth)
     politica = await _politica_del_caso(session, caso)
@@ -2168,6 +2187,8 @@ async def cancelar(
     if caso.estado not in permitidos:
         raise HTTPException(status_code=409, detail=f"Un caso en estado {caso.estado} ya no se puede cancelar")
     await dv.liberar_reserva(session, caso)
+    # [CU31] [CU32]: los viajes pendientes del repartidor ya no se hacen.
+    domicilio_srv.cancelar_viajes_abiertos(await domicilio_srv.viajes_del_caso(session, caso.idDevolucion))
     # Se suelta la prenda que estaba apartada y la solicitud queda "Cancelada".
     caso.estado = "Cancelada"
     caso.fechaResolucion = datetime.now(timezone.utc)

@@ -110,7 +110,7 @@ export class OfflineSaleComponent implements OnInit {
   @Output() irCaja = new EventEmitter<void>();
   @ViewChild('selector') selector?: LocalCustomerComponent;
 
-  readonly mediosNoDisponibles = ['Tarjeta', 'QR', 'Nota de crédito'];
+  readonly mediosNoDisponibles = ['Tarjeta', 'QR'];
   readonly catalogo = signal<ProductoLocal[]>([]);
   readonly stock = signal<Map<number, number>>(new Map());
   readonly busqueda = signal('');

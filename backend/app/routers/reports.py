@@ -28,6 +28,7 @@ from app.schemas.reports import (
 )
 from app.security import require_permiso
 from app.services import reportes_ia
+from app.services.alcance import alcance_sucursales
 from app.services.tenancy import require_feature, tenant_actual
 
 router = APIRouter(prefix="/api/reports", tags=["reports"])
@@ -196,6 +197,7 @@ async def _consultar_ventas(
     fecha_hasta: date | None,
     codigoSucursal: int | None,
     idProducto: int | None,
+    visibles: set[int] | None = None,
 ) -> list[dict]:
     # Cada linea de venta se atribuye a la sucursal que REALMENTE la surtio
     # (ver reportes_ia.lineas_venta_con_sucursal). Antes se unia por
@@ -220,6 +222,9 @@ async def _consultar_ventas(
     stmt = reportes_ia.filtrar_lineas_por_fecha(stmt, lineas, fecha_desde, fecha_hasta)
     if codigoSucursal is not None:
         stmt = stmt.where(lineas.c.codigoSucursal == codigoSucursal)
+    if visibles is not None:
+        # [CU26] alt. 5 / [CU30] alt. 2: el Encargado ve solo sus sucursales.
+        stmt = stmt.where(lineas.c.codigoSucursal.in_(sorted(visibles)))
     if idProducto is not None:
         stmt = stmt.where(Producto.idProducto == idProducto)
 
@@ -232,6 +237,7 @@ async def _consultar_inventario(
     id_tenant: int,
     codigoSucursal: int | None,
     idProducto: int | None,
+    visibles: set[int] | None = None,
 ) -> list[dict]:
     stmt = (
         select(
@@ -249,6 +255,8 @@ async def _consultar_inventario(
     )
     if codigoSucursal is not None:
         stmt = stmt.where(Inventario.codigoSucursal == codigoSucursal)
+    if visibles is not None:
+        stmt = stmt.where(Inventario.codigoSucursal.in_(sorted(visibles)))
     if idProducto is not None:
         stmt = stmt.where(Producto.idProducto == idProducto)
 
@@ -280,10 +288,10 @@ async def sales_report(
     codigoSucursal: int | None = None,
     idProducto: int | None = None,
     session: AsyncSession = Depends(get_db),
-    _=Depends(require_permiso("reporte.ver")),
+    auth: dict = Depends(require_permiso("reporte.ver")),
     id_tenant: int = Depends(tenant_actual),
 ):
-    filas = await _consultar_ventas(session, id_tenant, fecha_desde, fecha_hasta, codigoSucursal, idProducto)
+    filas = await _consultar_ventas(session, id_tenant, fecha_desde, fecha_hasta, codigoSucursal, idProducto, await alcance_sucursales(session, auth))
     total_monto, total_items = _sales_totals(filas)
     return VentaReporteOut(
         filas=[VentaReporteFila(**f) for f in filas],
@@ -300,10 +308,10 @@ async def sales_report_csv(
     codigoSucursal: int | None = None,
     idProducto: int | None = None,
     session: AsyncSession = Depends(get_db),
-    _=Depends(require_permiso("reporte.ver")),
+    auth: dict = Depends(require_permiso("reporte.ver")),
     id_tenant: int = Depends(tenant_actual),
 ):
-    filas = await _consultar_ventas(session, id_tenant, fecha_desde, fecha_hasta, codigoSucursal, idProducto)
+    filas = await _consultar_ventas(session, id_tenant, fecha_desde, fecha_hasta, codigoSucursal, idProducto, await alcance_sucursales(session, auth))
     csv_text = _sales_rows_to_csv(filas)
     return StreamingResponse(
         iter([csv_text]),
@@ -319,10 +327,10 @@ async def sales_report_pdf(
     codigoSucursal: int | None = None,
     idProducto: int | None = None,
     session: AsyncSession = Depends(get_db),
-    _=Depends(require_permiso("reporte.ver")),
+    auth: dict = Depends(require_permiso("reporte.ver")),
     id_tenant: int = Depends(tenant_actual),
 ):
-    filas = await _consultar_ventas(session, id_tenant, fecha_desde, fecha_hasta, codigoSucursal, idProducto)
+    filas = await _consultar_ventas(session, id_tenant, fecha_desde, fecha_hasta, codigoSucursal, idProducto, await alcance_sucursales(session, auth))
     filtros = _filtros_sales_dict(fecha_desde, fecha_hasta, codigoSucursal, idProducto)
     pdf_bytes = _sales_rows_to_pdf_bytes(filas, filtros)
     return StreamingResponse(
@@ -337,10 +345,10 @@ async def inventory_report(
     codigoSucursal: int | None = None,
     idProducto: int | None = None,
     session: AsyncSession = Depends(get_db),
-    _=Depends(require_permiso("reporte.ver")),
+    auth: dict = Depends(require_permiso("reporte.ver")),
     id_tenant: int = Depends(tenant_actual),
 ):
-    filas = await _consultar_inventario(session, id_tenant, codigoSucursal, idProducto)
+    filas = await _consultar_inventario(session, id_tenant, codigoSucursal, idProducto, await alcance_sucursales(session, auth))
     return InventarioReporteOut(
         filas=[InventarioReporteFila(**f) for f in filas],
         filtros=ReportFiltrosOut(**_filtros_inventory_dict(codigoSucursal, idProducto)),
@@ -352,10 +360,10 @@ async def inventory_report_csv(
     codigoSucursal: int | None = None,
     idProducto: int | None = None,
     session: AsyncSession = Depends(get_db),
-    _=Depends(require_permiso("reporte.ver")),
+    auth: dict = Depends(require_permiso("reporte.ver")),
     id_tenant: int = Depends(tenant_actual),
 ):
-    filas = await _consultar_inventario(session, id_tenant, codigoSucursal, idProducto)
+    filas = await _consultar_inventario(session, id_tenant, codigoSucursal, idProducto, await alcance_sucursales(session, auth))
     csv_text = _inventory_rows_to_csv(filas)
     return StreamingResponse(
         iter([csv_text]),
@@ -369,10 +377,10 @@ async def inventory_report_pdf(
     codigoSucursal: int | None = None,
     idProducto: int | None = None,
     session: AsyncSession = Depends(get_db),
-    _=Depends(require_permiso("reporte.ver")),
+    auth: dict = Depends(require_permiso("reporte.ver")),
     id_tenant: int = Depends(tenant_actual),
 ):
-    filas = await _consultar_inventario(session, id_tenant, codigoSucursal, idProducto)
+    filas = await _consultar_inventario(session, id_tenant, codigoSucursal, idProducto, await alcance_sucursales(session, auth))
     filtros = _filtros_inventory_dict(codigoSucursal, idProducto)
     pdf_bytes = _inventory_rows_to_pdf_bytes(filas, filtros)
     return StreamingResponse(
@@ -384,6 +392,10 @@ async def inventory_report_pdf(
 
 # --- CU29: consolidado multi-sucursal y analisis con IA -------------------
 
+def _solo_visibles(metricas: list[dict], visibles: set[int] | None) -> list[dict]:
+    return metricas if visibles is None else [m for m in metricas if m["codigoSucursal"] in visibles]
+
+
 def _a_metrica_out(m: dict) -> SucursalMetricaOut:
     return SucursalMetricaOut(**m)
 
@@ -393,7 +405,7 @@ async def branches_report(
     fecha_desde: date | None = None,
     fecha_hasta: date | None = None,
     session: AsyncSession = Depends(get_db),
-    _=Depends(require_permiso("reporte.ver")),
+    auth: dict = Depends(require_permiso("reporte.ver")),
     id_tenant: int = Depends(tenant_actual),
 ):
     """Consolidado por sucursal del tenant (sin IA, disponible en todo plan).
@@ -401,7 +413,7 @@ async def branches_report(
     Es tambien la base que se le entrega al modelo en `/ai-insights`: el
     analisis nunca ve datos distintos de los que ve el usuario.
     """
-    metricas = await reportes_ia.metricas_por_sucursal(session, id_tenant, fecha_desde, fecha_hasta)
+    metricas = _solo_visibles(await reportes_ia.metricas_por_sucursal(session, id_tenant, fecha_desde, fecha_hasta), await alcance_sucursales(session, auth))
     return ConsolidadoSucursalesOut(
         sucursales=[_a_metrica_out(m) for m in metricas],
         total_unidades=sum(m["unidades_vendidas"] for m in metricas),
@@ -415,7 +427,7 @@ async def branches_ai_insights(
     fecha_desde: date | None = None,
     fecha_hasta: date | None = None,
     session: AsyncSession = Depends(get_db),
-    _=Depends(require_permiso("reporte.ver")),
+    auth: dict = Depends(require_permiso("reporte.ver")),
     __=Depends(require_feature("permiteIA")),
     id_tenant: int = Depends(tenant_actual),
 ):
@@ -425,7 +437,7 @@ async def branches_ai_insights(
     reportes, y el PLAN (`permiteIA`) dice que la suscripcion incluye el
     analisis automatico — un Administrador en plan Basico recibe 402.
     """
-    metricas = await reportes_ia.metricas_por_sucursal(session, id_tenant, fecha_desde, fecha_hasta)
+    metricas = _solo_visibles(await reportes_ia.metricas_por_sucursal(session, id_tenant, fecha_desde, fecha_hasta), await alcance_sucursales(session, auth))
     if not metricas:
         raise HTTPException(status_code=400, detail="La organizacion no tiene sucursales cargadas")
 

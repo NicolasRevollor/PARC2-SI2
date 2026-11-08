@@ -5,11 +5,13 @@ import { OfflineSyncService } from '../../core/services/offline-sync.service';
 import { TenantService } from '../../core/services/tenant.service';
 import { PERMISO_PLATAFORMA } from '../../core/services/platform.service';
 
-export type AppView = 'dashboard' | 'archive' | 'inventory' | 'logistics' | 'suppliers' | 'seasons' | 'team' | 'reservations' | 'pos' | 'locations' | 'reports' | 'indicadores' | 'returns' | 'subscription' | 'offline' | 'caja' | 'bitacora' | PlatformView;
+export type AppView = 'dashboard' | 'archive' | 'inventory' | 'logistics' | 'suppliers' | 'seasons' | 'team' | 'reservations' | 'pos' | 'locations' | 'reports' | 'indicadores' | 'returns' | 'subscription' | 'offline' | 'caja' | 'bitacora' | VistaIA | PlatformView;
+/** [CU26] [CU29] [CU30] Vistas de inteligencia artificial de la empresa. */
+export type VistaIA = 'reportes-ia' | 'modelos-ia' | 'dashboard-analitico';
 
 /** Vistas de la consola de plataforma: las únicas del Superadministrador. */
-export type PlatformView = 'platform' | 'platform-bitacora' | 'platform-respaldos';
-export const VISTAS_PLATAFORMA: readonly PlatformView[] = ['platform', 'platform-bitacora', 'platform-respaldos'];
+export type PlatformView = 'platform' | 'platform-suscripciones' | 'platform-planes' | 'platform-bitacora' | 'platform-respaldos';
+export const VISTAS_PLATAFORMA: readonly PlatformView[] = ['platform', 'platform-suscripciones', 'platform-planes', 'platform-bitacora', 'platform-respaldos'];
 
 @Component({
   selector: 'app-sidebar',
@@ -428,6 +430,32 @@ export const VISTAS_PLATAFORMA: readonly PlatformView[] = ['platform', 'platform
             <span class="font-medium tracking-tight">Indicadores</span>
           </button>
 
+          <!-- [CU26] [CU29] [CU30] Inteligencia artificial: cada ítem con su permiso.
+               El plan sin IA igual muestra la entrada: la pantalla explica que hay
+               que mejorar el plan (CU25 alt. 1) en vez de esconderla. -->
+          <ng-container *ngFor="let item of itemsIA">
+            <button
+              *ngIf="tienePermiso(item.permiso)"
+              (click)="selectView(item.vista)"
+              [class.bg-indigo-50]="currentView === item.vista"
+              [class.text-indigo-700]="currentView === item.vista"
+              [class.font-semibold]="currentView === item.vista"
+              [class.text-gray-600]="currentView !== item.vista"
+              class="w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-left text-sm transition-colors hover:bg-gray-50 hover:text-gray-900 cursor-pointer group"
+            >
+              <div
+                [class.bg-indigo-600]="currentView === item.vista"
+                [class.text-white]="currentView === item.vista"
+                [class.bg-gray-100]="currentView !== item.vista"
+                [class.text-gray-500]="currentView !== item.vista"
+                class="w-7 h-7 rounded-md flex items-center justify-center shrink-0 transition-colors"
+              >
+                <span class="material-symbols-outlined text-[18px]">{{ item.icono }}</span>
+              </div>
+              <span class="font-medium tracking-tight">{{ item.etiqueta }}</span>
+            </button>
+          </ng-container>
+
           <!-- Suscripcion, plan y modo offline (CU26/CU27/CU30). -->
           <button
             (click)="selectView('subscription')"
@@ -490,9 +518,21 @@ export class SidebarComponent {
 
   readonly itemsPlataforma: { vista: PlatformView; etiqueta: string; icono: string }[] = [
     { vista: 'platform', etiqueta: 'Empresas suscritas', icono: 'domain' },
+    { vista: 'platform-suscripciones', etiqueta: 'Suscripciones', icono: 'event_repeat' },
+    { vista: 'platform-planes', etiqueta: 'Planes', icono: 'sell' },
     { vista: 'platform-bitacora', etiqueta: 'Bitácora', icono: 'history' },
     { vista: 'platform-respaldos', etiqueta: 'Respaldos', icono: 'backup' },
   ];
+
+  readonly itemsIA: { vista: VistaIA; etiqueta: string; icono: string; permiso: string }[] = [
+    { vista: 'reportes-ia', etiqueta: 'Reportes con IA', icono: 'auto_awesome', permiso: 'reporte.ia' },
+    { vista: 'dashboard-analitico', etiqueta: 'Dashboard analítico', icono: 'monitoring', permiso: 'reporte.ver' },
+    { vista: 'modelos-ia', etiqueta: 'Modelos de IA', icono: 'model_training', permiso: 'ia.modelos' },
+  ];
+
+  tienePermiso(permiso: string): boolean {
+    return this.authService.currentUser()?.permisos.includes(permiso) ?? false;
+  }
 
   constructor(
     private authService: AuthService,

@@ -20,6 +20,9 @@ class PoliticaDevolucion {
   final bool permiteSolicitudEnLinea;
   final int diasEntregaEnLinea;
   final String condiciones;
+  // [CU31] [CU32] delivery: si se ofrece y cuanto cuesta cada viaje.
+  final bool permiteDomicilio;
+  final double costoDomicilio;
 
   const PoliticaDevolucion({
     required this.version,
@@ -33,6 +36,8 @@ class PoliticaDevolucion {
     required this.permiteSolicitudEnLinea,
     required this.diasEntregaEnLinea,
     required this.condiciones,
+    this.permiteDomicilio = true,
+    this.costoDomicilio = 0,
   });
 
   String get plazoTexto => textoPlazo(plazoCambioHoras);
@@ -55,6 +60,8 @@ class PoliticaDevolucion {
         permiteSolicitudEnLinea: json['permiteSolicitudEnLinea'] as bool,
         diasEntregaEnLinea: json['diasEntregaEnLinea'] as int,
         condiciones: json['condiciones'] as String,
+        permiteDomicilio: json['permiteDomicilio'] as bool? ?? true,
+        costoDomicilio: _num(json['costoDomicilio']),
       );
 }
 
@@ -189,6 +196,9 @@ class CasoDevolucion {
   final double montoDevuelto;
   final String? metodoReembolso;
   final String? estadoReembolso;
+  // [CU31] [CU32]
+  final String modalidadEntrega;
+  final double costoDomicilio;
 
   const CasoDevolucion({
     required this.idDevolucion,
@@ -209,6 +219,8 @@ class CasoDevolucion {
     required this.montoDevuelto,
     this.metodoReembolso,
     this.estadoReembolso,
+    this.modalidadEntrega = 'sucursal',
+    this.costoDomicilio = 0,
   });
 
   factory CasoDevolucion.fromJson(Map<String, dynamic> json) => CasoDevolucion(
@@ -230,6 +242,8 @@ class CasoDevolucion {
         montoDevuelto: _num(json['montoDevuelto']),
         metodoReembolso: json['metodoReembolso'] as String?,
         estadoReembolso: json['estadoReembolso'] as String?,
+        modalidadEntrega: json['modalidadEntrega'] as String? ?? 'sucursal',
+        costoDomicilio: _num(json['costoDomicilio']),
       );
 }
 
@@ -359,6 +373,7 @@ const etiquetasEstadoDevolucion = <String, String>{
   'EnRevision': 'En revisión',
   'Aprobada': 'Aprobada',
   'CambioPendiente': 'Cambio pendiente',
+  'EnvioDomicilio': 'En camino a tu casa',
   'Completada': 'Completada',
   'Rechazada': 'Rechazada',
   'Anulada': 'Anulada',

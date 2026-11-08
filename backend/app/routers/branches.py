@@ -6,7 +6,7 @@ from app.database import get_db
 from app.models import Ciudad, Sucursal
 from app.schemas.fase2 import SucursalIn, SucursalOut, SucursalUpdate
 from app.security import require_permiso
-from app.services.tenancy import ContextoTenant, contexto_actual, exigir_cupo, tenant_actual
+from app.services.tenancy import ContextoTenant, contexto_actual, exigir_cupo, tenant_actual, contar_recurso
 from app.services.bitacora import Actor, actor_actual, auditar
 
 router = APIRouter(prefix="/api/branches", tags=["branches"])
@@ -63,6 +63,12 @@ async def create_branch(
     # Cupo del plan ANTES de validar la ciudad: si el tenant ya llego al tope
     # no tiene sentido seguir (402 con el mensaje de mejora de plan).
     await exigir_cupo(session, ctx, "sucursales")
+    # [CU23] [CU25]: un plan sin "varias sucursales" admite una sola.
+    if not ctx.permite("permiteMultiSucursal") and await contar_recurso(session, "sucursales", ctx.tenant.idTenant) >= 1:
+        raise HTTPException(
+            status_code=402,
+            detail=f"Funcionalidad no incluida en su plan ({ctx.plan.nombre}): varias sucursales. Mejore su plan para habilitarla.",
+        )
     if not await session.get(Ciudad, payload.idCiudad):
         raise HTTPException(status_code=400, detail="Ciudad inexistente")
     s = Sucursal(**payload.model_dump(), idTenant=ctx.tenant.idTenant)

@@ -17,6 +17,8 @@ from app.schemas.dashboard import (
 )
 from app.security import require_permiso
 from app.services.horario import ZONA_BOLIVIA_SQL, fin_del_dia, inicio_del_dia
+from app.services import reportes_ia
+from app.services.alcance import alcance_sucursales
 from app.services.tenancy import tenant_actual
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
@@ -37,6 +39,18 @@ UMBRAL_STOCK_BAJO = 10
 # estos filtros el dashboard de cualquier empresa sumaba las de todas.
 
 
+def _ventas_visibles(stmt, visibles: set[int] | None):
+    """[CU30] alt. 2: el Encargado ve solo las ventas de sus sucursales."""
+    if visibles is None:
+        return stmt
+    lineas = reportes_ia.lineas_venta_con_sucursal()
+    return stmt.where(Venta.idVenta.in_(select(lineas.c.idVenta).where(lineas.c.codigoSucursal.in_(sorted(visibles)))))
+
+
+def _stock_visible(stmt, visibles: set[int] | None):
+    return stmt if visibles is None else stmt.where(Sucursal.codigoSucursal.in_(sorted(visibles)))
+
+
 def _filtrar_fechas(stmt, fecha_desde: date | None, fecha_hasta: date | None):
     if fecha_desde is not None:
         stmt = stmt.where(Venta.fecha >= inicio_del_dia(fecha_desde))
@@ -50,7 +64,7 @@ async def kpis(
     fecha_desde: date | None = None,
     fecha_hasta: date | None = None,
     session: AsyncSession = Depends(get_db),
-    _=Depends(require_permiso("reporte.ver")),
+    auth: dict = Depends(require_permiso("reporte.ver")),
     id_tenant: int = Depends(tenant_actual),
 ):
     ventas_stmt = (
@@ -63,26 +77,33 @@ async def kpis(
         .join(Producto, Producto.idProducto == DetalleVenta.idProducto)
         .where(Producto.idTenant == id_tenant)
     )
-    ventas_stmt = _filtrar_fechas(ventas_stmt, fecha_desde, fecha_hasta)
+    visibles = await alcance_sucursales(session, auth)
+    ventas_stmt = _ventas_visibles(_filtrar_fechas(ventas_stmt, fecha_desde, fecha_hasta), visibles)
     total_monto, total_items = (await session.execute(ventas_stmt)).one()
 
     stock_total = (
         await session.execute(
-            select(func.coalesce(func.sum(Inventario.cantidad_actual), 0))
-            .select_from(Inventario)
-            .join(Sucursal, Sucursal.codigoSucursal == Inventario.codigoSucursal)
-            .where(Sucursal.idTenant == id_tenant)
+            _stock_visible(
+                select(func.coalesce(func.sum(Inventario.cantidad_actual), 0))
+                .select_from(Inventario)
+                .join(Sucursal, Sucursal.codigoSucursal == Inventario.codigoSucursal)
+                .where(Sucursal.idTenant == id_tenant),
+                visibles,
+            )
         )
     ).scalar_one()
 
     productos_bajo_stock = (
         await session.execute(
-            select(func.count())
-            .select_from(Inventario)
-            .join(Sucursal, Sucursal.codigoSucursal == Inventario.codigoSucursal)
-            .where(
-                Sucursal.idTenant == id_tenant,
-                Inventario.cantidad_actual < UMBRAL_STOCK_BAJO,
+            _stock_visible(
+                select(func.count())
+                .select_from(Inventario)
+                .join(Sucursal, Sucursal.codigoSucursal == Inventario.codigoSucursal)
+                .where(
+                    Sucursal.idTenant == id_tenant,
+                    Inventario.cantidad_actual < UMBRAL_STOCK_BAJO,
+                ),
+                visibles,
             )
         )
     ).scalar_one()
@@ -100,7 +121,7 @@ async def ventas_diarias(
     fecha_desde: date | None = None,
     fecha_hasta: date | None = None,
     session: AsyncSession = Depends(get_db),
-    _=Depends(require_permiso("reporte.ver")),
+    auth: dict = Depends(require_permiso("reporte.ver")),
     id_tenant: int = Depends(tenant_actual),
 ):
     dia = func.date(func.timezone(ZONA_BOLIVIA_SQL, Venta.fecha)).label("dia")
@@ -117,7 +138,7 @@ async def ventas_diarias(
         .group_by(dia)
         .order_by(dia)
     )
-    stmt = _filtrar_fechas(stmt, fecha_desde, fecha_hasta)
+    stmt = _ventas_visibles(_filtrar_fechas(stmt, fecha_desde, fecha_hasta), await alcance_sucursales(session, auth))
 
     rows = (await session.execute(stmt)).all()
     return VentasDiariasOut(
@@ -134,7 +155,7 @@ async def top_productos(
     fecha_hasta: date | None = None,
     limit: int = Query(5, ge=1, le=20),
     session: AsyncSession = Depends(get_db),
-    _=Depends(require_permiso("reporte.ver")),
+    auth: dict = Depends(require_permiso("reporte.ver")),
     id_tenant: int = Depends(tenant_actual),
 ):
     monto = func.sum(DetalleVenta.cantidad * DetalleVenta.precio_unitario).label("monto")
@@ -153,7 +174,7 @@ async def top_productos(
         .order_by(monto.desc())
         .limit(limit)
     )
-    stmt = _filtrar_fechas(stmt, fecha_desde, fecha_hasta)
+    stmt = _ventas_visibles(_filtrar_fechas(stmt, fecha_desde, fecha_hasta), await alcance_sucursales(session, auth))
 
     rows = (await session.execute(stmt)).all()
     return TopProductosOut(
@@ -172,7 +193,7 @@ async def top_productos(
 @router.get("/stock-por-sucursal", response_model=StockPorSucursalOut)
 async def stock_por_sucursal(
     session: AsyncSession = Depends(get_db),
-    _=Depends(require_permiso("reporte.ver")),
+    auth: dict = Depends(require_permiso("reporte.ver")),
     id_tenant: int = Depends(tenant_actual),
 ):
     stmt = (
@@ -187,6 +208,7 @@ async def stock_por_sucursal(
         .group_by(Sucursal.codigoSucursal, Sucursal.nombre)
         .order_by(Sucursal.nombre)
     )
+    stmt = _stock_visible(stmt, await alcance_sucursales(session, auth))
     rows = (await session.execute(stmt)).all()
     return StockPorSucursalOut(
         sucursales=[

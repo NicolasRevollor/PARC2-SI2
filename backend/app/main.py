@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy.exc import IntegrityError
 
 from app.config import get_settings
+from app.services import acceso
 from app.routers import (
     auth,
     backups,
@@ -16,6 +17,7 @@ from app.routers import (
     cities,
     collections,
     customers,
+    inteligencia,
     dashboard,
     dispatches,
     inventory,
@@ -28,6 +30,8 @@ from app.routers import (
     purchase_history,
     recommendations,
     reports,
+    reportes_generativos,
+    domicilio,
     reservations,
     returns,
     sales,
@@ -47,6 +51,16 @@ app = FastAPI(
     version="0.1.0",
 )
 
+# [CU25] Verificar limites y funcionalidades del plan: en cada pedido. Se declara
+# ANTES que CORS para que sus rechazos tambien lleven las cabeceras CORS.
+@app.middleware("http")
+async def verificar_cuenta_y_suscripcion(request: Request, call_next):
+    rechazo = await acceso.verificar(request)
+    if rechazo is not None:
+        return rechazo
+    return await call_next(request)
+
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.CORS_ORIGINS,
@@ -54,6 +68,8 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    # [CU28] el navegador solo lee el nombre del archivo exportado si se expone.
+    expose_headers=["Content-Disposition"],
 )
 
 
@@ -133,5 +149,8 @@ for router in (
     backups.router,
     sync.router,
     caja.router,
+    reportes_generativos.router,
+    domicilio.router,
+    inteligencia.router,
 ):
     app.include_router(router)
