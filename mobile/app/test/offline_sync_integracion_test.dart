@@ -43,7 +43,7 @@ void main() {
   test('sin conexion: caja, venta y cambio; al volver la red quedan confirmados', () async {
     sqfliteFfiInit();
     databaseFactory = databaseFactoryFfi;
-    await databaseFactory.deleteDatabase(await getDatabasesPath() + '/youshop_local.db');
+    await databaseFactory.deleteDatabase('${await getDatabasesPath()}/youshop_local.db');
 
     final login = await http.post(Uri.parse('$api/api/auth/login'),
         headers: {'Content-Type': 'application/json'}, body: jsonEncode({'email': correo, 'password': clave}));

@@ -57,10 +57,12 @@ class _CartModalState extends State<CartModal> {
   Future<void> _cotizar(List<Map<String, dynamic>> items, int? idCupon) async {
     try {
       final c = await _cuponesService.cotizar(items, idCupon);
-      if (mounted) setState(() {
-        _cotizacion = c;
-        _idCupon = idCupon;
-      });
+      if (mounted) {
+        setState(() {
+          _cotizacion = c;
+          _idCupon = idCupon;
+        });
+      }
     } on ApiException {
       if (idCupon != null) await _cotizar(items, null);
     }
@@ -68,6 +70,7 @@ class _CartModalState extends State<CartModal> {
 
   _CheckoutStatus _status = _CheckoutStatus.idle;
   String? _errorMessage;
+  String? _paymentIntentPendiente;
   int? _idMetPagoRetenido;
   List<Map<String, dynamic>>? _itemsRetenidos;
 
@@ -85,6 +88,7 @@ class _CartModalState extends State<CartModal> {
   }
 
   Future<void> _iniciarCheckout(AppState appState) async {
+    if (_status == _CheckoutStatus.cobrando) return;
     final items = _itemsDesdeCarrito(appState);
     if (items == null) {
       setState(() {
@@ -100,6 +104,10 @@ class _CartModalState extends State<CartModal> {
     });
 
     try {
+      if (_paymentIntentPendiente != null) {
+        await _verificarYCrearVenta(appState, _itemsRetenidos ?? items);
+        return;
+      }
       final intent = await _paymentsService.crearIntent(items, concepto: 'Compra YouShop', idCupon: _idCupon, conEnvio: _conEnvio);
       final clientSecret = intent['clientSecret'] as String;
 
@@ -113,26 +121,11 @@ class _CartModalState extends State<CartModal> {
       // StripeException y no se llega a cobrar nada — el carrito queda
       // intacto y se puede reintentar desde cero (nuevo intent).
       await Stripe.instance.presentPaymentSheet();
-
-      final paymentIntentId = intent['paymentIntentId'] as String;
-      final verificado = await _paymentsService.verificarIntent(paymentIntentId);
-
-      final pagado = verificado['pagado'] == true;
-      final idMetPago = verificado['idMetPago'] as int?;
-      if (!pagado || idMetPago == null) {
-        // El widget reporto exito del lado del cliente, pero el servidor
-        // aun no confirma el cobro: NUNCA se crea la Venta en este caso
-        // (mismo criterio que la web).
-        setState(() {
-          _status = _CheckoutStatus.error;
-          _errorMessage =
-              'No se pudo confirmar el cobro con el servidor. Si tu tarjeta fue debitada, contacta a soporte antes de reintentar.';
-        });
-        return;
-      }
-
-      await _crearVenta(appState, idMetPago, items);
+      _paymentIntentPendiente = intent['paymentIntentId'] as String;
+      _itemsRetenidos = items;
+      await _verificarYCrearVenta(appState, items);
     } on StripeException catch (e) {
+      if (!mounted) return;
       // API de flutter_stripe no verificada contra pub.dev en esta sesion
       // (sin toolchain) — `e.error.localizedMessage` es el campo esperado
       // en versiones recientes del paquete; se cae a `.code` si viniera
@@ -142,11 +135,13 @@ class _CartModalState extends State<CartModal> {
         _errorMessage = e.error.localizedMessage ?? 'El pago fue cancelado o rechazado (${e.error.code}).';
       });
     } on ApiException catch (e) {
+      if (!mounted) return;
       setState(() {
         _status = _CheckoutStatus.error;
         _errorMessage = e.message;
       });
     } catch (_) {
+      if (!mounted) return;
       setState(() {
         _status = _CheckoutStatus.error;
         _errorMessage = 'No se pudo completar la compra. Intenta de nuevo.';
@@ -154,19 +149,32 @@ class _CartModalState extends State<CartModal> {
     }
   }
 
+  Future<void> _verificarYCrearVenta(AppState appState, List<Map<String, dynamic>> items) async {
+    final verificado = await _paymentsService.verificarIntent(_paymentIntentPendiente!);
+    final idMetPago = verificado['idMetPago'] as int?;
+    if (verificado['pagado'] != true || idMetPago == null) {
+      throw ApiException(409, 'El cobro aún no está confirmado. Reintentá la verificación: no se cobrará otra vez.');
+    }
+    _idMetPagoRetenido = idMetPago;
+    _paymentIntentPendiente = null;
+    await _crearVenta(appState, idMetPago, items);
+  }
+
   Future<void> _crearVenta(AppState appState, int idMetPago, List<Map<String, dynamic>> items) async {
     try {
       final venta = await _salesService.crearVenta(idMetPago, items, idCupon: _idCupon, entrega: _entrega);
+      if (!mounted) return;
       appState.clearCart();
       setState(() {
         _status = _CheckoutStatus.idle;
         _idMetPagoRetenido = null;
         _itemsRetenidos = null;
       });
-      if (!mounted) return;
-      Navigator.of(context).pop();
-      _mostrarConfirmacion(venta);
+      final navigator = Navigator.of(context);
+      navigator.pop();
+      _mostrarConfirmacion(venta, navigator.context);
     } on ApiException catch (e) {
+      if (!mounted) return;
       // El idMetPago YA fue cobrado (verificado): se retiene para
       // reintentar, NUNCA se vuelve a cobrar.
       setState(() {
@@ -176,6 +184,7 @@ class _CartModalState extends State<CartModal> {
         _itemsRetenidos = items;
       });
     } catch (_) {
+      if (!mounted) return;
       setState(() {
         _status = _CheckoutStatus.cobradoSinVenta;
         _errorMessage = 'Cobro confirmado, pero no pudimos registrar la venta.';
@@ -193,7 +202,7 @@ class _CartModalState extends State<CartModal> {
     await _crearVenta(appState, idMetPago, items);
   }
 
-  void _mostrarConfirmacion(Map<String, dynamic> venta) {
+  void _mostrarConfirmacion(Map<String, dynamic> venta, BuildContext context) {
     final fecha = DateTime.tryParse(venta['fecha'] as String? ?? '');
     final fechaTexto = fecha != null ? DateFormat('dd/MM/yyyy HH:mm').format(fecha.toLocal()) : '';
     showDialog(
@@ -213,7 +222,7 @@ class _CartModalState extends State<CartModal> {
               Text('Cupón ${venta['cuponUsado']['codigo']}: −Bs ${(venta['cuponUsado']['descuento'] as num).toStringAsFixed(2)}',
                   style: GoogleFonts.outfit(fontSize: 12, color: Colors.green.shade800)),
             Text(
-              'Total: \$${(venta['total'] as num).toStringAsFixed(2)}',
+              'Total: Bs ${(venta['total'] as num).toStringAsFixed(2)}',
               style: GoogleFonts.sourceSerif4(fontSize: 16, fontWeight: FontWeight.bold),
             ),
             // [CU33] la compra completo 3: gano un cupon.
@@ -304,9 +313,12 @@ class _CartModalState extends State<CartModal> {
   Widget build(BuildContext context) {
     final appState = context.watch<AppState>();
     final cobrando = _status == _CheckoutStatus.cobrando;
+    final bloqueado = cobrando || _idMetPagoRetenido != null || _paymentIntentPendiente != null;
     final cobradoSinVenta = _status == _CheckoutStatus.cobradoSinVenta;
 
-    return Container(
+    return PopScope(
+      canPop: !bloqueado,
+      child: Container(
       height: MediaQuery.of(context).size.height * 0.75,
       decoration: const BoxDecoration(
         color: AetherTheme.sandLight,
@@ -323,7 +335,7 @@ class _CartModalState extends State<CartModal> {
                 Text('Bolsa de Compras (${appState.totalCartCount})', style: GoogleFonts.outfit(fontSize: 16, fontWeight: FontWeight.w600)),
                 IconButton(
                   icon: const Icon(Icons.close),
-                  onPressed: () => Navigator.of(context).pop(),
+                  onPressed: bloqueado ? null : () => Navigator.of(context).pop(),
                 ),
               ],
             ),
@@ -367,7 +379,7 @@ class _CartModalState extends State<CartModal> {
                                 Text(item.product.name, style: GoogleFonts.sourceSerif4(fontSize: 13, fontWeight: FontWeight.w600)),
                                 Text('Talla: ${item.size} • Color: ${item.product.colorName}', style: GoogleFonts.outfit(fontSize: 10, color: const Color(0xFF7B776E))),
                                 const SizedBox(height: 4),
-                                Text('\$${item.product.price.toInt()}', style: GoogleFonts.sourceSerif4(fontSize: 12, fontWeight: FontWeight.bold)),
+                                Text('Bs ${item.product.price.toInt()}', style: GoogleFonts.sourceSerif4(fontSize: 12, fontWeight: FontWeight.bold)),
                               ],
                             ),
                           ),
@@ -375,12 +387,12 @@ class _CartModalState extends State<CartModal> {
                             children: [
                               IconButton(
                                 icon: const Icon(Icons.remove, size: 16),
-                                onPressed: cobrando ? null : () => appState.updateCartQuantity(index, -1),
+                                onPressed: bloqueado ? null : () => appState.updateCartQuantity(index, -1),
                               ),
                               Text('${item.quantity}', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
                               IconButton(
                                 icon: const Icon(Icons.add, size: 16),
-                                onPressed: cobrando ? null : () => appState.updateCartQuantity(index, 1),
+                                onPressed: bloqueado ? null : () => appState.updateCartQuantity(index, 1),
                               ),
                             ],
                           ),
@@ -408,12 +420,12 @@ class _CartModalState extends State<CartModal> {
                       ),
                     ),
                   // [CU33] cupones del cliente para esta tienda
-                  ..._seccionCupones(appState, cobrando || cobradoSinVenta),
+                  ..._seccionCupones(appState, bloqueado),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       Text('Subtotal', style: GoogleFonts.outfit(fontSize: 14)),
-                      Text('\$${appState.cartSubtotal.toInt()}', style: GoogleFonts.sourceSerif4(fontSize: 16, fontWeight: FontWeight.bold)),
+                      Text('Bs ${appState.cartSubtotal.toInt()}', style: GoogleFonts.sourceSerif4(fontSize: 16, fontWeight: FontWeight.bold)),
                     ],
                   ),
                   const SizedBox(height: 12),
@@ -438,7 +450,7 @@ class _CartModalState extends State<CartModal> {
                               child: CircularProgressIndicator(strokeWidth: 2, color: AetherTheme.sandLight),
                             )
                           : Text(
-                              cobradoSinVenta ? 'REINTENTAR REGISTRO' : 'FINALIZAR COMPRA',
+                              cobradoSinVenta ? 'REINTENTAR REGISTRO' : _paymentIntentPendiente != null ? 'VERIFICAR PAGO' : 'FINALIZAR COMPRA',
                               style: GoogleFonts.outfit(fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.5),
                             ),
                     ),
@@ -447,6 +459,7 @@ class _CartModalState extends State<CartModal> {
               ),
             ),
         ],
+      ),
       ),
     );
   }

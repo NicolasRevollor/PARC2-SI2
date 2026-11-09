@@ -53,7 +53,7 @@ class ProductsService {
     String? color,
     String? q,
     int page = 1,
-    int size = 20,
+    int size = 100,
   }) async {
     final List<Map<String, dynamic>> items;
     try {
@@ -75,16 +75,26 @@ class ProductsService {
       if (tipo == null && talla == null && color == null && q == null) {
         await _db.setMeta('catalogoCliente', {'fecha': DateTime.now().toIso8601String(), 'items': items});
       }
-    } on ApiException {
-      rethrow;
+    } on ApiException catch (error) {
+      if (error.statusCode != 0 && error.statusCode != 408 && error.statusCode < 500) rethrow;
+      return _catalogoGuardado(tipo: tipo, talla: talla, color: color, q: q);
     } catch (_) {
-      final guardado = await _db.getMeta('catalogoCliente');
-      if (guardado == null) rethrow;
-      sinConexion = true;
-      actualizado = (guardado['fecha'] as String).substring(0, 16).replaceFirst('T', ' ');
-      return (guardado['items'] as List).cast<Map>().map((m) => _fromApi(m.cast<String, dynamic>())).toList();
+      return _catalogoGuardado(tipo: tipo, talla: talla, color: color, q: q);
     }
     return items.map(_fromApi).toList();
+  }
+
+  Future<List<Product>> _catalogoGuardado({String? tipo, String? talla, String? color, String? q}) async {
+      final guardado = await _db.getMeta('catalogoCliente');
+      if (guardado == null) throw ApiException(0, 'Sin conexión y sin catálogo guardado. Conectate para descargarlo.');
+      sinConexion = true;
+      actualizado = (guardado['fecha'] as String).substring(0, 16).replaceFirst('T', ' ');
+      return (guardado['items'] as List).cast<Map>().map((m) => _fromApi(m.cast<String, dynamic>()))
+          .where((p) => (tipo == null || p.category.toLowerCase() == tipo.toLowerCase())
+              && (talla == null || p.sizes.contains(talla))
+              && (color == null || p.colorName.toLowerCase() == color.toLowerCase())
+              && (q == null || p.name.toLowerCase().contains(q.toLowerCase())))
+          .toList();
   }
 
   Product _fromApi(Map<String, dynamic> json) {
@@ -104,6 +114,8 @@ class ProductsService {
       // completan con el dominio de Vercel. Sin imagen -> foto neutra (evita
       // romper CachedNetworkImage con un string vacio).
       imageUrl: ApiConfig.urlImagen(imagen),
+      tryOnImageUrl: (json['imagen_probador_url'] as String?)?.isNotEmpty == true
+          ? ApiConfig.urlImagen(json['imagen_probador_url'] as String) : null,
       description: json['descripcion'] as String? ?? '',
       // El backend no tiene un campo equivalente a "details" (lista de
       // caracteristicas de venta tipo "100% Lana Virgen") — se deja vacio.

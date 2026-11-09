@@ -1,4 +1,5 @@
 import 'package:uuid/uuid.dart';
+import 'package:flutter_stripe/flutter_stripe.dart';
 
 import 'api_client.dart';
 
@@ -10,8 +11,22 @@ import 'api_client.dart';
 class PaymentsService {
   final ApiClient _api;
   static const _uuid = Uuid();
+  static String? _claveAplicada;
 
   PaymentsService(this._api);
+
+  Future<void> configurarStripe() async {
+    final config = await _api.get('/api/payments/config', auth: false) as Map<String, dynamic>;
+    final clave = config['publishableKey'] as String? ?? '';
+    if (config['disponible'] != true || !RegExp(r'^pk_(test|live)_').hasMatch(clave)) {
+      throw ApiException(503, 'El pago con tarjeta no está disponible en este momento.');
+    }
+    if (_claveAplicada != clave) {
+      Stripe.publishableKey = clave;
+      await Stripe.instance.applySettings();
+      _claveAplicada = clave;
+    }
+  }
 
   /// `items`: `[{'idProducto': int, 'cantidad': int}, ...]`.
   ///
@@ -30,6 +45,7 @@ class PaymentsService {
     int? idCupon, // [CU33] el cobro ya descuenta el cupon
     bool conEnvio = false, // [CU35] el cobro incluye el envio a domicilio
   }) async {
+    await configurarStripe();
     final data = await _api.post(
       '/api/payments/intents',
       body: {

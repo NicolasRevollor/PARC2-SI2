@@ -8,6 +8,7 @@ class Product {
   final String colorHex;
   final String category;
   final String imageUrl;
+  final String? tryOnImageUrl;
   final String description;
   final List<String> details;
   final List<String> sizes;
@@ -21,6 +22,7 @@ class Product {
     required this.colorHex,
     required this.category,
     required this.imageUrl,
+    this.tryOnImageUrl,
     required this.description,
     required this.details,
     required this.sizes,

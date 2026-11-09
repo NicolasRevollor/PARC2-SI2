@@ -107,14 +107,17 @@ import {
               <p class="text-xs text-gray-600 mt-1 leading-relaxed line-clamp-2">{{ item.descripcion }}</p>
             </div>
 
-            <div class="pt-3 border-t border-gray-100 flex items-center justify-between">
-              <div class="text-xs text-gray-500">
+            <div class="pt-3 border-t border-gray-100 flex flex-wrap items-center justify-between gap-2">
+              <div class="text-xs text-gray-500 w-full">
                 <span class="font-semibold">{{ item.coleccion_nombre }}</span>
               </div>
               <button
                 (click)="inspectProduct(item)"
                 class="px-3 py-1.5 bg-black text-white hover:bg-indigo-600 rounded-lg text-xs font-bold uppercase tracking-wide transition-colors cursor-pointer"
               >Inspeccionar</button>
+              <button appPermiso="producto.editar" type="button" (click)="editarFotos(item)" class="ys-btn-sec" data-testid="cambiar-fotos">
+                <span class="material-symbols-outlined text-[16px]">add_photo_alternate</span> Cambiar fotos
+              </button>
             </div>
           </div>
         </div>
@@ -122,6 +125,34 @@ import {
 
       <div *ngIf="filteredProducts().length === 0" class="text-center py-12 text-gray-400 text-sm">
         No se encontraron productos con los filtros seleccionados.
+      </div>
+    </div>
+
+    <div *ngIf="editandoFotos() as p" class="ys-modal">
+      <div class="ys-modal-caja max-w-xl space-y-4" role="dialog" aria-modal="true" aria-label="Cambiar fotos del producto">
+        <h2 class="text-lg font-bold text-gray-900">Cambiar fotos</h2>
+        <p class="text-sm text-gray-600">{{ p.nombre }} · talla {{ p.talla }} · {{ p.color }}</p>
+        <div *ngFor="let uso of usosImagen" class="ys-tarjeta p-4 space-y-2">
+          <h3 class="text-sm font-bold text-gray-900">{{ uso === 'catalogo' ? 'Foto del catálogo' : 'Recorte para el probador móvil' }}</h3>
+          <p class="text-xs text-gray-500">{{ uso === 'catalogo' ? 'Foto principal de la prenda. JPEG, PNG o WEBP, hasta 5 MB.' : 'Prenda de frente, sin persona ni fondo. PNG o WEBP transparente, hasta 5 MB.' }}</p>
+          <div class="rounded-lg border border-dashed border-gray-300 p-3"
+               style="background-image:repeating-conic-gradient(#d1d5db 0% 25%,#f3f4f6 0% 50%);background-size:20px 20px">
+            <img *ngIf="fotosEdicion[uso]" [src]="fotosEdicion[uso]" alt="Vista previa" class="h-36 w-full object-contain" />
+            <p *ngIf="!fotosEdicion[uso]" class="text-xs text-gray-600 text-center py-6">Sin imagen seleccionada</p>
+          </div>
+          <input type="file" [accept]="uso === 'probador' ? 'image/png,image/webp' : 'image/jpeg,image/png,image/webp'"
+                 (change)="subirFotoEdicion($event, uso)" [disabled]="subiendoFotos() || guardandoFotos()" class="text-xs max-w-full" />
+          <button *ngIf="uso === 'probador' && fotosEdicion.probador" type="button" (click)="fotosEdicion.probador = null"
+                  [disabled]="subiendoFotos() || guardandoFotos()" class="ys-btn-sec">Quitar recorte</button>
+        </div>
+        <p *ngIf="subiendoFotos()" class="text-xs text-indigo-600" role="status">Subiendo imagen…</p>
+        <p class="text-xs text-gray-500">Descargá la imagen a tu dispositivo y seleccioná el archivo aquí. La foto del catálogo puede tener fondo; el recorte del probador debe ser transparente.</p>
+        <div class="flex flex-wrap justify-end gap-2">
+          <button type="button" (click)="editandoFotos.set(null)" [disabled]="subiendoFotos() || guardandoFotos()" class="ys-btn-sec">Cancelar</button>
+          <button type="button" (click)="guardarFotos()" [disabled]="subiendoFotos() || guardandoFotos()" class="ys-btn" data-testid="guardar-fotos">
+            {{ guardandoFotos() ? 'Guardando…' : 'Guardar fotos' }}
+          </button>
+        </div>
       </div>
     </div>
 
@@ -213,7 +244,7 @@ import {
         <div class="mb-5">
           <span class="text-[10px] font-bold uppercase tracking-wider text-indigo-600">Catálogo</span>
           <h2 class="text-lg font-bold text-gray-900 mt-0.5">Agregar Nuevo Producto</h2>
-          <p class="text-xs text-gray-500">Solo poleras oversize (blanco, negro, guinda, gris) y jeans (negro, blanco). La foto se completa sola según tipo y color.</p>
+          <p class="text-xs text-gray-500">Poleras oversize y jeans. Podés reemplazar la foto sugerida con una imagen de tu dispositivo y subir un recorte para el probador.</p>
         </div>
 
         <form (ngSubmit)="saveNewProduct()" class="space-y-4">
@@ -294,7 +325,15 @@ import {
             </div>
           </div>
 
-          <button type="submit" [disabled]="!newProduct.nombre || newProduct.costo == null || newProduct.venta == null || !newProduct.idProveedor || !newProduct.idColeccion || uploadingImagen()" class="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white rounded-lg text-xs font-bold uppercase tracking-wide transition-colors shadow-xs mt-4">
+          <div class="space-y-2">
+            <label class="text-xs font-bold text-gray-700 uppercase tracking-wide">Recorte para el probador móvil (opcional)</label>
+            <p class="text-xs text-gray-500">Subí la prenda de frente y sin fondo, en PNG o WEBP transparente. Hasta 5 MB.</p>
+            <img *ngIf="newProduct.imagen_probador_url" [src]="newProduct.imagen_probador_url" alt="Recorte del probador" class="h-28 w-full object-contain rounded-lg bg-gray-200" />
+            <input type="file" accept="image/png,image/webp" (change)="onImagenSelected($event, 'probador')" [disabled]="uploadingProbador()" class="text-xs max-w-full" />
+            <p *ngIf="uploadingProbador()" class="text-xs text-indigo-600">Subiendo recorte…</p>
+          </div>
+
+          <button type="submit" [disabled]="!newProduct.nombre || newProduct.costo == null || newProduct.venta == null || !newProduct.idProveedor || !newProduct.idColeccion || uploadingImagen() || uploadingProbador()" class="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white rounded-lg text-xs font-bold uppercase tracking-wide transition-colors shadow-xs mt-4">
             Guardar Producto
           </button>
         </form>
@@ -306,6 +345,12 @@ export class ArchiveComponent implements OnInit {
   inspectingItem = signal<ProductOut | null>(null);
   showCreateModal = signal<boolean>(false);
   uploadingImagen = signal<boolean>(false);
+  uploadingProbador = signal(false);
+  readonly usosImagen = ['catalogo', 'probador'] as const;
+  readonly editandoFotos = signal<ProductOut | null>(null);
+  readonly subiendoFotos = signal(false);
+  readonly guardandoFotos = signal(false);
+  fotosEdicion: Record<'catalogo' | 'probador', string | null> = { catalogo: null, probador: null };
 
   searchQuery = '';
   filterTipo = '';
@@ -401,18 +446,54 @@ export class ArchiveComponent implements OnInit {
     this.showCreateModal.set(true);
   }
 
-  async onImagenSelected(event: Event) {
+  async onImagenSelected(event: Event, uso: 'catalogo' | 'probador' = 'catalogo') {
     const input = event.target as HTMLInputElement;
     const file = input.files?.[0];
     if (!file) return;
 
-    this.uploadingImagen.set(true);
-    const url = await this.archiveService.uploadImagen(file);
-    this.uploadingImagen.set(false);
+    const subiendo = uso === 'probador' ? this.uploadingProbador : this.uploadingImagen;
+    subiendo.set(true);
+    const url = await this.archiveService.uploadImagen(file, uso);
+    subiendo.set(false);
     input.value = '';
 
     if (url) {
-      this.newProduct.imagen_url = url;
+      if (uso === 'probador') this.newProduct.imagen_probador_url = url;
+      else this.newProduct.imagen_url = url;
+    }
+  }
+
+  editarFotos(producto: ProductOut): void {
+    this.fotosEdicion = { catalogo: producto.imagen_url, probador: producto.imagen_probador_url ?? null };
+    this.editandoFotos.set(producto);
+  }
+
+  async subirFotoEdicion(event: Event, uso: 'catalogo' | 'probador'): Promise<void> {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    if (!file || this.subiendoFotos() || this.guardandoFotos()) return;
+    this.subiendoFotos.set(true);
+    try {
+      const url = await this.archiveService.uploadImagen(file, uso);
+      if (url) this.fotosEdicion[uso] = url;
+    } finally {
+      this.subiendoFotos.set(false);
+      input.value = '';
+    }
+  }
+
+  async guardarFotos(): Promise<void> {
+    const producto = this.editandoFotos();
+    if (!producto || this.subiendoFotos() || this.guardandoFotos()) return;
+    this.guardandoFotos.set(true);
+    try {
+      const actualizado = await this.archiveService.updateProduct(producto.idProducto, {
+        imagen_url: this.fotosEdicion.catalogo,
+        imagen_probador_url: this.fotosEdicion.probador,
+      });
+      if (actualizado) this.editandoFotos.set(null);
+    } finally {
+      this.guardandoFotos.set(false);
     }
   }
 
@@ -430,6 +511,7 @@ export class ArchiveComponent implements OnInit {
       idProveedor: this.newProduct.idProveedor!,
       idColeccion: this.newProduct.idColeccion!,
       imagen_url: this.newProduct.imagen_url || null,
+      imagen_probador_url: this.newProduct.imagen_probador_url || null,
       imagenes_secundarias: this.newProduct.imagenes_secundarias || [],
     }).then((ok) => {
       if (ok) {

@@ -45,6 +45,7 @@ class _ReservationFormScreenState extends State<ReservationFormScreen> {
   _ReservaStatus _status = _ReservaStatus.cargandoSucursales;
   String? _errorMessage;
   int? _idMetPagoRetenido;
+  String? _paymentIntentPendiente;
 
   List<Sucursal> _sucursales = [];
   Sucursal? _sucursalSeleccionada;
@@ -128,6 +129,7 @@ class _ReservationFormScreenState extends State<ReservationFormScreen> {
   }
 
   Future<void> _iniciarReserva() async {
+    if (_status == _ReservaStatus.cobrando) return;
     final sucursal = _sucursalSeleccionada;
     final fecha = _fechaSeleccionada;
     final horario = _horarioTexto;
@@ -152,6 +154,10 @@ class _ReservationFormScreenState extends State<ReservationFormScreen> {
     final fechaTexto = DateFormat('yyyy-MM-dd').format(fecha);
 
     try {
+      if (_paymentIntentPendiente != null) {
+        await _verificarYCrearReserva(fechaTexto, horario, sucursal.codigoSucursal, idProducto);
+        return;
+      }
       final intent = await _paymentsService.crearIntent(
         [
           {'idProducto': idProducto, 'cantidad': 1},
@@ -171,25 +177,10 @@ class _ReservationFormScreenState extends State<ReservationFormScreen> {
       // Si el usuario cancela o la tarjeta es rechazada, esto lanza
       // StripeException y no se llega a cobrar nada.
       await Stripe.instance.presentPaymentSheet();
-
-      final paymentIntentId = intent['paymentIntentId'] as String;
-      final verificado = await _paymentsService.verificarIntent(paymentIntentId);
-
-      final pagado = verificado['pagado'] == true;
-      final idMetPago = verificado['idMetPago'] as int?;
-      if (!pagado || idMetPago == null) {
-        // El widget reporto exito del lado del cliente, pero el servidor
-        // aun no confirma el cobro: NUNCA se crea la Reserva en este caso.
-        setState(() {
-          _status = _ReservaStatus.error;
-          _errorMessage =
-              'No se pudo confirmar el cobro del deposito con el servidor. Si tu tarjeta fue debitada, contacta a soporte antes de reintentar.';
-        });
-        return;
-      }
-
-      await _crearReserva(idMetPago, fechaTexto, horario, sucursal.codigoSucursal, idProducto);
+      _paymentIntentPendiente = intent['paymentIntentId'] as String;
+      await _verificarYCrearReserva(fechaTexto, horario, sucursal.codigoSucursal, idProducto);
     } on StripeException catch (e) {
+      if (!mounted) return;
       // Misma nota que cart_modal.dart: `e.error.localizedMessage` no
       // verificado contra pub.dev en esta sesion (sin toolchain).
       setState(() {
@@ -197,16 +188,29 @@ class _ReservationFormScreenState extends State<ReservationFormScreen> {
         _errorMessage = e.error.localizedMessage ?? 'El pago fue cancelado o rechazado (${e.error.code}).';
       });
     } on ApiException catch (e) {
+      if (!mounted) return;
       setState(() {
         _status = _ReservaStatus.error;
         _errorMessage = e.message;
       });
     } catch (_) {
+      if (!mounted) return;
       setState(() {
         _status = _ReservaStatus.error;
         _errorMessage = 'No se pudo completar la reserva. Intenta de nuevo.';
       });
     }
+  }
+
+  Future<void> _verificarYCrearReserva(String fecha, String horario, int sucursal, int producto) async {
+    final verificado = await _paymentsService.verificarIntent(_paymentIntentPendiente!);
+    final idMetPago = verificado['idMetPago'] as int?;
+    if (verificado['pagado'] != true || idMetPago == null) {
+      throw ApiException(409, 'El anticipo aún no está confirmado. Reintentá la verificación sin pagar otra vez.');
+    }
+    _idMetPagoRetenido = idMetPago;
+    _paymentIntentPendiente = null;
+    await _crearReserva(idMetPago, fecha, horario, sucursal, producto);
   }
 
   Future<void> _crearReserva(
@@ -224,6 +228,7 @@ class _ReservationFormScreenState extends State<ReservationFormScreen> {
         idProducto: idProducto,
         idMetPago: idMetPago,
       );
+      if (!mounted) return;
       setState(() {
         _status = _ReservaStatus.idle;
         _idMetPagoRetenido = null;
@@ -231,6 +236,7 @@ class _ReservationFormScreenState extends State<ReservationFormScreen> {
       if (!mounted) return;
       _mostrarConfirmacion(reserva);
     } on ApiException catch (e) {
+      if (!mounted) return;
       // El idMetPago YA fue cobrado (verificado): se retiene para
       // reintentar, NUNCA se vuelve a cobrar.
       setState(() {
@@ -239,6 +245,7 @@ class _ReservationFormScreenState extends State<ReservationFormScreen> {
         _idMetPagoRetenido = idMetPago;
       });
     } catch (_) {
+      if (!mounted) return;
       setState(() {
         _status = _ReservaStatus.cobradoSinReserva;
         _errorMessage = 'Deposito confirmado, pero no pudimos registrar la reserva.';
@@ -281,7 +288,7 @@ class _ReservationFormScreenState extends State<ReservationFormScreen> {
             if (reserva['montoDeposito'] != null) ...[
               const SizedBox(height: 8),
               Text(
-                'Deposito: \$${(reserva['montoDeposito'] as num).toStringAsFixed(2)}',
+                'Deposito: Bs ${(reserva['montoDeposito'] as num).toStringAsFixed(2)}',
                 style: GoogleFonts.sourceSerif4(fontSize: 16, fontWeight: FontWeight.bold),
               ),
             ],
@@ -305,8 +312,11 @@ class _ReservationFormScreenState extends State<ReservationFormScreen> {
     final cargandoSucursales = _status == _ReservaStatus.cargandoSucursales;
     final cobrando = _status == _ReservaStatus.cobrando;
     final cobradoSinReserva = _status == _ReservaStatus.cobradoSinReserva;
+    final bloqueado = cobrando || cobradoSinReserva || _paymentIntentPendiente != null;
 
-    return Scaffold(
+    return PopScope(
+      canPop: !bloqueado,
+      child: Scaffold(
       backgroundColor: AetherTheme.sandLight,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
@@ -337,14 +347,14 @@ class _ReservationFormScreenState extends State<ReservationFormScreen> {
                     items: _sucursales
                         .map((s) => DropdownMenuItem(value: s, child: Text('${s.nombre} — ${s.ciudad}', overflow: TextOverflow.ellipsis)))
                         .toList(),
-                    onChanged: cobrando ? null : (s) => setState(() => _sucursalSeleccionada = s),
+                    onChanged: bloqueado ? null : (s) => setState(() => _sucursalSeleccionada = s),
                   ),
                   const SizedBox(height: 20),
 
                   Text('FECHA', style: GoogleFonts.outfit(fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1.5, color: const Color(0xFF7B776E))),
                   const SizedBox(height: 6),
                   InkWell(
-                    onTap: cobrando ? null : _seleccionarFecha,
+                    onTap: bloqueado ? null : _seleccionarFecha,
                     child: InputDecorator(
                       decoration: const InputDecoration(border: UnderlineInputBorder(borderSide: BorderSide(color: AetherTheme.outline))),
                       child: Text(
@@ -358,7 +368,7 @@ class _ReservationFormScreenState extends State<ReservationFormScreen> {
                   Text('HORARIO', style: GoogleFonts.outfit(fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 1.5, color: const Color(0xFF7B776E))),
                   const SizedBox(height: 6),
                   InkWell(
-                    onTap: cobrando ? null : _seleccionarHorario,
+                    onTap: bloqueado ? null : _seleccionarHorario,
                     child: InputDecorator(
                       decoration: const InputDecoration(border: UnderlineInputBorder(borderSide: BorderSide(color: AetherTheme.outline))),
                       child: Text(
@@ -395,7 +405,7 @@ class _ReservationFormScreenState extends State<ReservationFormScreen> {
                               child: CircularProgressIndicator(strokeWidth: 2, color: AetherTheme.sandLight),
                             )
                           : Text(
-                              cobradoSinReserva ? 'REINTENTAR REGISTRO' : 'RESERVAR (PAGAR DEPOSITO)',
+                              cobradoSinReserva ? 'REINTENTAR REGISTRO' : _paymentIntentPendiente != null ? 'VERIFICAR ANTICIPO' : 'RESERVAR (PAGAR DEPOSITO)',
                               style: GoogleFonts.outfit(fontSize: 12, fontWeight: FontWeight.bold, letterSpacing: 1.5),
                             ),
                     ),
@@ -403,6 +413,7 @@ class _ReservationFormScreenState extends State<ReservationFormScreen> {
                 ],
               ),
             ),
+      ),
     );
   }
 }

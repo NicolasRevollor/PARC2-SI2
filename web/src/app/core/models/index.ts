@@ -48,6 +48,7 @@ export interface ProductOut {
   proveedor_nombre: string;
   coleccion_nombre: string;
   imagen_url: string | null;
+  imagen_probador_url?: string | null;
   imagenes_secundarias: string[];
   // Medidas reales de la prenda en cm (para saber si una talla es mas grande o mas chica).
   medidaPechoCm?: number | null;
@@ -74,6 +75,7 @@ export interface ProductoIn {
   idProveedor: number;
   idColeccion: number;
   imagen_url?: string | null;
+  imagen_probador_url?: string | null;
   imagenes_secundarias?: string[];
 }
 

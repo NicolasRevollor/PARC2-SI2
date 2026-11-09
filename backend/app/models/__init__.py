@@ -334,6 +334,7 @@ class Producto(Base):
     idColeccion: Mapped[int] = mapped_column(ForeignKey("Colecciones.idColeccion", onupdate="CASCADE"), nullable=False)
 
     imagen_url: Mapped[str | None] = mapped_column(Text)
+    imagen_probador_url: Mapped[str | None] = mapped_column(Text)
     imagenes_secundarias: Mapped[list[str] | None] = mapped_column(ARRAY(Text), default=lambda: [])
     idTenant: Mapped[int] = mapped_column(
         ForeignKey("tenant.idTenant", onupdate="CASCADE"), default=TENANT_POR_DEFECTO, nullable=False

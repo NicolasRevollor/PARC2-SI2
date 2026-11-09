@@ -1,6 +1,7 @@
 from math import ceil
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from typing import Literal
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,7 +15,8 @@ from app.schemas.products import (
     ProductoOut,
     ProductoUpdate,
 )
-from app.security import get_optional_payload, require_permiso
+from app.security import get_current_payload, get_optional_payload, require_permiso
+from app.services.imagenes_producto import validar_imagen
 from app.services.tenancy import (
     ContextoTenant,
     contexto_actual,
@@ -53,6 +55,7 @@ async def _serialize(producto: Producto, session: AsyncSession) -> ProductoOut:
         proveedor_nombre=proveedor.nombre if proveedor else None,
         coleccion_nombre=coleccion.nombre_coleccion if coleccion else None,
         imagen_url=producto.imagen_url,
+        imagen_probador_url=producto.imagen_probador_url,
         imagenes_secundarias=producto.imagenes_secundarias or [],
         idModelo=producto.idModelo,
         medidaPechoCm=producto.medidaPechoCm,
@@ -158,8 +161,11 @@ async def list_products(
 @router.post("/upload-imagen", response_model=ImagenUploadOut)
 async def upload_imagen_producto(
     file: UploadFile = File(...),
-    _=Depends(require_permiso("producto.crear")),
+    uso: Literal["catalogo", "probador"] = Form("catalogo"),
+    auth: dict = Depends(get_current_payload),
 ):
+    if not {"producto.crear", "producto.editar"}.intersection(auth.get("permisos", [])):
+        raise HTTPException(status_code=403, detail="No tiene permiso para subir imagenes de productos")
     if not supabase_configurado():
         raise HTTPException(
             status_code=503, detail="Almacenamiento de imagenes no configurado"
@@ -170,18 +176,20 @@ async def upload_imagen_producto(
             detail="Formato de imagen no soportado (solo JPEG, PNG o WEBP)",
         )
 
-    contenido = await file.read()
+    contenido = await file.read(_TAMANO_MAXIMO_BYTES + 1)
     if len(contenido) > _TAMANO_MAXIMO_BYTES:
         raise HTTPException(status_code=400, detail="La imagen supera los 5MB")
 
+    extension = validar_imagen(contenido, probador=uso == "probador")
+
     try:
-        url = await subir_imagen_producto(file.filename or "imagen", contenido)
+        url = await subir_imagen_producto(f"imagen.{extension}", contenido)
     except SupabaseNoConfigurado:
         raise HTTPException(
             status_code=503, detail="Almacenamiento de imagenes no configurado"
         )
-    except SupabaseStorageError as exc:
-        raise HTTPException(status_code=502, detail=f"Error subiendo imagen: {exc}")
+    except SupabaseStorageError:
+        raise HTTPException(status_code=502, detail="No se pudo subir la imagen. Intente nuevamente.")
 
     return ImagenUploadOut(imagen_url=url)
 

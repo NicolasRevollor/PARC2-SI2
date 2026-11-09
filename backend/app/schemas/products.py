@@ -47,6 +47,7 @@ class ProductoIn(BaseModel):
     idProveedor: int
     idColeccion: int
     imagen_url: Optional[str] = None
+    imagen_probador_url: Optional[str] = None
     imagenes_secundarias: Optional[list[str]] = []
     # Medidas REALES de la prenda en cm (migracion 025). Con ellas el sistema dice si una talla
     # es mas grande o mas chica que otra al hacer un cambio (una "L" oversize no mide como una "L" normal).
@@ -66,6 +67,7 @@ class ProductoUpdate(BaseModel):
     idProveedor: Optional[int] = None
     idColeccion: Optional[int] = None
     imagen_url: Optional[str] = None
+    imagen_probador_url: Optional[str] = None
     imagenes_secundarias: Optional[list[str]] = None
     # Medidas REALES de la prenda en cm (migracion 025). Con ellas el sistema dice si una talla
     # es mas grande o mas chica que otra al hacer un cambio (una "L" oversize no mide como una "L" normal).
@@ -88,6 +90,7 @@ class ProductoOut(BaseModel):
     proveedor_nombre: Optional[str] = None
     coleccion_nombre: Optional[str] = None
     imagen_url: Optional[str] = None
+    imagen_probador_url: Optional[str] = None
     imagenes_secundarias: list[str] = []
     # Modelo al que pertenece esta variante (migracion 023).
     idModelo: Optional[int] = None

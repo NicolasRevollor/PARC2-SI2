@@ -105,8 +105,8 @@ class _ReturnsScreenState extends State<ReturnsScreen> {
   }
 
   BoxDecoration get _tarjeta => BoxDecoration(
-        color: Colors.white.withOpacity(0.7),
-        border: Border.all(color: AetherTheme.outline.withOpacity(0.6)),
+        color: Colors.white.withValues(alpha: 0.7),
+        border: Border.all(color: AetherTheme.outline.withValues(alpha: 0.6)),
         borderRadius: BorderRadius.circular(2),
       );
 
@@ -849,7 +849,7 @@ class _SolicitudSheetState extends State<_SolicitudSheet> {
             if (_tipo == 'cambio_producto') ...[
               const SizedBox(height: 12),
               DropdownButtonFormField<int?>(
-                value: _idProductoNuevo,
+                initialValue: _idProductoNuevo,
                 isExpanded: true,
                 decoration: const InputDecoration(labelText: 'Producto que te gustaría'),
                 items: [
@@ -879,7 +879,7 @@ class _SolicitudSheetState extends State<_SolicitudSheet> {
               ],
             ),
             DropdownButtonFormField<int>(
-              value: _sucursal,
+              initialValue: _sucursal,
               isExpanded: true,
               decoration: InputDecoration(labelText: _domicilio ? 'Sucursal que recibe la prenda' : 'Sucursal donde entregás la prenda'),
               items: _sucursales
@@ -909,7 +909,7 @@ class _SolicitudSheetState extends State<_SolicitudSheet> {
                 TextField(controller: _telefono, keyboardType: TextInputType.phone, onChanged: (_) => setState(() {}),
                     decoration: const InputDecoration(labelText: 'Teléfono')),
                 DropdownButtonFormField<String>(
-                  value: _franja,
+                  initialValue: _franja,
                   decoration: const InputDecoration(labelText: 'Horario'),
                   items: const [
                     DropdownMenuItem(value: 'manana', child: Text('Mañana (9 a 13)')),

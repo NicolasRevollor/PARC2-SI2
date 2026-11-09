@@ -53,9 +53,5 @@ class ApiConfig {
   static const String refreshTokenStorageKey = 'youshop_refresh_token';
   static const String userStorageKey = 'youshop_user';
 
-  // Mobile Fase 2 (checkout): misma clave de TEST (publishable, no
-  // secreta) que ya usan `web/.env` y `backend/.env` — segura de embeber
-  // en la app igual que en la web.
-  static const String stripePublishableKey =
-      'pk_test_51TgzB6CY05m6u9g0zbKDhfoWgScewf5szVvdwX1im5zEZLZgG5KMkd2RoCOsGpMkyRWJ0kKX4MtTXXbmCxWxIAUX00BlBgWTrJ';
+  // La clave publica de pagos se obtiene de /api/payments/config.
 }

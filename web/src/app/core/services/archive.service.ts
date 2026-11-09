@@ -67,9 +67,14 @@ export class ArchiveService {
     });
   }
 
-  uploadImagen(file: File): Promise<string | null> {
+  uploadImagen(file: File, uso: 'catalogo' | 'probador' = 'catalogo'): Promise<string | null> {
+    if (file.size === 0 || file.size > 5 * 1024 * 1024) {
+      this.notificationService.error('Imagen no válida', 'Seleccioná una imagen de hasta 5 MB.');
+      return Promise.resolve(null);
+    }
     const formData = new FormData();
     formData.append('file', file);
+    formData.append('uso', uso);
 
     return firstValueFrom(
       this.http.post<{ imagen_url: string }>(`${API_URL}/api/products/upload-imagen`, formData)

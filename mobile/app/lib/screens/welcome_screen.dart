@@ -25,9 +25,9 @@ class WelcomeScreen extends StatelessWidget {
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
                 colors: [
-                  AetherTheme.charcoalDark.withOpacity(0.2),
-                  AetherTheme.charcoalDark.withOpacity(0.5),
-                  AetherTheme.charcoalDark.withOpacity(0.95),
+                  AetherTheme.charcoalDark.withValues(alpha: 0.2),
+                  AetherTheme.charcoalDark.withValues(alpha: 0.5),
+                  AetherTheme.charcoalDark.withValues(alpha: 0.95),
                 ],
               ),
             ),
@@ -56,7 +56,7 @@ class WelcomeScreen extends StatelessWidget {
                     style: GoogleFonts.sourceSerif4(
                       fontSize: 14,
                       height: 1.6,
-                      color: AetherTheme.sandLight.withOpacity(0.85),
+                      color: AetherTheme.sandLight.withValues(alpha: 0.85),
                     ),
                   ),
                   const SizedBox(height: 32),

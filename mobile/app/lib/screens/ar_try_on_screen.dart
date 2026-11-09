@@ -15,10 +15,9 @@ import '../theme/aether_theme.dart';
 
 /// CU11 — Vestidor Virtual (RA), version acotada: camara real en vivo +
 /// deteccion de pose (hombros) para anclar la imagen del producto sobre el
-/// torso detectado. NO es simulacion de caida de tela ni RA biomecanica —
-/// las fotos del catalogo son fotos de estudio con fondo opaco, no recortes
-/// con transparencia, asi que el overlay se ve como una foto semi-
-/// transparente que sigue el cuerpo, no una prenda "puesta" fotorealista.
+/// cuerpo detectado. Usa el recorte transparente cargado desde la web;
+/// las prendas antiguas conservan el recorte del catalogo. Es una
+/// superposicion 2D, sin simulacion de caida de tela ni ajuste 3D.
 class ArTryOnScreen extends StatefulWidget {
   final Product product;
 
@@ -209,7 +208,7 @@ class _ArTryOnScreenState extends State<ArTryOnScreen> {
             right: 56,
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              decoration: BoxDecoration(color: Colors.black.withOpacity(0.6), borderRadius: BorderRadius.circular(2)),
+              decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.6), borderRadius: BorderRadius.circular(2)),
               child: Text(
                 resultado.mensaje,
                 style: GoogleFonts.outfit(color: AetherTheme.sandLight, fontSize: 10.5, fontWeight: FontWeight.w600),
@@ -222,7 +221,8 @@ class _ArTryOnScreenState extends State<ArTryOnScreen> {
           _GarmentOverlay(
             previewSize: controller.value.previewSize,
             pose: pose,
-            imageUrl: ApiConfig.urlRecorte(widget.product.imageUrl),
+            imageUrl: widget.product.tryOnImageUrl ?? ApiConfig.urlRecorte(widget.product.imageUrl),
+            pantalon: widget.product.category.toLowerCase().contains('jean'),
           )
         else
           Positioned(
@@ -232,7 +232,7 @@ class _ArTryOnScreenState extends State<ArTryOnScreen> {
             child: Center(
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(color: Colors.black.withOpacity(0.6), borderRadius: BorderRadius.circular(2)),
+                decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.6), borderRadius: BorderRadius.circular(2)),
                 child: Text('Buscando tu silueta...', style: GoogleFonts.outfit(color: AetherTheme.sandLight, fontSize: 11)),
               ),
             ),
@@ -246,14 +246,15 @@ class _GarmentOverlay extends StatelessWidget {
   final Size? previewSize;
   final Pose pose;
   final String imageUrl;
+  final bool pantalon;
 
-  const _GarmentOverlay({required this.previewSize, required this.pose, required this.imageUrl});
+  const _GarmentOverlay({required this.previewSize, required this.pose, required this.imageUrl, required this.pantalon});
 
   @override
   Widget build(BuildContext context) {
     final size = previewSize;
-    final left = pose.landmarks[PoseLandmarkType.leftShoulder];
-    final right = pose.landmarks[PoseLandmarkType.rightShoulder];
+    final left = pose.landmarks[pantalon ? PoseLandmarkType.leftHip : PoseLandmarkType.leftShoulder];
+    final right = pose.landmarks[pantalon ? PoseLandmarkType.rightHip : PoseLandmarkType.rightShoulder];
     if (size == null || left == null || right == null) {
       return const SizedBox.shrink();
     }
@@ -278,12 +279,12 @@ class _GarmentOverlay extends StatelessWidget {
         final midY = (left.y + right.y) / 2 * scaleY;
         final shoulderWidthPx = (left.x - right.x).abs() * scaleX;
 
-        final overlayWidth = shoulderWidthPx.clamp(20.0, constraints.maxWidth) * 2.2;
-        final overlayHeight = overlayWidth * 1.3;
+        final overlayWidth = shoulderWidthPx.clamp(20.0, constraints.maxWidth) * (pantalon ? 1.7 : 2.2);
+        final overlayHeight = overlayWidth * (pantalon ? 2.0 : 1.3);
 
         return Positioned(
           left: (midX - overlayWidth / 2).clamp(-overlayWidth, constraints.maxWidth),
-          top: (midY - overlayHeight * 0.15).clamp(-overlayHeight, constraints.maxHeight),
+          top: (midY - overlayHeight * (pantalon ? 0.05 : 0.15)).clamp(-overlayHeight, constraints.maxHeight),
           width: overlayWidth,
           height: overlayHeight,
           child: IgnorePointer(

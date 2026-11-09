@@ -52,7 +52,16 @@ const API_URL = environment.apiUrl;
         <p class="text-sm text-gray-500 mt-1">Pedí el cambio o la devolución de una compra, entregá la prenda en la sucursal y seguí su estado.</p>
       </div>
 
-      <div *ngIf="politica() as p" class="ys-tarjeta p-4 text-sm space-y-1">
+      <nav class="flex flex-wrap gap-2" aria-label="Secciones de devoluciones">
+        <button type="button" (click)="seccion.set('compras')" class="ys-opcion" [class.ys-opcion-activa]="seccion() === 'compras'"
+                [attr.aria-pressed]="seccion() === 'compras'" data-testid="seccion-compras">Mis compras ({{ compras().length }})</button>
+        <button type="button" (click)="seccion.set('solicitudes')" class="ys-opcion" [class.ys-opcion-activa]="seccion() === 'solicitudes'"
+                [attr.aria-pressed]="seccion() === 'solicitudes'" data-testid="seccion-solicitudes">Mis solicitudes ({{ casos().length }})</button>
+        <button type="button" (click)="seccion.set('notas')" class="ys-opcion" [class.ys-opcion-activa]="seccion() === 'notas'"
+                [attr.aria-pressed]="seccion() === 'notas'" data-testid="seccion-notas">Notas de devolución ({{ notas().length }})</button>
+      </nav>
+
+      <div *ngIf="seccion() === 'compras' && politica() as p" class="ys-tarjeta p-4 text-sm space-y-1">
         <p class="font-bold text-gray-900 flex items-center gap-2">
           <span class="material-symbols-outlined text-[18px] text-indigo-600">policy</span>
           {{ plazo(p.plazoCambioHoras) }} para cambios · {{ p.plazoGarantiaDias }} días de garantía por defecto de fábrica
@@ -64,7 +73,7 @@ const API_URL = environment.apiUrl;
       </div>
 
       <!-- Mis compras (CU2 pasos 1-2) -->
-      <section class="space-y-3">
+      <section *ngIf="seccion() === 'compras'" class="space-y-3">
         <h2 class="text-base font-bold text-gray-900">Mis compras</h2>
         <div *ngIf="cargando()" class="text-sm text-gray-500">Cargando tus compras…</div>
         <div *ngIf="!cargando() && compras().length === 0" class="ys-tarjeta p-5 text-sm text-gray-500">No tenés compras recientes.</div>
@@ -87,7 +96,7 @@ const API_URL = environment.apiUrl;
       </section>
 
       <!-- Mis solicitudes (CU11 del lado del cliente) -->
-      <section class="space-y-3">
+      <section *ngIf="seccion() === 'solicitudes'" class="space-y-3">
         <h2 class="text-base font-bold text-gray-900">Mis solicitudes</h2>
         <div *ngIf="casos().length === 0" class="ys-tarjeta p-5 text-sm text-gray-500">Todavía no pediste devoluciones ni cambios.</div>
         <div *ngFor="let c of casos()" class="ys-tarjeta p-4 text-sm space-y-1">
@@ -120,6 +129,27 @@ const API_URL = environment.apiUrl;
             <button *ngIf="c.estado === 'PendienteEntrega'" (click)="cancelar(c)" class="ys-btn-sec">Cancelar</button>
           </div>
         </div>
+      </section>
+
+      <section *ngIf="seccion() === 'notas'" class="space-y-3" data-testid="notas-devolucion">
+        <h2 class="text-base font-bold text-gray-900">Notas de devolución</h2>
+        <p class="text-sm text-gray-500">Consultá el comprobante y el estado de cada reembolso.</p>
+        <div *ngIf="cargando()" class="text-sm text-gray-500">Cargando tus notas…</div>
+        <div *ngIf="!cargando() && notas().length === 0" class="ys-tarjeta p-5 text-sm text-gray-500">
+          Todavía no tenés notas de devolución. Aparecerán cuando una solicitud tenga un reembolso registrado.
+        </div>
+        <article *ngFor="let c of notas()" class="ys-tarjeta p-4 space-y-2">
+          <div class="flex flex-wrap justify-between gap-2">
+            <h3 class="font-semibold text-gray-900">Nota {{ c.codigo }}</h3>
+            <span class="text-xs text-gray-500">{{ c.fecha | date: 'dd/MM/yyyy' }}</span>
+          </div>
+          <p class="text-sm text-gray-600">{{ c.producto_nombre }} · talla {{ c.tallaOriginal }}</p>
+          <p class="text-sm font-semibold text-gray-900">Monto del reembolso: Bs {{ c.montoDevuelto.toFixed(2) }}</p>
+          <p class="text-xs text-gray-500">{{ c.metodoReembolso || 'Medio por confirmar' }} · {{ c.estadoReembolso || 'Pendiente' }}</p>
+          <button type="button" (click)="nota.set(c.idDevolucion)" class="ys-btn" data-testid="abrir-nota">
+            <span class="material-symbols-outlined text-[16px]">receipt_long</span> Ver nota de devolución
+          </button>
+        </article>
       </section>
 
     </div>
@@ -258,6 +288,8 @@ export class CustomerReturnsComponent implements OnInit {
   readonly politica = signal<PoliticaDevolucion | null>(null);
   readonly compras = signal<VentaDevolucion[]>([]);
   readonly casos = signal<DevolucionOut[]>([]);
+  readonly seccion = signal<'compras' | 'solicitudes' | 'notas'>('compras');
+  readonly notas = computed(() => this.casos().filter(c => c.montoDevuelto > 0));
   // Correccion de la ingeniera: si la talla elegida es mas grande o mas chica que la que devuelve.
   readonly comparacion = signal<ComparacionTalla | null>(null);
   readonly cargando = signal<boolean>(true);
@@ -363,6 +395,7 @@ export class CustomerReturnsComponent implements OnInit {
   }
 
   verSolicitud(codigo: string): void {
+    this.seccion.set('solicitudes');
     const caso = this.casos().find((c) => c.codigo === codigo);
     if (caso) void this.mostrarQr(caso);
   }
@@ -493,6 +526,7 @@ export class CustomerReturnsComponent implements OnInit {
     this.enviando.set(false);
     if (caso) {
       this.seleccion.set(null);
+      this.seccion.set('solicitudes');
       await this.cargar();
       await this.mostrarQr(caso);
     }

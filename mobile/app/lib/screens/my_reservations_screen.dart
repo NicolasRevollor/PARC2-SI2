@@ -94,8 +94,8 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
                         return Container(
                           padding: const EdgeInsets.all(14),
                           decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.7),
-                            border: Border.all(color: const Color(0xFFCCC6BC).withOpacity(0.6)),
+                            color: Colors.white.withValues(alpha: 0.7),
+                            border: Border.all(color: const Color(0xFFCCC6BC).withValues(alpha: 0.6)),
                             borderRadius: BorderRadius.circular(2),
                           ),
                           child: Column(
@@ -131,7 +131,7 @@ class _MyReservationsScreenState extends State<MyReservationsScreen> {
                               if (r['montoDeposito'] != null) ...[
                                 const SizedBox(height: 4),
                                 Text(
-                                  'Deposito: \$${(r['montoDeposito'] as num).toStringAsFixed(2)}',
+                                  'Deposito: Bs ${(r['montoDeposito'] as num).toStringAsFixed(2)}',
                                   style: GoogleFonts.sourceSerif4(fontSize: 12, fontWeight: FontWeight.bold),
                                 ),
                               ],

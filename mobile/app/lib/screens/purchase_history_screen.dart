@@ -120,8 +120,8 @@ class _PurchaseHistoryScreenState extends State<PurchaseHistoryScreen> {
                         return Container(
                           padding: const EdgeInsets.all(14),
                           decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.7),
-                            border: Border.all(color: const Color(0xFFCCC6BC).withOpacity(0.6)),
+                            color: Colors.white.withValues(alpha: 0.7),
+                            border: Border.all(color: const Color(0xFFCCC6BC).withValues(alpha: 0.6)),
                             borderRadius: BorderRadius.circular(2),
                           ),
                           child: Column(
@@ -134,7 +134,7 @@ class _PurchaseHistoryScreenState extends State<PurchaseHistoryScreen> {
                                 children: [
                                   Text('Venta #$idVenta', style: GoogleFonts.sourceSerif4(fontSize: 14, fontWeight: FontWeight.w600)),
                                   Text(
-                                    'Total: \$${primera.total.toStringAsFixed(2)}',
+                                    'Total: Bs ${primera.total.toStringAsFixed(2)}',
                                     style: GoogleFonts.sourceSerif4(fontSize: 14, fontWeight: FontWeight.bold),
                                   ),
                                 ],
@@ -157,7 +157,7 @@ class _PurchaseHistoryScreenState extends State<PurchaseHistoryScreen> {
                                         ),
                                       ),
                                       Text(
-                                        'Subtotal: \$${item.subtotalLinea.toStringAsFixed(2)}',
+                                        'Subtotal: Bs ${item.subtotalLinea.toStringAsFixed(2)}',
                                         style: GoogleFonts.outfit(fontSize: 11, color: const Color(0xFF7B776E)),
                                       ),
                                     ],

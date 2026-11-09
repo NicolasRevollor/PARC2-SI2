@@ -73,7 +73,7 @@ class TryOnScreen extends StatelessWidget {
                   child: Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                     decoration: BoxDecoration(
-                      color: isSelected ? Colors.white : Colors.white.withOpacity(0.4),
+                      color: isSelected ? Colors.white : Colors.white.withValues(alpha: 0.4),
                       border: Border.all(color: isSelected ? AetherTheme.charcoalDark : const Color(0xFFCCC6BC)),
                       borderRadius: BorderRadius.circular(2),
                     ),
@@ -120,7 +120,7 @@ class TryOnScreen extends StatelessWidget {
                     width: 85,
                     padding: const EdgeInsets.all(4),
                     decoration: BoxDecoration(
-                      color: isSelected ? Colors.white : Colors.white.withOpacity(0.4),
+                      color: isSelected ? Colors.white : Colors.white.withValues(alpha: 0.4),
                       border: Border.all(color: isSelected ? AetherTheme.charcoalDark : const Color(0xFFCCC6BC), width: isSelected ? 1.5 : 1),
                       borderRadius: BorderRadius.circular(2),
                     ),
@@ -136,7 +136,7 @@ class TryOnScreen extends StatelessWidget {
                         ),
                         const SizedBox(height: 2),
                         Text(p.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: GoogleFonts.outfit(fontSize: 9)),
-                        Text('\$${p.price.toInt()}', style: GoogleFonts.sourceSerif4(fontSize: 9, color: const Color(0xFF7B776E))),
+                        Text('Bs ${p.price.toInt()}', style: GoogleFonts.sourceSerif4(fontSize: 9, color: const Color(0xFF7B776E))),
                       ],
                     ),
                   ),
@@ -162,7 +162,7 @@ class TryOnScreen extends StatelessWidget {
                       height: 38,
                       alignment: Alignment.center,
                       decoration: BoxDecoration(
-                        color: isSel ? AetherTheme.charcoalDark : Colors.white.withOpacity(0.6),
+                        color: isSel ? AetherTheme.charcoalDark : Colors.white.withValues(alpha: 0.6),
                         border: Border.all(color: isSel ? AetherTheme.charcoalDark : const Color(0xFFCCC6BC)),
                         borderRadius: BorderRadius.circular(2),
                       ),
@@ -198,7 +198,7 @@ class TryOnScreen extends StatelessWidget {
                       height: 38,
                       alignment: Alignment.center,
                       decoration: BoxDecoration(
-                        color: isSel ? AetherTheme.charcoalDark : Colors.white.withOpacity(0.6),
+                        color: isSel ? AetherTheme.charcoalDark : Colors.white.withValues(alpha: 0.6),
                         border: Border.all(color: isSel ? AetherTheme.charcoalDark : const Color(0xFFCCC6BC)),
                         borderRadius: BorderRadius.circular(2),
                       ),
@@ -228,7 +228,7 @@ class TryOnScreen extends StatelessWidget {
             height: 48,
             child: ElevatedButton.icon(
               icon: const Icon(Icons.shopping_bag_outlined, size: 16),
-              label: Text('ANADIR A LA BOLSA (\$${product.price.toInt()})', style: GoogleFonts.outfit(fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
+              label: Text('ANADIR A LA BOLSA (Bs ${product.price.toInt()})', style: GoogleFonts.outfit(fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1.5)),
               style: ElevatedButton.styleFrom(
                 backgroundColor: AetherTheme.charcoalDark,
                 foregroundColor: AetherTheme.sandLight,
@@ -355,7 +355,7 @@ class _MirrorCanvasState extends State<_MirrorCanvas> {
               ),
               if (widget.isSimulatingTryOn)
                 Container(
-                  color: Colors.black.withOpacity(0.55),
+                  color: Colors.black.withValues(alpha: 0.55),
                   child: Center(
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
@@ -395,9 +395,9 @@ class _MirrorCanvasState extends State<_MirrorCanvas> {
                   return Container(
                     padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
                     decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.7),
+                      color: Colors.black.withValues(alpha: 0.7),
                       borderRadius: BorderRadius.circular(2),
-                      border: Border.all(color: Colors.white.withOpacity(0.2)),
+                      border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
                     ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -424,7 +424,7 @@ class _MirrorCanvasState extends State<_MirrorCanvas> {
               top: 8,
               right: 8,
               child: Material(
-                color: Colors.black.withOpacity(0.6),
+                color: Colors.black.withValues(alpha: 0.6),
                 shape: const CircleBorder(),
                 child: InkWell(
                   customBorder: const CircleBorder(),
@@ -471,15 +471,27 @@ class _AvisoStockState extends State<_AvisoStock> {
     _cargar();
   }
 
+  @override
+  void didUpdateWidget(covariant _AvisoStock oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.idProducto != widget.idProducto) {
+      _agotado = false;
+      _idAviso = null;
+      _cargar();
+    }
+  }
+
   Future<void> _cargar() async {
     final id = widget.idProducto;
     if (id == null) return;
     try {
       final e = await _service.estadoStock(id);
-      if (mounted) setState(() {
-        _agotado = e['agotado'] == true;
-        _idAviso = e['idAviso'] as int?;
-      });
+      if (mounted && widget.idProducto == id) {
+        setState(() {
+          _agotado = e['agotado'] == true;
+          _idAviso = e['idAviso'] as int?;
+        });
+      }
     } on ApiException {
       // Sin sesion o sin conexion: no se muestra el aviso.
     }

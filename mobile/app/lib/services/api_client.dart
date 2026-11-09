@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -22,7 +23,15 @@ class ApiException implements Exception {
 /// un token guardado, decodificacion JSON, y extraccion del mensaje real
 /// de error del backend en cualquier respuesta no-2xx.
 class ApiClient {
-  static const _storage = FlutterSecureStorage();
+  final FlutterSecureStorage _storage;
+  final http.Client _client;
+  final Duration _timeout;
+
+  ApiClient({http.Client? client, FlutterSecureStorage? storage,
+    Duration timeout = const Duration(seconds: 40)})
+      : _client = client ?? http.Client(),
+        _storage = storage ?? const FlutterSecureStorage(),
+        _timeout = timeout;
 
   Future<Map<String, String>> _headers({bool auth = true}) async {
     final headers = {'Content-Type': 'application/json'};
@@ -48,7 +57,11 @@ class ApiClient {
   dynamic _decode(http.Response response) {
     if (response.statusCode >= 200 && response.statusCode < 300) {
       if (response.body.isEmpty) return null;
-      return jsonDecode(utf8.decode(response.bodyBytes));
+      try {
+        return jsonDecode(utf8.decode(response.bodyBytes));
+      } on FormatException {
+        throw ApiException(502, 'El servidor devolvió una respuesta inválida. Intentá nuevamente.');
+      }
     }
 
     String message = 'Error del servidor (${response.statusCode}).';
@@ -76,11 +89,11 @@ class ApiClient {
       try {
         final refreshToken = await _storage.read(key: ApiConfig.refreshTokenStorageKey);
         if (refreshToken == null || refreshToken.isEmpty) return false;
-        final response = await http.post(
+        final response = await _client.post(
           _uri('/api/auth/refresh'),
           headers: {'Content-Type': 'application/json'},
           body: jsonEncode({'refresh_token': refreshToken}),
-        );
+        ).timeout(_timeout);
         if (response.statusCode < 200 || response.statusCode >= 300) return false;
         final data = jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
         await _storage.write(key: ApiConfig.tokenStorageKey, value: data['access_token'] as String);
@@ -101,20 +114,26 @@ class ApiClient {
     Future<http.Response> Function(Map<String, String> headers) llamada, {
     required bool auth,
   }) async {
-    var response = await llamada(await _headers(auth: auth));
-    if (auth && response.statusCode == 401 && await _renovarSesion()) {
-      response = await llamada(await _headers(auth: auth));
+    try {
+      var response = await llamada(await _headers(auth: auth)).timeout(_timeout);
+      if (auth && response.statusCode == 401 && await _renovarSesion()) {
+        response = await llamada(await _headers(auth: auth)).timeout(_timeout);
+      }
+      return _decode(response);
+    } on TimeoutException {
+      throw ApiException(408, 'El servidor tardó demasiado. Revisá tu conexión e intentá nuevamente.');
+    } on http.ClientException {
+      throw ApiException(0, 'No se pudo conectar. Revisá tu conexión a Internet.');
     }
-    return _decode(response);
   }
 
   Future<dynamic> get(String path, {Map<String, dynamic>? query, bool auth = true}) {
-    return _enviar((headers) => http.get(_uri(path, query), headers: headers), auth: auth);
+    return _enviar((headers) => _client.get(_uri(path, query), headers: headers), auth: auth);
   }
 
   Future<dynamic> post(String path, {Object? body, bool auth = true}) {
     return _enviar(
-      (headers) => http.post(
+      (headers) => _client.post(
         _uri(path),
         headers: headers,
         body: body == null ? null : jsonEncode(body),
@@ -125,7 +144,7 @@ class ApiClient {
 
   Future<dynamic> patch(String path, {Object? body, bool auth = true}) {
     return _enviar(
-      (headers) => http.patch(
+      (headers) => _client.patch(
         _uri(path),
         headers: headers,
         body: body == null ? null : jsonEncode(body),
@@ -136,12 +155,16 @@ class ApiClient {
 
   Future<dynamic> put(String path, {Object? body, bool auth = true}) {
     return _enviar(
-      (headers) => http.put(
+      (headers) => _client.put(
         _uri(path),
         headers: headers,
         body: body == null ? null : jsonEncode(body),
       ),
       auth: auth,
     );
+  }
+
+  Future<dynamic> delete(String path, {bool auth = true}) {
+    return _enviar((headers) => _client.delete(_uri(path), headers: headers), auth: auth);
   }
 }

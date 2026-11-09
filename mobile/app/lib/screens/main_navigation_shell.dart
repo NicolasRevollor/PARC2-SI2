@@ -51,7 +51,7 @@ class MainNavigationShell extends StatelessWidget {
           ),
         ),
         centerTitle: true,
-        backgroundColor: AetherTheme.sandLight.withOpacity(0.95),
+        backgroundColor: AetherTheme.sandLight.withValues(alpha: 0.95),
         elevation: 0,
         actions: [
           Stack(

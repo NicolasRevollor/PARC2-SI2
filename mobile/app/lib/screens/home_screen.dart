@@ -88,7 +88,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           end: Alignment.bottomCenter,
                           colors: [
                             Colors.transparent,
-                            AetherTheme.charcoalDark.withOpacity(0.85),
+                            AetherTheme.charcoalDark.withValues(alpha: 0.85),
                           ],
                         ),
                       ),
@@ -281,7 +281,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         style: GoogleFonts.sourceSerif4(fontSize: 12, fontWeight: FontWeight.w500),
                       ),
                       Text(
-                        '\$${product.price.toInt()}',
+                        'Bs ${product.price.toInt()}',
                         style: GoogleFonts.sourceSerif4(fontSize: 12, color: const Color(0xFF7B776E)),
                       ),
                     ],
