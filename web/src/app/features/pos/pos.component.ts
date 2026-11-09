@@ -347,7 +347,7 @@ export class PosComponent implements OnInit {
   // líneas no.
   lineasBloqueadas = computed(() => this.estado() === 'cobrado_sin_venta' || this.enviando());
 
-  tarjetaDisponible = computed(() => !!environment.stripePublishableKey && !this.cardLatchedOff());
+  tarjetaDisponible = computed(() => this.paymentsService.disponible() && !this.cardLatchedOff());
 
   etiquetaModalidad = computed(() =>
     this.modalidad() === 'efectivo' ? 'Efectivo' : 'Tarjeta'
@@ -368,6 +368,7 @@ export class PosComponent implements OnInit {
   ) {}
 
   ngOnInit(): void {
+    void this.paymentsService.cargarConfiguracion();
     this.cargarSucursales();
     this.cargarClientes();
   }

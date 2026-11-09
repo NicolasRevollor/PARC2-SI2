@@ -46,7 +46,7 @@ import { PaymentsService } from '../../core/services/payments.service';
         <button
           type="button"
           (click)="onConfirmar()"
-          [disabled]="procesando() || !clientSecret()"
+          [disabled]="procesando() || !listo()"
           class="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {{ procesando() ? 'Procesando…' : 'Pagar' }}
@@ -69,6 +69,7 @@ export class CardPaymentComponent implements AfterViewInit, OnDestroy {
   @ViewChild('paymentElementHost') private paymentElementHost?: ElementRef<HTMLDivElement>;
 
   procesando = signal(false);
+  listo = signal(false);
 
   private stripe: Stripe | null = null;
   private elements: StripeElements | null = null;
@@ -77,7 +78,11 @@ export class CardPaymentComponent implements AfterViewInit, OnDestroy {
   constructor(private paymentsService: PaymentsService) {}
 
   async ngAfterViewInit(): Promise<void> {
-    await this.montarElementoDePago();
+    try {
+      await this.montarElementoDePago();
+    } catch {
+      this.fallo.emit('No se pudo cargar el formulario de tarjeta. Revisá tu conexión e intentá nuevamente.');
+    }
   }
 
   private async montarElementoDePago(): Promise<void> {
@@ -89,11 +94,17 @@ export class CardPaymentComponent implements AfterViewInit, OnDestroy {
 
     this.stripe = await this.paymentsService.cargarStripe();
     if (!this.stripe) {
+      this.fallo.emit('El pago con tarjeta no está configurado en este momento.');
       return;
     }
 
     this.elements = this.stripe.elements({ clientSecret });
     this.paymentElement = this.elements.create('payment');
+    this.paymentElement.on('ready', () => this.listo.set(true));
+    this.paymentElement.on('loaderror', () => {
+      this.listo.set(false);
+      this.fallo.emit('No se pudo cargar el formulario de tarjeta. Intentá nuevamente.');
+    });
     this.paymentElement.mount(this.paymentElementHost.nativeElement);
   }
 
@@ -104,22 +115,25 @@ export class CardPaymentComponent implements AfterViewInit, OnDestroy {
     }
 
     this.procesando.set(true);
-    const { error, paymentIntent } = await this.stripe.confirmPayment({
-      elements: this.elements,
-      redirect: 'if_required',
-    });
-    this.procesando.set(false);
+    try {
+      const { error, paymentIntent } = await this.stripe.confirmPayment({
+        elements: this.elements,
+        redirect: 'if_required',
+      });
 
-    if (error) {
-      this.fallo.emit(error.message || 'El pago fue rechazado por Stripe.');
-      return;
-    }
+      if (error) {
+        this.fallo.emit(error.message || 'El pago fue rechazado por Stripe.');
+        return;
+      }
 
-    if (paymentIntent) {
-      // Solo se reporta el id del intento: la verificación autoritativa
-      // (POST /api/payments/intents/{id}/verify) es responsabilidad del
-      // llamante, nunca de este componente.
-      this.pagado.emit(paymentIntent.id);
+      if (paymentIntent) {
+        // El llamante verifica este id contra el backend antes de crear la venta.
+        this.pagado.emit(paymentIntent.id);
+      }
+    } catch {
+      this.fallo.emit('No se pudo confirmar el pago. Revisá tu conexión antes de reintentar.');
+    } finally {
+      this.procesando.set(false);
     }
   }
 
@@ -128,6 +142,7 @@ export class CardPaymentComponent implements AfterViewInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.listo.set(false);
     this.paymentElement?.unmount();
     this.paymentElement?.destroy();
     this.paymentElement = null;

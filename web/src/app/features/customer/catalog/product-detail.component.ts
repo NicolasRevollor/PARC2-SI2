@@ -1,4 +1,4 @@
-import { Component, EventEmitter, Input, OnChanges, Output, SimpleChanges, signal } from '@angular/core';
+import { Component, computed, EventEmitter, Input, OnChanges, Output, SimpleChanges, signal } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
@@ -7,6 +7,7 @@ import { environment } from '../../../../environments/environment';
 import { CANTIDAD_MAXIMA_LINEA } from '../../../core/services/cart.service';
 import { classifyProductDetailError, ProductDetailError } from './product-detail-error';
 import { TiendaService } from '../../../core/services/tienda.service';
+import { PaymentsService } from '../../../core/services/payments.service';
 import { CuBadgeComponent } from '../../../shared/components/cu-badge.component';
 
 const API_URL = environment.apiUrl;
@@ -84,7 +85,7 @@ const API_URL = environment.apiUrl;
                 </ng-template>
               </div>
 
-              <div class="flex items-center gap-2 mb-3" *ngIf="stripeDisponible && !agotado()">
+              <div class="flex items-center gap-2 mb-3" *ngIf="stripeDisponible() && !agotado()">
                 <span class="text-[10px] font-bold uppercase tracking-wider text-gray-400">Cantidad</span>
                 <button
                   type="button"
@@ -109,21 +110,21 @@ const API_URL = environment.apiUrl;
                   Reservar
                 </button>
                 <button
-                  *ngIf="stripeDisponible"
+                  *ngIf="stripeDisponible()"
                   (click)="onComprar(p)"
                   class="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold uppercase tracking-wide transition-colors shadow-xs cursor-pointer"
                 >
                   Comprar ahora
                 </button>
                 <button
-                  *ngIf="stripeDisponible"
+                  *ngIf="stripeDisponible()"
                   (click)="onAgregarAlCarrito(p)"
                   class="flex-1 py-2.5 bg-[#18191d] hover:bg-gray-50 text-indigo-600 border border-indigo-200 rounded-lg text-xs font-bold uppercase tracking-wide transition-colors shadow-xs cursor-pointer"
                 >
                   Agregar al carrito
                 </button>
                 <p
-                  *ngIf="!stripeDisponible"
+                  *ngIf="!stripeDisponible()"
                   class="flex-1 py-2.5 text-center text-[11px] font-semibold text-gray-400 border border-gray-200 rounded-lg"
                   title="El cobro con tarjeta no está disponible en este servidor"
                 >
@@ -188,9 +189,9 @@ export class ProductDetailComponent implements OnChanges {
   // /api/payments/intents) y antes de vender (POST /api/sales).
   cantidadMaxima = CANTIDAD_MAXIMA_LINEA;
 
-  stripeDisponible = !!environment.stripePublishableKey;
+  stripeDisponible = computed(() => this.paymentsService.disponible());
 
-  constructor(private http: HttpClient, private tiendaService: TiendaService) {}
+  constructor(private http: HttpClient, private tiendaService: TiendaService, private paymentsService: PaymentsService) {}
 
   async pedirAviso(p: ProductOut): Promise<void> {
     this.enviandoAviso.set(true);
@@ -212,6 +213,7 @@ export class ProductDetailComponent implements OnChanges {
   }
 
   ngOnChanges(changes: SimpleChanges) {
+    void this.paymentsService.cargarConfiguracion();
     if (changes['idProducto']) {
       this.cantidad.set(1);
       this.fetchProducto();
@@ -223,14 +225,14 @@ export class ProductDetailComponent implements OnChanges {
   }
 
   onComprar(p: ProductOut): void {
-    if (!this.stripeDisponible) {
+    if (!this.stripeDisponible()) {
       return;
     }
     this.comprar.emit({ producto: p, cantidad: this.cantidad() });
   }
 
   onAgregarAlCarrito(p: ProductOut): void {
-    if (!this.stripeDisponible) {
+    if (!this.stripeDisponible()) {
       return;
     }
     this.agregarAlCarrito.emit({ producto: p, cantidad: this.cantidad() });

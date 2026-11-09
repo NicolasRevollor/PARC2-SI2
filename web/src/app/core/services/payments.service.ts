@@ -1,4 +1,4 @@
-import { Injectable } from '@angular/core';
+import { computed, Injectable, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 import { loadStripe, Stripe } from '@stripe/stripe-js';
@@ -54,6 +54,9 @@ export interface PagoIntentVerificadoOut {
   providedIn: 'root'
 })
 export class PaymentsService {
+  private clavePublica = signal('');
+  readonly disponible = computed(() => !!this.clavePublica());
+  private configuracionPromise: Promise<void> | null = null;
   // Promesa cacheada: el script de Stripe.js se carga una sola vez por
   // sesión de página, nunca en cada llamada del componente.
   private stripePromise: Promise<Stripe | null> | null = null;
@@ -63,9 +66,30 @@ export class PaymentsService {
     private notificationService: NotificationService,
   ) {}
 
-  cargarStripe(): Promise<Stripe | null> {
+  cargarConfiguracion(): Promise<void> {
+    if (!this.configuracionPromise) {
+      this.configuracionPromise = firstValueFrom(
+        this.http.get<{ disponible: boolean; publishableKey: string | null }>(`${API_URL}/api/payments/config`)
+      ).then(config => {
+        const clave = config.publishableKey || environment.stripePublishableKey;
+        this.clavePublica.set(config.disponible && /^pk_(test|live)_/.test(clave) ? clave : '');
+      }).catch(() => {
+        this.clavePublica.set('');
+        // Una caida temporal no deshabilita los pagos hasta recargar la pagina.
+        this.configuracionPromise = null;
+      });
+    }
+    return this.configuracionPromise;
+  }
+
+  async cargarStripe(): Promise<Stripe | null> {
+    await this.cargarConfiguracion();
+    if (!this.disponible()) return null;
     if (!this.stripePromise) {
-      this.stripePromise = loadStripe(environment.stripePublishableKey);
+      this.stripePromise = loadStripe(this.clavePublica()).catch(error => {
+        this.stripePromise = null;
+        throw error;
+      });
     }
     return this.stripePromise;
   }

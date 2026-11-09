@@ -28,8 +28,19 @@ from app.services.pagos_stripe import (
     obtener_payment_intent,
     stripe_configurado,
 )
+from app.config import get_settings
 
 router = APIRouter(prefix="/api/payments", tags=["payments"])
+
+
+@router.get("/config")
+async def payment_config():
+    """Configuracion PUBLICA de Stripe; nunca enviar la clave secreta al navegador."""
+    clave = get_settings().STRIPE_PUBLISHABLE_KEY or ""
+    return {
+        "disponible": stripe_configurado(),
+        "publishableKey": clave if clave.startswith(("pk_test_", "pk_live_")) else None,
+    }
 
 # CU12: anticipo de reserva = 10% de una sola unidad, con un piso minimo
 # cobrable por Stripe (D4 en design.md). Por debajo del piso, el producto
