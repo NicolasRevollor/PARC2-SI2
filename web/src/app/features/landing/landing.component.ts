@@ -972,9 +972,15 @@ export interface BoutiqueHouse {
             </button>
             <button
               type="submit"
-              class="px-7 py-3 bg-gradient-to-r from-[#7a1c30] to-[#9b1d3d] text-white rounded-full text-xs uppercase tracking-widest font-semibold shadow-lg shadow-[#7a1c30]/40 hover:brightness-110 cursor-pointer border-0"
+              [disabled]="enviando()"
+              class="inline-flex items-center gap-2 px-7 py-3 bg-gradient-to-r from-[#7a1c30] to-[#9b1d3d] text-white rounded-full text-xs uppercase tracking-widest font-semibold shadow-lg shadow-[#7a1c30]/40 hover:brightness-110 cursor-pointer border-0 disabled:opacity-70 disabled:cursor-wait"
             >
-              Confirmar Reserva
+              @if (enviando()) {
+                <span class="w-3.5 h-3.5 rounded-full border-2 border-white/40 border-t-white animate-spin"></span>
+                Enviando…
+              } @else {
+                Confirmar Reserva
+              }
             </button>
           </div>
         </form>
@@ -1083,9 +1089,15 @@ export interface BoutiqueHouse {
             </button>
             <button
               type="submit"
-              class="px-7 py-3 bg-gradient-to-r from-[#7a1c30] to-[#9b1d3d] text-white rounded-full text-xs uppercase tracking-widest font-semibold shadow-lg shadow-[#7a1c30]/40 hover:brightness-110 cursor-pointer border-0"
+              [disabled]="enviando()"
+              class="inline-flex items-center gap-2 px-7 py-3 bg-gradient-to-r from-[#7a1c30] to-[#9b1d3d] text-white rounded-full text-xs uppercase tracking-widest font-semibold shadow-lg shadow-[#7a1c30]/40 hover:brightness-110 cursor-pointer border-0 disabled:opacity-70 disabled:cursor-wait"
             >
-              Enviar Solicitud
+              @if (enviando()) {
+                <span class="w-3.5 h-3.5 rounded-full border-2 border-white/40 border-t-white animate-spin"></span>
+                Enviando…
+              } @else {
+                Enviar Solicitud
+              }
             </button>
           </div>
         </form>
@@ -1403,6 +1415,8 @@ export class LandingComponent {
   // Modals state
   readonly isVipModalOpen = signal(false);
   readonly isApplicationModalOpen = signal(false);
+  // Mientras se envía un formulario, su botón muestra "Enviando…" y no se puede volver a apretar.
+  readonly enviando = signal(false);
   readonly isArModalOpen = signal(false);
   readonly selectedBoutiqueModal = signal<BoutiqueHouse | null>(null);
   readonly isLightboxOpen = signal(false);
@@ -1474,16 +1488,21 @@ export class LandingComponent {
       this.showToast('Completá tu nombre, correo, tienda, fecha y hora para reservar la prueba.');
       return;
     }
+    if (this.enviando()) return;
     const val = this.vipBookingForm.value;
-    this.closeVipModal();
-    this.showToast(
-      `Listo, ${val.clientName}: te esperamos en ${val.atelier} el ${val.date} a las ${val.time}. Para apartar una prenda con anticipo, ingresá a la tienda en línea.`
-    );
-    this.vipBookingForm.reset({
-      atelier: this.tiendasReserva[0],
-      date: '2026-10-24',
-      time: '16:00',
-    });
+    this.enviando.set(true);
+    setTimeout(() => {
+      this.enviando.set(false);
+      this.closeVipModal();
+      this.showToast(
+        `Listo, ${val.clientName}: te esperamos en ${val.atelier} el ${val.date} a las ${val.time}. Para apartar una prenda con anticipo, ingresá a la tienda en línea.`
+      );
+      this.vipBookingForm.reset({
+        atelier: this.tiendasReserva[0],
+        date: '2026-10-24',
+        time: '16:00',
+      });
+    }, 900);
   }
 
   openApplicationModal() {
@@ -1499,14 +1518,19 @@ export class LandingComponent {
       this.showToast('Completá el nombre de la tienda, el responsable y la ciudad.');
       return;
     }
+    if (this.enviando()) return;
     const brand = this.applicationForm.value.brandName;
-    this.closeApplicationModal();
-    this.showToast(
-      `Gracias, ${brand}. Un administrador de la plataforma revisará tu solicitud y te contactará para darte de alta.`
-    );
-    this.applicationForm.reset({
-      collectionType: 'Poleras oversize y jeans',
-    });
+    this.enviando.set(true);
+    setTimeout(() => {
+      this.enviando.set(false);
+      this.closeApplicationModal();
+      this.showToast(
+        `Gracias, ${brand}. Un administrador de la plataforma revisará tu solicitud y te contactará para darte de alta.`
+      );
+      this.applicationForm.reset({
+        collectionType: 'Poleras oversize y jeans',
+      });
+    }, 900);
   }
 
   openBoutiqueModal(house: BoutiqueHouse) {
