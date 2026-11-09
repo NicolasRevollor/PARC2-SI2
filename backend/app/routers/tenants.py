@@ -22,7 +22,7 @@ from app.schemas.tenancy import (
 )
 from app.security import get_current_payload, require_permiso
 from app.services.bitacora import registrar_bitacora
-from app.services.suscripciones import abrir_suscripcion, suscripcion_vigente
+from app.services.suscripciones import abrir_suscripcion, suscripcion_actual
 from app.services.tenancy import cargar_contexto, excesos_para_plan, suscripcion_out, tenant_actual, uso_actual
 
 router = APIRouter(prefix="/api", tags=["tenant"])
@@ -46,7 +46,7 @@ async def mi_tenant(
     _=Depends(require_permiso("tenant.ver")),
 ):
     ctx = await cargar_contexto(session, id_tenant)
-    sus = await suscripcion_vigente(session, id_tenant)
+    sus = await suscripcion_actual(session, id_tenant)
     salida = TenantMeOut(
         tenant=TenantOut.model_validate(ctx.tenant),
         plan=PlanOut.model_validate(ctx.plan),
@@ -107,7 +107,7 @@ async def cambiar_plan(
     await session.commit()
 
     ctx = await cargar_contexto(session, id_tenant)
-    sus = await suscripcion_vigente(session, id_tenant)
+    sus = await suscripcion_actual(session, id_tenant)
     return TenantMeOut(
         tenant=TenantOut.model_validate(ctx.tenant),
         plan=PlanOut.model_validate(ctx.plan),

@@ -33,11 +33,9 @@ except ImportError:  # pragma: no cover - google-genai siempre deberia estar ins
 
 settings = get_settings()
 
-# "gemini-flash-latest" (el alias rotante) devolvio 503 "alta demanda" en
-# pruebas en vivo con esta misma key; "gemini-2.5-flash" (version fija) si
-# respondio. Mas confiable para esta demo, a costa de no seguir siempre al
-# ultimo modelo automaticamente.
-MODEL = "gemini-2.5-flash"
+# Modelo verificado con una solicitud real; gemini-2.5-flash ya no esta
+# disponible para usuarios nuevos.
+MODEL = "gemini-3.5-flash"
 MAX_TURNOS_HERRAMIENTAS = 5
 LIMITE_RESULTADOS = 10
 

@@ -18,7 +18,7 @@ class ApiConfig {
   //   - Dispositivo fisico en la misma WiFi que la maquina del backend:
   //     la IP LAN de esa maquina (ej. 'http://192.168.1.50:8000',
   //     verificar con `ip -4 addr show` si cambia de red).
-  static const String baseUrl = 'https://primparcsi2.onrender.com';
+  static const String baseUrl = 'https://parc2-si2.onrender.com';
 
   // Web publicada en Vercel: sirve las imagenes del catalogo (/productos/...)
   // y de la landing (/landing/...). El backend guarda esas rutas RELATIVAS

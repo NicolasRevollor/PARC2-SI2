@@ -146,7 +146,17 @@ export class PlatformService {
 
   async revisarVencimientos(): Promise<{ porVencer: number; enGracia: number; suspendidas: number } | null> {
     try {
-      return await firstValueFrom(this.http.post<{ porVencer: number; enGracia: number; suspendidas: number }>(`${API_URL}/api/platform/suscripciones/revisar`, {}));
+      const r = await firstValueFrom(this.http.post<{ porVencer: number; enGracia: number; suspendidas: number }>(`${API_URL}/api/platform/suscripciones/revisar`, {}));
+      // [CU22] alt. 3: sin este aviso el boton parecia no hacer nada cuando no habia cambios.
+      const total = r.porVencer + r.enGracia + r.suspendidas;
+      this.notificationService.success(
+        'Revisión de vencimientos lista',
+        total
+          ? `${r.porVencer} por vencer · ${r.enGracia} en periodo de gracia · ${r.suspendidas} suspendida(s) hoy. Se avisó a sus administradores.`
+          : 'Ninguna suscripción vence en los próximos 7 días ni está vencida: no hubo cambios.',
+      );
+      await this.refrescarResumen();
+      return r;
     } catch (err) {
       this.notificationService.error('Error', this.detalle(err, 'No se pudo revisar los vencimientos.'));
       return null;

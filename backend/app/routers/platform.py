@@ -49,7 +49,7 @@ from app.services import acceso, cuentas, respaldos, suscripciones
 from app.services import devoluciones as dv
 from app.services import notificaciones as notif
 from app.services.horario import HORA_BOLIVIA
-from app.services.suscripciones import abrir_suscripcion, suscripcion_vigente
+from app.services.suscripciones import abrir_suscripcion, suscripcion_actual
 from app.services.tenancy import excesos_para_plan, suscripcion_out, tenant_actual, uso_actual
 
 router = APIRouter(prefix="/api/platform", tags=["platform"])
@@ -83,7 +83,7 @@ async def _correo_admin(session: AsyncSession, id_tenant: int) -> str | None:
 
 
 async def _empresa_out(session: AsyncSession, tenant: Tenant, plan: Plan) -> EmpresaOut:
-    sus = await suscripcion_vigente(session, tenant.idTenant)
+    sus = await suscripcion_actual(session, tenant.idTenant)
     return EmpresaOut(
         tenant=TenantOut.model_validate(tenant),
         plan=PlanOut.model_validate(plan),

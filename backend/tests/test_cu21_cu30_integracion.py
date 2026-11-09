@@ -154,6 +154,24 @@ def test_cu22_vencimiento_gracia_y_suspension_automatica(superadmin):
     assert pedir(superadmin, "POST", f"/api/platform/tenants/{id_tenant}/renovar", json={"meses": 1}).json()["suscripcion"]["estado"] == "Activa"
 
 
+def test_cu22_cancelada_aparece_en_canceladas_y_se_recontrata(superadmin):
+    datos, creada = alta_empresa(superadmin)
+    id_tenant = creada["empresa"]["tenant"]["idTenant"]
+    activar(creada["enlaceActivacion"])
+    adm = cliente_de(datos["adminCorreo"])
+    r = pedir(superadmin, "POST", f"/api/platform/tenants/{id_tenant}/cancelar", json={"motivo": "A pedido de la empresa"})
+    assert r.status_code == 200 and r.json()["suscripcion"]["estadoVisible"] == "Cancelada", r.text
+    # Antes la cancelada desaparecia ("Sin suscripcion") y el filtro "Canceladas" quedaba vacio.
+    fila = next(e for e in pedir(superadmin, "GET", "/api/platform/suscripciones").json() if e["tenant"]["idTenant"] == id_tenant)
+    assert fila["suscripcion"]["estadoVisible"] == "Cancelada" and fila["suscripcion"]["motivoSuspension"] == "A pedido de la empresa"
+    assert pedir(adm, "GET", "/api/tenant/me").status_code == 403
+    assert login(datos["adminCorreo"]).status_code == 403
+    # Recontratar 1 mes da 1 mes desde hoy (antes regalaba otro).
+    sus = pedir(superadmin, "POST", f"/api/platform/tenants/{id_tenant}/renovar", json={"meses": 1}).json()["suscripcion"]
+    assert sus["estado"] == "Activa" and 27 <= sus["diasRestantes"] <= 31
+    assert login(datos["adminCorreo"]).status_code == 200
+
+
 def test_cu22_la_operadora_no_se_suspende_y_el_cron_pide_secreto(superadmin):
     assert pedir(superadmin, "POST", "/api/platform/tenants/1/suspender", json={"motivo": "prueba"}).status_code == 409
     assert pedir(Cliente(0), "POST", "/api/platform/suscripciones/cron").status_code in (401, 503)
@@ -346,9 +364,12 @@ def test_cu29_cu30_entrenar_publicar_y_dashboard(admin, monkeypatch):
     for m in (seg, dem):
         assert pedir(admin, "POST", f"/api/ia/modelos/{m['idModeloIA']}/publicar").json()["estado"] == "Publicado"
     # Paso 6: la version nueva se compara con la publicada; la anterior queda retirada.
+    # Con sinteticos aleatorios el r2 a veces no llega al umbral: se fija para que publicar no dependa del azar.
+    monkeypatch.setitem(ml.UMBRALES, "demanda", {"r2": -1e9})
     dem2 = pedir(admin, "POST", "/api/ia/modelos/entrenar", json={"tipo": "demanda", "usarSinteticos": True}).json()
     assert dem2["versionComparada"] == dem["version"] and "r2" in dem2["comparacion"]
-    pedir(admin, "POST", f"/api/ia/modelos/{dem2['idModeloIA']}/publicar")
+    assert pedir(admin, "POST", f"/api/ia/modelos/{dem2['idModeloIA']}/publicar").status_code == 200
+    monkeypatch.undo()
     estados = {m["version"]: m["estado"] for m in pedir(admin, "GET", "/api/ia/modelos").json() if m["tipo"] == "demanda"}
     assert estados[dem["version"]] == "Retirado" and estados[dem2["version"]] == "Publicado"
 

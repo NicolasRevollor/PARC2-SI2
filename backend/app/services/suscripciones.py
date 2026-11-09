@@ -125,6 +125,24 @@ async def suscripcion_vigente(session: AsyncSession, id_tenant: int) -> Suscripc
     return sus
 
 
+async def suscripcion_actual(session: AsyncSession, id_tenant: int) -> Suscripcion | None:
+    """[CU22] La que se muestra: la vigente o, si no hay, la ultima cancelada.
+
+    Una cancelada deja de ser vigente, pero tiene que seguir apareciendo (filtro
+    "Canceladas" de la consola) y el control de acceso debe verla como cancelada."""
+    sus = await suscripcion_vigente(session, id_tenant)
+    if sus is not None:
+        return sus
+    return (
+        await session.execute(
+            select(Suscripcion)
+            .where(Suscripcion.idTenant == id_tenant, Suscripcion.estado == "Cancelada")
+            .order_by(Suscripcion.fechaInicio.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+
+
 async def abrir_suscripcion(
     session: AsyncSession,
     id_tenant: int,
@@ -174,16 +192,19 @@ async def _vigente_o_404(session: AsyncSession, id_tenant: int) -> Suscripcion:
 # ==== [CU22] Pasos 3 a 5: renovar con pago simulado ================
 # ===================================================================
 async def renovar(session: AsyncSession, id_tenant: int, meses: int, id_usuario: int) -> PagoSuscripcion:
+    ahora = ahora_utc()
     sus = await suscripcion_vigente(session, id_tenant)
     if sus is None:
-        # Una cancelada se vuelve a contratar con su plan actual.
+        # Una cancelada se vuelve a contratar con su plan actual, desde hoy y por
+        # los meses pagados (antes sumaba un mes de regalo).
         tenant = await session.get(Tenant, id_tenant)
         plan = await session.get(Plan, tenant.idPlan)
-        sus = await abrir_suscripcion(session, id_tenant, plan)
-    ahora = ahora_utc()
-    anterior = sus.fechaVencimiento
-    # Si ya vencio, el periodo nuevo corre desde hoy; si no, se suma al que queda.
-    sus.fechaVencimiento = sumar_meses(max(anterior, ahora), meses)
+        sus = await abrir_suscripcion(session, id_tenant, plan, inicio=ahora, vencimiento=sumar_meses(ahora, meses))
+        anterior = ahora
+    else:
+        anterior = sus.fechaVencimiento
+        # Si ya vencio, el periodo nuevo corre desde hoy; si no, se suma al que queda.
+        sus.fechaVencimiento = sumar_meses(max(anterior, ahora), meses)
     sus.estado = "Activa"
     sus.fechaSuspension = None
     sus.motivoSuspension = None

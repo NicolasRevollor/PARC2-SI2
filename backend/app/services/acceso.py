@@ -19,7 +19,7 @@ from sqlalchemy import select
 from app.database import AsyncSessionLocal
 from app.models import Usuario
 from app.security import decode_token, es_access_token
-from app.services.suscripciones import suscripcion_vigente
+from app.services.suscripciones import suscripcion_actual
 
 # Paso 2: cache de corta duracion (un proceso: el plan gratuito de Render corre uno).
 TTL_SEGUNDOS = 30
@@ -69,7 +69,7 @@ def decidir(estado: EstadoCuenta, metodo: str, ruta: str) -> tuple[int, str] | N
 async def _cargar(id_user: int, id_tenant: int) -> EstadoCuenta:
     async with AsyncSessionLocal() as session:
         activo = await session.scalar(select(Usuario.activo).where(Usuario.idUser == id_user))
-        sus = await suscripcion_vigente(session, id_tenant)
+        sus = await suscripcion_actual(session, id_tenant)
         estado = EstadoCuenta(usuario_activo=bool(activo), suscripcion=sus.estado if sus else None)
         await session.commit()  # guarda un vencimiento recien aplicado
         return estado
