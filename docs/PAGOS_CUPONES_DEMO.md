@@ -46,4 +46,6 @@ La cotización del generador comprueba disponibilidad y cálculo. El canje compl
 
 ## Estado de esta preparación
 
-El archivo `backend/.env` estaba vacío durante la revisión y no había `DATABASE_URL` ni claves de Stripe en el proceso. Por ese motivo no se conectó la base ni se cargaron compras. El código y el comando quedan preparados para ejecutar la carga cuando se configure la conexión. No se modificó el despliegue ni se realizó `git push`.
+El 9 de noviembre de 2026 se ejecutó la preparación con la conexión configurada por el usuario: se guardaron 15 compras de demostración para cinco clientes y cinco cupones disponibles del 30 %. Una consulta independiente posterior al commit confirmó las 15 compras, los cinco cupones vigentes y los cinco avisos sin correo. El detalle se encuentra en [RESULTADO_CUPONES_DEMO.md](RESULTADO_CUPONES_DEMO.md).
+
+También se verificó que las claves de prueba de Stripe pertenecen a la misma cuenta. Se creó un intento técnico, se consultó con la clave pública y se canceló, sin confirmar ni cobrar. El endpoint desplegado de Render `/api/payments/config` respondió HTTP 200, con pagos disponibles y clave pública configurada. No se realizó `git push` ni se cambió el despliegue durante esta ejecución.
