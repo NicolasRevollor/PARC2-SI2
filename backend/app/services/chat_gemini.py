@@ -13,8 +13,11 @@ cierra por clausura (partial) sobre el Cliente ya resuelto del JWT en el
 router, antes de armar las herramientas de este request.
 """
 
+import asyncio
+import logging
 from datetime import date
 
+import httpx
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -36,6 +39,9 @@ settings = get_settings()
 # Modelo verificado con una solicitud real; gemini-2.5-flash ya no esta
 # disponible para usuarios nuevos.
 MODEL = "gemini-3.5-flash"
+MAX_INTENTOS_GEMINI = 3
+ERRORES_TRANSITORIOS = {429, 500, 502, 503, 504}
+logger = logging.getLogger(__name__)
 MAX_TURNOS_HERRAMIENTAS = 5
 LIMITE_RESULTADOS = 10
 
@@ -85,7 +91,32 @@ def gemini_configurado() -> bool:
 def _client() -> "genai.Client":
     if not gemini_configurado():
         raise GeminiNoConfigurado("GEMINI_API_KEY no esta configurada")
-    return genai.Client(api_key=settings.GEMINI_API_KEY)
+    return genai.Client(
+        api_key=settings.GEMINI_API_KEY,
+        # Los reintentos se controlan abajo para no multiplicarlos con los del SDK.
+        http_options=types.HttpOptions(
+            timeout=20000, retry_options=types.HttpRetryOptions(attempts=1),
+        ),
+    )
+
+
+async def _generar_respuesta(client, contents, config):
+    for intento in range(MAX_INTENTOS_GEMINI):
+        try:
+            return await client.aio.models.generate_content(
+                model=MODEL, contents=contents, config=config,
+            )
+        except (genai_errors.APIError, httpx.TransportError) as exc:
+            codigo = getattr(exc, "code", None)
+            # No registrar la clave, el mensaje del usuario ni el cuerpo del error.
+            logger.warning(
+                "Gemini fallo: modelo=%s codigo=%s intento=%s/%s",
+                MODEL, codigo or type(exc).__name__, intento + 1, MAX_INTENTOS_GEMINI,
+            )
+            transitorio = isinstance(exc, httpx.TransportError) or codigo in ERRORES_TRANSITORIOS
+            if not transitorio or intento == MAX_INTENTOS_GEMINI - 1:
+                raise ChatNoDisponible(f"Gemini fallo: {codigo or type(exc).__name__}") from exc
+            await asyncio.sleep(2 ** intento)
 
 
 # --- Herramientas (funciones ejecutadas del lado servidor) ---------------
@@ -266,15 +297,7 @@ async def responder_chat(
 
     texto_final = "No pude completar la consulta, intenta preguntar de forma mas simple."
     for _ in range(MAX_TURNOS_HERRAMIENTAS):
-        try:
-            response = await client.aio.models.generate_content(
-                model=MODEL,
-                contents=contents,
-                config=config,
-            )
-        except genai_errors.APIError as exc:
-            # Antes se escapaba como 500; el router lo traduce a 503.
-            raise ChatNoDisponible(f"Gemini respondio {exc.code}") from exc
+        response = await _generar_respuesta(client, contents, config)
         llamadas = response.function_calls or []
         if not llamadas:
             texto_final = response.text or ""
@@ -289,7 +312,8 @@ async def responder_chat(
             partes_respuesta.append(
                 types.Part.from_function_response(name=llamada.name, response=resultado)
             )
-        contents.append(types.Content(role="tool", parts=partes_respuesta))
+        # Gemini recibe functionResponse como contenido del usuario.
+        contents.append(types.Content(role="user", parts=partes_respuesta))
 
     nuevo_historial = historial + [
         ChatMensaje(role="user", texto=mensaje),
