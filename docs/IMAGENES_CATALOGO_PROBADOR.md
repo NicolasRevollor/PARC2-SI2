@@ -52,3 +52,11 @@ Si usás Render, esas tres variables deben estar configuradas en el servicio de 
 El APK quedó en [YouShop-release.apk](</D:/CodexBuild/parc2-mobile-d7e867c3/YouShop-release.apk>) (101,4 MB). La compilación se hizo en D: porque C: no tenía espacio suficiente. El SDK y las cachés de esa copia están dentro de `D:\CodexBuild\parc2-mobile-d7e867c3`; no se borraron los originales.
 
 No se descargaron fotos de Google ni se reemplazaron imágenes de productos automáticamente: la elección y la subida se realizan desde el formulario.
+
+## Si queda en «Buscando tu silueta»
+
+Ese mensaje indica que todavía no hay una pose detectada. El detector analiza a la persona en la cámara, no la fotografía de la prenda: cambiar una imagen generada con IA por una real no corrige esa etapa.
+
+Se corrigió la entrada del detector en Android: ahora se solicita YUV420 y se convierte a NV21 respetando el relleno de filas y la separación de píxeles de cada plano. La rotación combina orientación del teléfono, sensor y cámara frontal/trasera siguiendo la [integración del plugin ML Kit](https://github.com/flutter-ml/google_ml_kit_flutter/blob/master/packages/google_mlkit_commons/README.md). Los fallos consecutivos de procesamiento muestran un aviso en pantalla en lugar de quedar ocultos como una búsqueda permanente.
+
+Validación de esta corrección: cinco pruebas de conversión (incluyendo padding y planos entrelazados) y rotación aprobadas; análisis Dart sin incidencias. Queda pendiente confirmar la detección y el alineado en el teléfono que presentó el fallo. Hay que instalar el APK actualizado, mostrar rostro y torso con buena luz y, para jeans, incluir las caderas en el encuadre.

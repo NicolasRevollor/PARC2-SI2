@@ -11,6 +11,7 @@ import '../models/product_model.dart';
 import '../services/api_client.dart';
 import '../services/customer_service.dart';
 import '../services/size_chart.dart';
+import '../services/pose_camera_image.dart';
 import '../theme/aether_theme.dart';
 
 /// CU11 — Vestidor Virtual (RA), version acotada: camara real en vivo +
@@ -34,6 +35,8 @@ class _ArTryOnScreenState extends State<ArTryOnScreen> {
   bool _permissionDenied = false;
   String? _errorMessage;
   Pose? _lastPose;
+  String? _detectionError;
+  int _failedFrames = 0;
   final CustomerService _customerService = CustomerService(ApiClient());
   int? _pecho;
   int? _cintura;
@@ -41,7 +44,7 @@ class _ArTryOnScreenState extends State<ArTryOnScreen> {
   @override
   void initState() {
     super.initState();
-    _poseDetector = PoseDetector(options: PoseDetectorOptions());
+    _poseDetector = PoseDetector(options: PoseDetectorOptions(mode: PoseDetectionMode.stream));
     _initCamera();
     // CU11 — mismo veredicto de ajuste que la vista estatica, no depende
     // de la deteccion de pose (la talla ya viene del producto elegido).
@@ -74,11 +77,9 @@ class _ArTryOnScreenState extends State<ArTryOnScreen> {
         camera,
         ResolutionPreset.medium,
         enableAudio: false,
-        // NV21 en Android / BGRA8888 en iOS: son los unicos dos formatos que
-        // el mapeo simple de `_cameraImageToInputImage` de abajo entiende
-        // (imagen de un solo plano). Sin este `imageFormatGroup`, Android
-        // entrega YUV420 en 3 planos y ese camino de conversion no aplica.
-        imageFormatGroup: Platform.isAndroid ? ImageFormatGroup.nv21 : ImageFormatGroup.bgra8888,
+        // Convertimos YUV420 nosotros para respetar los strides de cada
+        // dispositivo y evitar depender de la conversion NV21 de CameraX.
+        imageFormatGroup: Platform.isAndroid ? ImageFormatGroup.yuv420 : ImageFormatGroup.bgra8888,
       );
       await controller.initialize();
       if (!mounted) {
@@ -105,58 +106,33 @@ class _ArTryOnScreenState extends State<ArTryOnScreen> {
     }
   }
 
-  void _processCameraImage(CameraImage image) {
+  Future<void> _processCameraImage(CameraImage image) async {
     final controller = _controller;
     final detector = _poseDetector;
-    if (_isDetecting || detector == null || controller == null) return;
+    if (!mounted || _isDetecting || detector == null || controller == null) return;
     _isDetecting = true;
-
-    final inputImage = _cameraImageToInputImage(image, controller.description);
-    if (inputImage == null) {
-      _isDetecting = false;
-      return;
-    }
-
-    detector.processImage(inputImage).then((poses) {
-      if (mounted) {
-        setState(() => _lastPose = poses.isNotEmpty ? poses.first : null);
+    try {
+      final input = cameraFrameForPose(image, controller.description,
+          controller.value.deviceOrientation, android: Platform.isAndroid);
+      final poses = await detector.processImage(input);
+      if (!mounted) return;
+      setState(() {
+        _lastPose = poses.isNotEmpty ? poses.first : null;
+        _detectionError = null;
+        _failedFrames = 0;
+      });
+    } catch (error) {
+      _failedFrames++;
+      if (_failedFrames == 1) debugPrint('Probador: no se pudo procesar la camara: $error');
+      if (mounted && _failedFrames == 5) {
+        setState(() {
+          _lastPose = null;
+          _detectionError = 'No se puede procesar la camara. Cierra el probador y vuelve a abrirlo.';
+        });
       }
-    }).catchError((_) {
-      // Se ignora el fallo de un frame puntual — se sigue intentando con el
-      // siguiente frame del stream, nunca se corta la camara por esto.
-    }).whenComplete(() {
+    } finally {
       _isDetecting = false;
-    });
-  }
-
-  /// Conversion CameraImage -> InputImage para ML Kit. Este es el punto MAS
-  /// fragil de toda la integracion camera + google_mlkit_pose_detection: el
-  /// mapeo exacto de rotacion/formato cambio entre versiones de ambos
-  /// paquetes en el pasado. Si `flutter analyze` marca algo en este metodo,
-  /// es el primer lugar a revisar contra la app de ejemplo del paquete
-  /// instalado.
-  InputImage? _cameraImageToInputImage(CameraImage image, CameraDescription description) {
-    final rotation = InputImageRotationValue.fromRawValue(description.sensorOrientation) ?? InputImageRotation.rotation0deg;
-
-    final format = InputImageFormatValue.fromRawValue(image.format.raw);
-    if (format == null) return null;
-
-    // `InputImage.fromBytes` (via este camino simple) solo entiende un
-    // buffer de un solo plano (NV21/BGRA8888, forzado arriba via
-    // `imageFormatGroup`). Si el dispositivo entrega mas de un plano pese a
-    // esa configuracion, se descarta el frame en vez de fallar.
-    if (image.planes.length != 1) return null;
-    final plane = image.planes.first;
-
-    return InputImage.fromBytes(
-      bytes: plane.bytes,
-      metadata: InputImageMetadata(
-        size: Size(image.width.toDouble(), image.height.toDouble()),
-        rotation: rotation,
-        format: format,
-        bytesPerRow: plane.bytesPerRow,
-      ),
-    );
+    }
   }
 
   @override
@@ -233,7 +209,8 @@ class _ArTryOnScreenState extends State<ArTryOnScreen> {
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.6), borderRadius: BorderRadius.circular(2)),
-                child: Text('Buscando tu silueta...', style: GoogleFonts.outfit(color: AetherTheme.sandLight, fontSize: 11)),
+                child: Text(_detectionError ?? 'Buscando tu silueta... Muestra tu rostro y torso con buena luz.',
+                  textAlign: TextAlign.center, style: GoogleFonts.outfit(color: AetherTheme.sandLight, fontSize: 11)),
               ),
             ),
           ),
