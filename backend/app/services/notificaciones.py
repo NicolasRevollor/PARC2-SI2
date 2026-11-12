@@ -97,7 +97,11 @@ async def notificar_personal(
     referencia: str | None = None,
 ) -> None:
     """Aviso para TODO el personal de la empresa (por ejemplo: "hay que devolverle Bs 80 a un cliente").
-    Al personal solo se le avisa en la app (no por correo), para no llenarle la bandeja."""
+    Al personal solo se le avisa en la app (no por correo), para no llenarle la bandeja.
+
+    Si se pasa `referencia`, el aviso NO se repite: a cada usuario que ya tiene uno
+    con esa misma referencia se lo saltea (evita la campanita con el mismo mensaje
+    duplicado cuando el dispositivo reintenta la sincronizacion)."""
     ids = (
         await session.execute(
             select(Usuario.idUser)
@@ -105,7 +109,20 @@ async def notificar_personal(
             .where(Usuario.idTenant == id_tenant, Rol.nombreRol != "Cliente")
         )
     ).scalars().all()
+    ya_avisados: set[int] = set()
+    if referencia is not None:
+        ya_avisados = set(
+            (
+                await session.execute(
+                    select(Notificacion.idUser).where(
+                        Notificacion.idTenant == id_tenant, Notificacion.referencia == referencia
+                    )
+                )
+            ).scalars()
+        )
     for id_user in ids:
+        if id_user in ya_avisados:
+            continue
         await notificar_usuario(
             session, id_user, id_tenant, tipo=tipo, titulo=titulo, mensaje=mensaje, referencia=referencia, por_correo=False
         )

@@ -240,10 +240,13 @@ async def sincronizar_lote(
             resultados.append(ResultadoOperacionOut(uuidOperacion=uuid, estado=ofl.REINTENTAR, motivo=type(exc).__name__))
     await caja_srv.revisar_cierres_provisionales(session, id_tenant)
     if ctx.conflictos_nuevos:
+        # Una sola campanita por empresa y por dia: si el dispositivo reintenta
+        # la sincronizacion, no se repite el mismo aviso (lo deduplica la referencia).
+        hoy = datetime.now(timezone.utc).date().isoformat()
         await notif.notificar_personal(
-            session, id_tenant, tipo="sincronizacion", referencia=None,
+            session, id_tenant, tipo="sincronizacion", referencia=f"conflictos-sync-{id_tenant}-{hoy}",
             titulo="Conflictos de sincronizacion",
-            mensaje=f"Hay {ctx.conflictos_nuevos} operacion(es) sin conexion por revisar en Conflictos de sincronizacion.",
+            mensaje="Tenes operaciones sin conexion por revisar en Conflictos de sincronizacion.",
         )
     await session.commit()
     notif.programar_correos(background_tasks)
