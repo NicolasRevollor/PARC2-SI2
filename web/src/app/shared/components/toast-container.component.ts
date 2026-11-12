@@ -12,10 +12,10 @@ import { NotificationService } from '../../core/services/notification.service';
         *ngFor="let toast of notificationService.toasts()"
         class="pointer-events-auto p-4 rounded-xl border shadow-lg bg-[#18191d] transition-all duration-200 flex items-start space-x-3"
         [ngClass]="{
-          'border-emerald-200 text-emerald-950': toast.type === 'success',
-          'border-amber-200 text-amber-950': toast.type === 'warning',
-          'border-rose-200 text-rose-950': toast.type === 'error',
-          'border-gray-200 text-gray-900': toast.type === 'info'
+          'border-emerald-500/40 text-emerald-200': toast.type === 'success',
+          'border-amber-500/40 text-amber-200': toast.type === 'warning',
+          'border-rose-500/40 text-rose-200': toast.type === 'error',
+          'border-gray-600 text-gray-100': toast.type === 'info'
         }"
       >
         <span
@@ -38,14 +38,14 @@ import { NotificationService } from '../../core/services/notification.service';
           <p class="text-xs font-bold leading-tight">
             {{ toast.title }}
           </p>
-          <p class="text-xs text-gray-500 mt-0.5 leading-snug">
+          <p class="text-xs text-gray-300 mt-0.5 leading-snug">
             {{ toast.message }}
           </p>
         </div>
 
         <button
           (click)="notificationService.remove(toast.id)"
-          class="text-gray-400 hover:text-gray-700 p-1 -mr-1 -mt-1 transition-colors"
+          class="text-gray-400 hover:text-gray-100 p-1 -mr-1 -mt-1 transition-colors"
         >
           <span class="material-symbols-outlined text-[16px]">close</span>
         </button>
