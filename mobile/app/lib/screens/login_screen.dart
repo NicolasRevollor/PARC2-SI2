@@ -39,7 +39,8 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _iniciarSesion() async {
     if (!_formKey.currentState!.validate()) return;
     final appState = context.read<AppState>();
-    final ok = await appState.login(_emailController.text.trim(), _passwordController.text);
+    final ok = await appState.login(
+        _emailController.text.trim(), _passwordController.text);
     if (!mounted) return;
     if (ok) {
       Navigator.of(context).pushReplacement(
@@ -108,13 +109,15 @@ class _LoginScreenState extends State<LoginScreen> {
                       borderSide: BorderSide(color: AetherTheme.outline),
                     ),
                     focusedBorder: UnderlineInputBorder(
-                      borderSide: BorderSide(color: AetherTheme.charcoalDark, width: 1.5),
+                      borderSide: BorderSide(
+                          color: AetherTheme.charcoalDark, width: 1.5),
                     ),
                   ),
                   validator: (value) {
                     final v = value?.trim() ?? '';
                     if (v.isEmpty) return 'Ingresá tu correo.';
-                    if (!v.contains('@') || !v.contains('.')) return 'Correo inválido.';
+                    if (!v.contains('@') || !v.contains('.'))
+                      return 'Correo inválido.';
                     return null;
                   },
                 ),
@@ -137,16 +140,20 @@ class _LoginScreenState extends State<LoginScreen> {
                       borderSide: BorderSide(color: AetherTheme.outline),
                     ),
                     focusedBorder: UnderlineInputBorder(
-                      borderSide: BorderSide(color: AetherTheme.charcoalDark, width: 1.5),
+                      borderSide: BorderSide(
+                          color: AetherTheme.charcoalDark, width: 1.5),
                     ),
                   ),
-                  validator: (value) => (value == null || value.isEmpty) ? 'Ingresá tu contraseña.' : null,
+                  validator: (value) => (value == null || value.isEmpty)
+                      ? 'Ingresá tu contraseña.'
+                      : null,
                 ),
                 if (appState.authError != null) ...[
                   const SizedBox(height: 16),
                   Text(
                     appState.authError!,
-                    style: GoogleFonts.sourceSerif4(fontSize: 12, color: const Color(0xFFB3261E)),
+                    style: GoogleFonts.sourceSerif4(
+                        fontSize: 12, color: const Color(0xFFB3261E)),
                   ),
                 ],
                 const SizedBox(height: 32),
@@ -156,15 +163,17 @@ class _LoginScreenState extends State<LoginScreen> {
                   child: ElevatedButton(
                     onPressed: appState.authLoading ? null : _iniciarSesion,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: AetherTheme.charcoalDark,
-                      foregroundColor: AetherTheme.sandLight,
-                      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+                      backgroundColor: AetherTheme.bronze,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12)),
                     ),
                     child: appState.authLoading
                         ? const SizedBox(
                             width: 20,
                             height: 20,
-                            child: CircularProgressIndicator(color: AetherTheme.sandLight, strokeWidth: 2),
+                            child: CircularProgressIndicator(
+                                color: AetherTheme.sandLight, strokeWidth: 2),
                           )
                         : Text(
                             'INICIAR SESIÓN',
@@ -182,12 +191,16 @@ class _LoginScreenState extends State<LoginScreen> {
                   child: TextButton(
                     onPressed: () {
                       Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => const RegisterScreen()),
+                        MaterialPageRoute(
+                            builder: (_) => const RegisterScreen()),
                       );
                     },
                     child: Text(
                       '¿No tenés cuenta? Registrate',
-                      style: GoogleFonts.outfit(fontSize: 12, color: AetherTheme.bronze, fontWeight: FontWeight.w600),
+                      style: GoogleFonts.outfit(
+                          fontSize: 12,
+                          color: AetherTheme.bronze,
+                          fontWeight: FontWeight.w600),
                     ),
                   ),
                 ),

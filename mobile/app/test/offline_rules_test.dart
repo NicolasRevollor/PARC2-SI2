@@ -7,6 +7,7 @@ OperacionLocal operacion({
   String fecha = '2026-11-03T10:00:00Z',
   String? dependeDe,
   String? uuid,
+  int? idUsuario,
   Map<String, dynamic> datos = const {},
 }) {
   return OperacionLocal(
@@ -14,6 +15,7 @@ OperacionLocal operacion({
     tipo: tipo,
     estado: estado,
     codigoSucursal: 1,
+    idUsuario: idUsuario,
     fechaOperacion: fecha,
     dependeDe: dependeDe,
     total: 0,
@@ -29,6 +31,12 @@ Map<String, dynamic> item(int cantidad) => {
     };
 
 void main() {
+  test('CU24: la operacion local conserva al empleado que la registro', () {
+    final original = operacion(uuid: 'autor', idUsuario: 42, datos: const {});
+    final recuperada = OperacionLocal.fromJson(original.toJson());
+    expect(recuperada.idUsuario, 42);
+  });
+
   test('CU13: la existencia resta lo registrado y una rechazada no descuenta', () {
     expect(existenciaLocal(4, [operacion(datos: item(2))], 7, null), 2);
     expect(existenciaLocal(4, [operacion(estado: 'Rechazada', datos: item(2))], 7, null), 4);

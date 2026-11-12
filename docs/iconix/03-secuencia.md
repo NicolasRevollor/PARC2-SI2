@@ -15,6 +15,11 @@ están en [`../../web/diagramSp2Sec.md`](../../web/diagramSp2Sec.md).
 Fragmentos usados: `alt` (ventana vencida / cantidad inválida / sin stock),
 `opt` (motivo), `critical` (la doble corrección de stock es atómica).
 
+**Comentario para defensa:** primero se consultan los ítems elegibles para
+guiar al cajero, pero al confirmar el servidor repite las validaciones. El
+fragmento `critical` expresa que devolver la prenda original y descontar la
+nueva deben confirmarse juntos; si falta stock, no queda un cambio parcial.
+
 <!-- CU28 -->
 ```plantuml
 @startuml
@@ -111,6 +116,11 @@ Fragmentos usados: `alt` (plan sin IA / motor no configurado / respuesta
 inválida), `par` (métricas y detalle se calculan en paralelo), `loop`
 (validación de cada sugerencia), `ref` (reutiliza el consolidado).
 
+**Comentario para defensa:** la tabla consolidada sigue disponible aunque el
+plan no incluya IA. El modelo recibe datos calculados, y cada recomendación se
+filtra contra las sucursales reales del conjunto; así la IA aporta explicación
+sin ser la fuente de cifras ni de entidades válidas.
+
 <!-- CU29 -->
 ```plantuml
 @startuml
@@ -204,6 +214,12 @@ end
 Fragmentos usados: `alt` (con/sin conexión, error definitivo vs. transitorio),
 `loop` (vaciado de la cola), `break` (corte por error de red), `opt`
 (refresco del snapshot).
+
+**Comentario para defensa:** una venta en efectivo sin red se guarda como una
+operación compuesta porque el identificador de pago lo crea el servidor. En
+la reconexión se respeta FIFO; se quitan las operaciones confirmadas, se
+conservan los rechazos para revisión y se interrumpe el lote ante fallos
+transitorios para evitar perder el orden.
 
 <!-- CU30 -->
 ```plantuml
@@ -302,6 +318,11 @@ POS --> Cajero: "Sincronización completa"
 
 Fragmentos usados: `alt` (cupo disponible / agotado / plan ilimitado), `opt`
 (mejora de plan desde el aviso).
+
+**Comentario para defensa:** el control comprueba tanto el límite contratado
+como el consumo real del tenant antes del alta. La respuesta `402` orienta al
+administrador a mejorar el plan; el servidor conserva la autoridad y vuelve a
+validar si se reintenta.
 
 <!-- CU27 -->
 ```plantuml

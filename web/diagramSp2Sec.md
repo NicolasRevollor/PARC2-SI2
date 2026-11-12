@@ -81,6 +81,11 @@ end
 @enduml
 ```
 
+**Comentario para defensa (CU17):** el checkout congela una copia del carrito,
+pero el servidor recalcula precios y stock. Stripe confirma el pago y el
+backend lo verifica antes de registrar la venta; si falla la persistencia, se
+conserva la referencia del pago para reintentar sin volver a cobrar.
+
 <!-- CU18 -->
 ```plantuml
 @startuml
@@ -151,6 +156,11 @@ end
 @enduml
 ```
 
+**Comentario para defensa (CU18):** este caso aísla el pago con tarjeta para
+que pueda ser llamado tanto por checkout como por POS. La verificación vuelve
+a consultar Stripe desde el backend y reutiliza el método de pago si ya se
+había registrado, haciendo idempotente la confirmación.
+
 <!-- CU19 -->
 ```plantuml
 @startuml
@@ -205,6 +215,11 @@ else Sale is valid
 end
 @enduml
 ```
+
+**Comentario para defensa (CU19):** el POS carga sucursales y clientes en
+paralelo, y luego valida cada producto contra la sucursal elegida. El subtotal
+de pantalla es orientativo; la API comprueba stock, precio y datos del ticket
+antes de persistir la venta.
 
 <!-- CU20 -->
 ```plantuml
@@ -283,6 +298,11 @@ end
 @enduml
 ```
 
+**Comentario para defensa (CU20):** el flujo separa el pago del registro de la
+venta. En efectivo obtiene una referencia del método de pago; con tarjeta
+verifica primero el intent en Stripe. Si la venta falla después, el cajero
+puede reintentar con la misma referencia sin iniciar otro cobro.
+
 <!-- CU21 -->
 ```plantuml
 @startuml
@@ -327,3 +347,8 @@ SalesStore --> InventoryProcess: Committed Venta and details
 InventoryProcess --> SalesAPI: Updated inventory and confirmed sale
 @enduml
 ```
+
+**Comentario para defensa (CU21):** este flujo concentra los efectos de una
+venta sobre el dominio: detalle, saldo de inventario, movimientos, historial y
+bitácora. Todo queda en una transacción; si algún producto no tiene stock
+suficiente, se revierte el pendiente y no se descuenta parcialmente.

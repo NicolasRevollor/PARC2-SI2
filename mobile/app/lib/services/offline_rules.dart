@@ -16,6 +16,7 @@ class OperacionLocal {
     required this.resumen,
     required this.datos,
     this.idTenant,
+    this.idUsuario,
     this.dependeDe,
     this.intentos = 0,
     this.ultimoIntento,
@@ -29,6 +30,7 @@ class OperacionLocal {
   final String tipo;
   String estado;
   final int? idTenant;
+  final int? idUsuario;
   final int? codigoSucursal;
   final String fechaOperacion;
   final String? dependeDe;
@@ -50,6 +52,7 @@ class OperacionLocal {
         'tipo': tipo,
         'estado': estado,
         'idTenant': idTenant,
+        'idUsuario': idUsuario,
         'codigoSucursal': codigoSucursal,
         'fechaOperacion': fechaOperacion,
         'dependeDe': dependeDe,
@@ -69,6 +72,7 @@ class OperacionLocal {
         tipo: j['tipo'] as String,
         estado: j['estado'] as String,
         idTenant: j['idTenant'] as int?,
+        idUsuario: j['idUsuario'] as int?,
         codigoSucursal: j['codigoSucursal'] as int?,
         fechaOperacion: j['fechaOperacion'] as String,
         dependeDe: j['dependeDe'] as String?,

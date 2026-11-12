@@ -239,6 +239,22 @@ def test_cu17_venta_con_tarjeta_se_rechaza(e, producto):
     assert e.enviar(e.operacion("venta", venta_datos(producto, formaPago="Tarjeta")))[0]["estado"] == "Rechazada"
 
 
+def test_cu17_venta_offline_no_puede_usar_cliente_de_otra_empresa(e, producto):
+    clientes_ajenos = sql(
+        'select c."idCliente" from "Cliente" c join "Usuario" u using ("idUser") '
+        'where u."idTenant" = 2 order by c."idCliente" limit 1'
+    )
+    if not clientes_ajenos:
+        pytest.skip("La base de pruebas no tiene clientes de otro tenant")
+
+    e.stock(producto["id"], 1)
+    op = e.operacion("venta", venta_datos(producto, idCliente=clientes_ajenos[0]["idCliente"]))
+    resultado = e.enviar(op)[0]
+    assert resultado["estado"] == "Rechazada"
+    assert "esta empresa" in resultado["motivo"]
+    assert e.inventario(producto["id"]) == (1, 0)
+
+
 def test_cu17_suspendida_acepta_lo_anterior_y_rechaza_lo_posterior(e, producto):
     e.stock(producto["id"], 5)
     sql("update tenant set estado = 'Suspendido' where \"idTenant\" = 1")
@@ -288,6 +304,54 @@ def test_cu18_stock_insuficiente_no_mueve_nada_hasta_aceptar_con_ajuste(e, produ
     assert e.caja()["ingresos"] == producto["precio"] * 3
     # El dispositivo se entera del resultado por el mismo UUID.
     assert e.enviar(op)[0]["estado"] == "Confirmada"
+
+
+def test_cu18_dos_dispositivos_compiten_por_la_ultima_unidad(e, producto):
+    """La primera transaccion que toma el bloqueo vende; la otra queda para revision."""
+    preparada = correr(e.cajero.pedir("GET", "/api/sync/preparacion", params={"codigoSucursal": e.sucursal}))
+    assert preparada.status_code == 200, preparada.text
+    e.stock(producto["id"], 1)
+    caja = e.abrir_caja()
+    dispositivo_a = e.operacion(
+        "venta", venta_datos(producto, uuidCaja=caja["uuidOperacion"]), idUsuario=e.cajero.id_user
+    )
+    dispositivo_b = e.operacion(
+        "venta", venta_datos(producto, uuidCaja=caja["uuidOperacion"]), idUsuario=e.encargado.id_user
+    )
+
+    async def enviar_en_dos_dispositivos():
+        respuesta_a, respuesta_b = await asyncio.gather(
+            e.cajero.pedir("POST", "/api/sync/lote", json={"operaciones": [dispositivo_a]}),
+            e.encargado.pedir("POST", "/api/sync/lote", json={"operaciones": [dispositivo_b]}),
+        )
+        assert respuesta_a.status_code == 200, respuesta_a.text
+        assert respuesta_b.status_code == 200, respuesta_b.text
+        return respuesta_a.json()["resultados"][0], respuesta_b.json()["resultados"][0]
+
+    resultado_a, resultado_b = correr(enviar_en_dos_dispositivos())
+    resultados = [resultado_a, resultado_b]
+    assert sorted(r["estado"] for r in resultados) == ["Confirmada", "En conflicto"]
+    assert sum(r["estado"] == "Confirmada" for r in resultados) == 1
+    for op, usuario in ((dispositivo_a, e.cajero.id_user), (dispositivo_b, e.encargado.id_user)):
+        registro = sql(
+            'select "idUsuario" from registro_sincronizacion where "uuidOperacion" = :uuid order by "idRegistro" limit 1',
+            uuid=op["uuidOperacion"],
+        )[0]
+        assert registro["idUsuario"] == usuario
+    assert e.inventario(producto["id"]) == (0, 0)
+    assert e.caja()["ingresos"] == producto["precio"]
+
+    uuid_en_conflicto = next(op["uuidOperacion"] for op, r in zip((dispositivo_a, dispositivo_b), resultados) if r["estado"] == "En conflicto")
+    conflicto = e.conflicto(uuid_en_conflicto)
+    assert conflicto["tipoConflicto"] == "stock_insuficiente"
+    assert conflicto["decisiones"] == ["aceptar_ajuste", "anular"]
+
+    resuelto = e.resolver(conflicto["idConflicto"], decision="aceptar_ajuste", observaciones="Venta entregada sin conexion")
+    assert resuelto.status_code == 200, resuelto.text
+    assert resuelto.json()["resultado"] == "Confirmada"
+    assert resuelto.json()["alertaDiscrepancia"] is True
+    assert e.inventario(producto["id"]) == (0, 0)
+    assert e.caja()["ingresos"] == producto["precio"] * 2
 
 
 def test_cu18_respetar_precio_registra_el_descuento(e, producto):

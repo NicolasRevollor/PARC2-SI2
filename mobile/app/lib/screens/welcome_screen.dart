@@ -13,85 +13,196 @@ class WelcomeScreen extends StatelessWidget {
       body: Stack(
         fit: StackFit.expand,
         children: [
-          // Hero Background Fashion Image
-          Image.network(
-            'https://lh3.googleusercontent.com/aida-public/AB6AXuDWVEjDuUQ_X1l6JvlGJvjXr68r55cZvMqHoC2dCPjlzv-t0nbhrhq4Qt_M_rHaKnhnkmFT9VkhJw7xmdGauzKUYocKh5oT8KKBmmKVpNPtmgqEAlTXR8sVFtg1gPM6FDbsWDApruzAx205g6Z7njnP5tC_1lM3Jy_74UDWgFyxNjMIdyZ6nN-Hvr22utV3vMdZESNVnP_ZSU4cLhu9Ca4obAm09F1M04b9BiLkQp8f03j57smqHSsmVg',
-            fit: BoxFit.cover,
-          ),
-          // Dark Minimalist Overlay
-          Container(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  AetherTheme.charcoalDark.withValues(alpha: 0.2),
-                  AetherTheme.charcoalDark.withValues(alpha: 0.5),
-                  AetherTheme.charcoalDark.withValues(alpha: 0.95),
-                ],
-              ),
-            ),
-          ),
-          // Content
+          // La fotografía es decorativa: el degradado local mantiene una
+          // portada completa aunque el dispositivo no tenga conexión.
+          const _WelcomeBackdrop(),
           SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 28.0, vertical: 24.0),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.end,
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Text(
-                    'A E T H E R',
-                    style: GoogleFonts.outfit(
-                      fontSize: 36,
-                      fontWeight: FontWeight.w300,
-                      letterSpacing: 10.0,
-                      color: AetherTheme.sandLight,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    'Armario de lujo minimalista. Simulación de drapeado con IA y fittings privados de atelier a medida.',
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.sourceSerif4(
-                      fontSize: 14,
-                      height: 1.6,
-                      color: AetherTheme.sandLight.withValues(alpha: 0.85),
-                    ),
-                  ),
-                  const SizedBox(height: 32),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 52,
-                    child: ElevatedButton(
-                      onPressed: () {
-                        Navigator.of(context).pushReplacement(
-                          MaterialPageRoute(builder: (_) => const LoginScreen()),
-                        );
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AetherTheme.sandLight,
-                        foregroundColor: AetherTheme.charcoalDark,
-                        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-                        elevation: 0,
+            child: LayoutBuilder(
+              builder: (context, viewport) => SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(26, 22, 26, 20),
+                child: ConstrainedBox(
+                  constraints:
+                      BoxConstraints(minHeight: viewport.maxHeight - 42),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            width: 44,
+                            height: 44,
+                            decoration: BoxDecoration(
+                              color: AetherTheme.bronze,
+                              borderRadius: BorderRadius.circular(13),
+                            ),
+                            child: const Icon(Icons.checkroom_rounded,
+                                color: Colors.white, size: 25),
+                          ),
+                          const SizedBox(width: 12),
+                          Text(
+                            'YOUSHOP',
+                            style: GoogleFonts.outfit(
+                              color: AetherTheme.sandLight,
+                              fontSize: 18,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 3.2,
+                            ),
+                          ),
+                        ],
                       ),
-                      child: Text(
-                        'EXPLORAR COLECCIÓN',
-                        style: GoogleFonts.outfit(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: 2.0,
+                      const SizedBox(height: 92),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: AetherTheme.bronze.withValues(alpha: 0.22),
+                          borderRadius: BorderRadius.circular(30),
+                          border: Border.all(
+                              color:
+                                  AetherTheme.mutedGold.withValues(alpha: 0.4)),
+                        ),
+                        child: Text(
+                          'MODA · ESTILO · VOS',
+                          style: GoogleFonts.outfit(
+                            color: AetherTheme.mutedGold,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 1.8,
+                          ),
                         ),
                       ),
-                    ),
+                      const SizedBox(height: 18),
+                      Text(
+                        'Encontrá tu\npróximo favorito.',
+                        style: GoogleFonts.sourceSerif4(
+                          color: Colors.white,
+                          fontSize: 39,
+                          height: 1.08,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Explorá nuevas colecciones, probá tu estilo y disfrutá una experiencia de compra hecha para vos.',
+                        style: GoogleFonts.outfit(
+                          color: AetherTheme.sand.withValues(alpha: 0.9),
+                          fontSize: 14,
+                          height: 1.6,
+                        ),
+                      ),
+                      const SizedBox(height: 30),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 54,
+                        child: ElevatedButton.icon(
+                          onPressed: () {
+                            Navigator.of(context).pushReplacement(
+                              MaterialPageRoute(
+                                  builder: (_) => const LoginScreen()),
+                            );
+                          },
+                          icon:
+                              const Icon(Icons.arrow_forward_rounded, size: 18),
+                          label: Text(
+                            'ENTRAR A YOUSHOP',
+                            style: GoogleFonts.outfit(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              letterSpacing: 1.5,
+                            ),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AetherTheme.bronze,
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14)),
+                            elevation: 0,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      Center(
+                        child: Text(
+                          'COMPRA ONLINE · CATÁLOGO · PROBADOR VIRTUAL',
+                          textAlign: TextAlign.center,
+                          style: GoogleFonts.outfit(
+                            color:
+                                AetherTheme.sandLight.withValues(alpha: 0.58),
+                            fontSize: 9,
+                            letterSpacing: 1.15,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(height: 12),
-                ],
+                ),
               ),
             ),
           ),
         ],
       ),
+    );
+  }
+}
+
+class _WelcomeBackdrop extends StatelessWidget {
+  const _WelcomeBackdrop();
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        const DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Color(0xFF121316), Color(0xFF21151B), Color(0xFF121316)],
+              stops: [0, 0.55, 1],
+            ),
+          ),
+        ),
+        Positioned(
+          top: 65,
+          right: -105,
+          child: Container(
+            width: 310,
+            height: 310,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: RadialGradient(
+                colors: [
+                  AetherTheme.bronze.withValues(alpha: 0.42),
+                  Colors.transparent
+                ],
+              ),
+            ),
+          ),
+        ),
+        Positioned(
+          top: 140,
+          right: 8,
+          child: Icon(
+            Icons.checkroom_rounded,
+            size: 205,
+            color: AetherTheme.mutedGold.withValues(alpha: 0.09),
+          ),
+        ),
+        Positioned(
+          top: 112,
+          right: 28,
+          child: Container(
+            width: 165,
+            height: 165,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.08), width: 1),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

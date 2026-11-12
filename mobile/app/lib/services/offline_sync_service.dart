@@ -40,14 +40,17 @@ class OfflineSyncService extends ChangeNotifier {
   bool descargaInterrumpida = false;
   bool sesionRequerida = false;
   bool hayPin = false;
+  String? bloqueoPropietario;
   Map<String, dynamic>? preparacion;
   Map<String, dynamic>? caja;
   List<OperacionLocal> operaciones = [];
   String? _ultimaVerificacion;
+  int? _idUsuario;
+  int? _idTenant;
 
   int get pendientes => operaciones.where((o) => o.pendiente).length;
   int get enConflicto => operaciones.where((o) => o.estado == 'En conflicto').length;
-  bool get listo => preparacion != null;
+  bool get listo => preparacion != null && bloqueoPropietario == null;
   int? get sucursal => preparacion?['codigoSucursal'] as int?;
   Map<String, dynamic>? get politica => (preparacion?['politica'] as Map?)?.cast<String, dynamic>();
   Map<String, dynamic> get configuracion => ((preparacion?['configuracion'] as Map?) ?? {}).cast<String, dynamic>();
@@ -55,20 +58,60 @@ class OfflineSyncService extends ChangeNotifier {
   bool get desactualizado =>
       listo && vencido(preparacion!['fechaDescarga'] as String?, configuracion['horasDatosVigentes'] as int? ?? 24, DateTime.now());
 
-  Future<void> iniciar() async {
-    if (_iniciado) return;
-    _iniciado = true;
-    await _cargarEstado();
+  Future<void> iniciar({int? idUsuario}) async {
+    _idUsuario = idUsuario;
+    _idTenant = await _api.currentTenantId();
+    if (!_iniciado) {
+      _iniciado = true;
+      await _cargarEstado();
+      _escucha = _conectividad.onConnectivityChanged.listen((resultado) {
+        final ahora = !resultado.contains(ConnectivityResult.none);
+        final recupero = ahora && !enLinea;
+        enLinea = ahora;
+        notifyListeners();
+        if (recupero) unawaited(_alRecuperarConexion());
+      });
+    } else {
+      await _cargarEstado();
+    }
+    await _revisarPropietario();
     enLinea = !(await _conectividad.checkConnectivity()).contains(ConnectivityResult.none);
-    _escucha = _conectividad.onConnectivityChanged.listen((resultado) {
-      final ahora = !resultado.contains(ConnectivityResult.none);
-      final recupero = ahora && !enLinea;
-      enLinea = ahora;
-      notifyListeners();
-      if (recupero) unawaited(_alRecuperarConexion());
-    });
     notifyListeners();
-    if (enLinea) await _alRecuperarConexion();
+    if (enLinea && bloqueoPropietario == null) await _alRecuperarConexion();
+  }
+
+  Future<void> _revisarPropietario() async {
+    final anterior = await _db.getMeta('propietario');
+    final operacionesLocales = await _db.operaciones();
+    final pendientesLocales = operacionesLocales.where((op) => op.sinConfirmar).toList();
+    final tenantAnterior = anterior is Map ? anterior['idTenant'] : null;
+    final tenantGuardado = tenantAnterior ?? preparacion?['idTenant'];
+    final otroTenant = _idTenant != null && tenantGuardado != null && tenantGuardado != _idTenant;
+    final colaAjena = pendientesLocales.any((op) => op.idTenant != _idTenant);
+
+    bloqueoPropietario = null;
+    if (pendientesLocales.isNotEmpty && _idTenant == null) {
+      bloqueoPropietario = 'No se pudo verificar la empresa de las operaciones locales. Inicie sesion con conexion para proteger la cola.';
+      notifyListeners();
+      return;
+    }
+    if ((_idTenant != null && colaAjena) || (otroTenant && pendientesLocales.isNotEmpty)) {
+      bloqueoPropietario =
+          'Este dispositivo conserva ${pendientesLocales.length} operacion(es) de otra empresa. Inicie sesion con esa empresa para sincronizarlas.';
+      notifyListeners();
+      return;
+    }
+
+    if (otroTenant && pendientesLocales.isEmpty) {
+      await _db.limpiar();
+      preparacion = null;
+      caja = null;
+      operaciones = [];
+    }
+
+    if (_idTenant != null) {
+      await _db.setMeta('propietario', {'idUsuario': _idUsuario, 'idTenant': _idTenant});
+    }
   }
 
   @override
@@ -95,6 +138,7 @@ class OfflineSyncService extends ChangeNotifier {
   }
 
   Future<void> _alRecuperarConexion() async {
+    if (bloqueoPropietario != null) return;
     await _marcarVerificacion();
     await sincronizar();
     final progreso = await _db.getMeta('progreso');
@@ -109,6 +153,7 @@ class OfflineSyncService extends ChangeNotifier {
 
   /// Devuelve null si salio bien; si no, el motivo.
   Future<String?> preparar(int codigoSucursal) async {
+    if (bloqueoPropietario != null) return bloqueoPropietario;
     if (!enLinea || descargando) return 'Se necesita conexion para descargar los datos.';
     descargando = true;
     descargaInterrumpida = false;
@@ -146,6 +191,8 @@ class OfflineSyncService extends ChangeNotifier {
         'fechaDescarga': DateTime.now().toUtc().toIso8601String(),
       };
       await _db.setMeta('preparacion', preparacion);
+      _idTenant ??= servidor['idTenant'] as int?;
+      await _db.setMeta('propietario', {'idUsuario': _idUsuario, 'idTenant': _idTenant});
       await _db.borrarMeta('progreso');
       await _refrescarOperaciones();
       return null;
@@ -304,11 +351,13 @@ class OfflineSyncService extends ChangeNotifier {
     String? dependeDe,
     String? uuid,
   }) async {
+    if (!listo) throw StateError(bloqueoPropietario ?? 'Prepare el dispositivo antes de registrar operaciones.');
     final op = OperacionLocal(
       uuidOperacion: uuid ?? const Uuid().v4(),
       tipo: tipo,
       estado: 'Registrada localmente',
       idTenant: preparacion?['idTenant'] as int?,
+      idUsuario: _idUsuario,
       codigoSucursal: sucursal,
       fechaOperacion: DateTime.now().toUtc().toIso8601String(),
       dependeDe: dependeDe,
@@ -324,7 +373,7 @@ class OfflineSyncService extends ChangeNotifier {
 
   /// [CU17] Sincronizar operaciones pendientes.
   Future<int> sincronizar() async {
-    if (!enLinea || sincronizando) return 0;
+    if (!enLinea || sincronizando || bloqueoPropietario != null) return 0;
     sincronizando = true;
     notifyListeners();
     var confirmadas = 0;
@@ -347,6 +396,7 @@ class OfflineSyncService extends ChangeNotifier {
                     'uuidOperacion': op.uuidOperacion,
                     'tipo': op.tipo,
                     'idTenant': op.idTenant,
+                    'idUsuario': op.idUsuario,
                     'codigoSucursal': op.codigoSucursal,
                     'fechaOperacion': op.fechaOperacion,
                     'dependeDe': op.dependeDe,

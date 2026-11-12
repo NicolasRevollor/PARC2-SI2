@@ -66,6 +66,12 @@ C_Front --> B_Pantalla : actualiza historial y elegibles
 @enduml
 ```
 
+**Comentario para defensa:** la pantalla y el formulario son fronteras; el
+servicio web y el router coordinan el caso; venta, inventario y devolución
+son entidades persistidas. El router revalida las reglas en el servidor y
+registra la bitácora, de modo que el cambio solo se confirma si toda la
+corrección de stock puede completarse.
+
 **Caminos alternativos detectados en el análisis** (se convierten en
 fragmentos `alt` en el diagrama de secuencia):
 
@@ -114,6 +120,11 @@ C_Front --> B_Rep : muestra tabla y lectura de IA
 @enduml
 ```
 
+**Comentario para defensa:** el administrador inicia el análisis desde la
+frontera de reportes. El control comprueba el plan, calcula primero métricas
+reproducibles desde ventas e inventario y recién después solicita la lectura
+de IA; el filtro protege la respuesta antes de devolverla a la pantalla.
+
 ## CU30 — Operar sin conexión y sincronizar
 
 <!-- CU30 -->
@@ -153,6 +164,11 @@ C_Sync --> C_LocalDb : elimina la operación confirmada
 C_Sync --> B_Estado : actualiza contador de pendientes
 @enduml
 ```
+
+**Comentario para defensa:** POS y Service Worker son puntos de interacción;
+OfflineSyncService decide qué hacer y LocalDbService administra snapshot y
+cola. La API central solo participa cuando vuelve la conexión; una operación
+no se elimina localmente hasta que el servidor la confirma.
 
 ## CU26 / CU27 — Multitenencia y cupos del plan
 
@@ -202,3 +218,8 @@ C_Front --> C_RouterTenant : valida consumo contra el plan destino
 C_RouterTenant --> E_Tenant : actualiza idPlan
 @enduml
 ```
+
+**Comentario para defensa:** el contexto de tenant se deriva del JWT y acompaña
+la lectura del plan y sus consumos. La misma regla de cupo se consulta antes
+de insertar cada recurso, por lo que la interfaz informa límites pero no es
+quien los hace cumplir.

@@ -44,6 +44,21 @@ class ApiClient {
     return headers;
   }
 
+  /// El tenant del token permite separar la cola local si cambia la cuenta.
+  Future<int?> currentTenantId() async {
+    final token = await _storage.read(key: ApiConfig.tokenStorageKey);
+    if (token == null || token.isEmpty) return null;
+    try {
+      final partes = token.split('.');
+      if (partes.length != 3) return null;
+      final payload = jsonDecode(utf8.decode(base64Url.decode(base64Url.normalize(partes[1])))) as Map;
+      final tenant = payload['tenant'];
+      return tenant is num ? tenant.toInt() : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
   Uri _uri(String path, [Map<String, dynamic>? query]) {
     final cleanQuery = query == null
         ? null

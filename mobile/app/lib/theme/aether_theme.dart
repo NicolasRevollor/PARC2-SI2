@@ -2,27 +2,28 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 class AetherTheme {
-  // Kinetic Silk Palette
-  static const Color sand = Color(0xFFF7F4EF);
-  static const Color sandLight = Color(0xFFFDF8F7);
-  static const Color sandDark = Color(0xFFDDD9D8);
-  static const Color charcoal = Color(0xFF2C2A26);
-  static const Color charcoalDark = Color(0xFF171612);
-  static const Color bronze = Color(0xFF8C7355);
-  static const Color mutedGold = Color(0xFFC9B99A);
-  static const Color olive = Color(0xFF695D43);
+  // Paleta compartida con la web YouShop: carbón, guinda y rosa claro.
+  static const Color sand = Color(0xFFE3E2E6);
+  static const Color sandLight = Color(0xFFF0ECEA);
+  static const Color sandDark = Color(0xFFD7D2D4);
+  static const Color charcoal = Color(0xFF1F1F23);
+  static const Color charcoalDark = Color(0xFF121316);
+  static const Color bronze = Color(0xFF9B1D3D);
+  static const Color mutedGold = Color(0xFFFFB2BA);
+  static const Color olive = Color(0xFF6B5558);
   static const Color outline = Color(0xFFCCC6BC);
 
   static ThemeData get lightTheme {
     return ThemeData(
       useMaterial3: true,
       scaffoldBackgroundColor: sandLight,
-      primaryColor: charcoalDark,
+      primaryColor: bronze,
       colorScheme: const ColorScheme.light(
-        primary: charcoalDark,
-        secondary: bronze,
+        primary: bronze,
+        secondary: mutedGold,
         surface: sandLight,
         onSurface: charcoalDark,
+        onPrimary: Colors.white,
       ),
       appBarTheme: const AppBarTheme(
         backgroundColor: sandLight,

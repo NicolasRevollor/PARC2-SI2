@@ -68,7 +68,10 @@ class _StaffShellState extends State<StaffShell> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => context.read<OfflineSyncService>().iniciar());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final usuario = context.read<AppState>().currentUser;
+      context.read<OfflineSyncService>().iniciar(idUsuario: usuario?.idUser);
+    });
   }
 
   Widget _pagina(int indice) => switch (indice) {
@@ -122,7 +125,18 @@ class _StaffShellState extends State<StaffShell> {
             ),
         ]),
       ),
-      body: _pagina(_indice),
+      body: Column(
+        children: [
+          if (sync.bloqueoPropietario != null)
+            Container(
+              width: double.infinity,
+              color: const Color(0xFFF6E6C4),
+              padding: const EdgeInsets.all(12),
+              child: Text(sync.bloqueoPropietario!, style: const TextStyle(color: Color(0xFF7A4B00))),
+            ),
+          Expanded(child: _pagina(_indice)),
+        ],
+      ),
     );
   }
 }

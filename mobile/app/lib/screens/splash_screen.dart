@@ -31,17 +31,48 @@ class _SplashScreenState extends State<SplashScreen> {
     if (!mounted) return;
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(
-        builder: (_) => appState.isAuthenticated ? const MainNavigationShell() : const WelcomeScreen(),
+        builder: (_) => appState.isAuthenticated
+            ? const MainNavigationShell()
+            : const WelcomeScreen(),
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    return const Scaffold(
+    return Scaffold(
       backgroundColor: AetherTheme.charcoalDark,
       body: Center(
-        child: CircularProgressIndicator(color: AetherTheme.sandLight, strokeWidth: 2),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 64,
+              height: 64,
+              decoration: BoxDecoration(
+                color: AetherTheme.bronze,
+                borderRadius: BorderRadius.circular(18),
+              ),
+              child: const Icon(Icons.checkroom_rounded,
+                  color: Colors.white, size: 34),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'YOUSHOP',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    color: AetherTheme.sandLight,
+                    letterSpacing: 3,
+                  ),
+            ),
+            const SizedBox(height: 24),
+            const SizedBox(
+              width: 22,
+              height: 22,
+              child: CircularProgressIndicator(
+                  color: AetherTheme.mutedGold, strokeWidth: 2),
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -172,6 +172,60 @@ UC_PWD --> Correo
 @enduml
 ```
 
+## Guía para explicar el diagrama general
+
+Cada caso representa un objetivo observable del actor; los paquetes agrupan
+responsabilidades para que el diagrama se pueda recorrer por módulos. Estas
+notas sirven para explicar qué aporta cada objetivo durante la defensa:
+
+| Módulo | Caso de uso | Comentario para defenderlo |
+|---|---|---|
+| Acceso y seguridad | Registrarse | Crea una identidad con los datos mínimos y el rol que habilita su recorrido inicial. |
+| Acceso y seguridad | Iniciar sesión | Verifica credenciales y establece la identidad y el contexto que usarán las solicitudes protegidas. |
+| Acceso y seguridad | Recuperar contraseña | Permite recuperar acceso mediante el servicio de correo sin revelar si una cuenta existe. |
+| Acceso y seguridad | Bloquear cuenta por intentos fallidos | Limita intentos repetidos para reducir ataques de adivinación de contraseñas. |
+| Acceso y seguridad | Consultar bitácora | Da al administrador trazabilidad de acciones relevantes para auditoría y diagnóstico. |
+| Catálogo e inventario | Gestionar archivo de prendas | Mantiene la información del producto que consultan el catálogo, las ventas y el inventario. |
+| Catálogo e inventario | Gestionar proveedores | Relaciona los productos con sus proveedores para apoyar el abastecimiento. |
+| Catálogo e inventario | Gestionar temporadas y colecciones | Organiza prendas por temporada y colección para su administración y exhibición. |
+| Catálogo e inventario | Consultar inventario global | Permite revisar existencias considerando las sucursales disponibles. |
+| Catálogo e inventario | Ajustar stock | Registra una corrección explícita de existencias, en vez de alterar el saldo sin trazabilidad. |
+| Catálogo e inventario | Traspasar stock entre sucursales | Mueve unidades entre ubicaciones y conserva la relación entre la salida y el ingreso. |
+| Catálogo e inventario | Registrar despacho | Registra el envío de productos y permite seguir su atención logística. |
+| Venta y atención | Explorar vitrina | Da al cliente acceso al catálogo disponible antes de reservar o comprar. |
+| Venta y atención | Reservar prenda con depósito | Aparta una prenda durante un período definido y registra el depósito asociado. |
+| Venta y atención | Comprar en línea | Completa la compra remota validando el pago y la disponibilidad desde el servidor. |
+| Venta y atención | Vender en caja (POS) | Permite al cajero registrar una venta presencial con sucursal, cliente e ítems. |
+| Venta y atención | Emitir comprobante | Presenta el resultado confirmado de la venta para consulta o impresión. |
+| Venta y atención | Probador virtual RA | Ayuda al cliente a visualizar prendas como apoyo a la decisión de compra. |
+| Venta y atención | Conversar con asistente | Ofrece orientación conversacional usando el motor externo de IA. |
+| Venta y atención | Recibir recomendaciones | Sugiere productos como complemento del recorrido de compra, sin sustituir la decisión del cliente. |
+| Posventa | Registrar cambio de talla | Atiende un cambio dentro de la ventana permitida y corrige inventario en la misma operación. |
+| Posventa | Registrar cambio de medida | Registra el ajuste de medida de la prenda sin tratarlo como una venta nueva. |
+| Posventa | Registrar devolución | Procesa la devolución bajo la regla temporal y deja evidencia del ajuste realizado. |
+| Posventa | Consultar historial de devoluciones y cambios | Permite verificar operaciones anteriores por cliente o fecha y sostener la atención posventa. |
+| Posventa | Validar ventana de 24 h | Centraliza una regla de negocio que deben cumplir los cambios y devoluciones sujetos a plazo. |
+| Administración y analítica | Gestionar personal y roles | Administra usuarios internos y sus permisos de acuerdo con sus responsabilidades. |
+| Administración y analítica | Gestionar ciudades y sucursales | Mantiene las ubicaciones que sirven de contexto a inventario, ventas y reportes. |
+| Administración y analítica | Ver indicadores | Resume datos operativos para apoyar el seguimiento del negocio. |
+| Administración y analítica | Generar reporte de ventas/inventario | Produce información consultable sobre ventas y existencias para análisis operativo. |
+| Administración y analítica | Consolidar reporte multi-sucursal | Agrupa métricas por sucursal para comparar resultados dentro de la organización. |
+| Administración y analítica | Analizar sucursales con IA | Añade una lectura asistida sobre métricas calculadas; la IA no reemplaza los datos fuente. |
+| Plataforma SaaS | Operar aislado por organización | Asegura que cada empresa trabaje con su propio conjunto de datos dentro de la plataforma compartida. |
+| Plataforma SaaS | Consultar plan y consumo | Hace visibles los límites y el uso actual antes de que el administrador gestione su suscripción. |
+| Plataforma SaaS | Cambiar de plan | Actualiza la suscripción después de comprobar que el consumo cabe en los límites de destino. |
+| Plataforma SaaS | Verificar cupo del plan | Impide altas que superen los límites contratados antes de persistir el nuevo recurso. |
+| Plataforma SaaS | Instalar aplicación (PWA) | Permite usar la aplicación desde el dispositivo y preparar su shell para conectividad variable. |
+| Plataforma SaaS | Operar sin conexión con base local | Mantiene disponible el flujo de caja en efectivo cuando no hay red. |
+| Plataforma SaaS | Sincronizar cola pendiente | Reenvía operaciones locales al recuperar la conexión y conserva las que requieren revisión. |
+| Plataforma SaaS | Gestionar empresas suscritas | Reserva la administración transversal de organizaciones al rol de Superadministrador. |
+
+Las relaciones `<<include>>` señalan una tarea obligatoria o compartida, como
+validar el cupo antes de un alta; `<<extend>>` representa una condición
+adicional, como bloquear el acceso tras intentos fallidos. Stripe, Gemini,
+Supabase y Brevo aparecen como actores externos porque colaboran con el
+sistema, pero no forman parte de su lógica interna.
+
 ## Casos de uso nuevos — descripción
 
 ### CU26 — Operar aislado por organización (multitenencia)
@@ -185,6 +239,10 @@ UC_PWD --> Correo
 - **Excepción:** un recurso de otro tenant responde **404** (no 403): que
   exista no es información que deba cruzar la frontera de la organización.
 
+**Comentario para defensa:** la frontera importante aquí es la organización.
+El tenant se toma de la identidad autenticada y se aplica en las consultas;
+así no se confía en que el cliente web envíe un identificador de empresa válido.
+
 ### CU27 — Consultar plan y cambiar de plan
 
 - **Actor principal:** Administrador (cambio); Encargado y Cajero (consulta).
@@ -195,6 +253,10 @@ UC_PWD --> Correo
   cambio se rechaza con **409** detallando qué recurso lo excede.
 - **Regla asociada (CU-CUPO):** crear sucursal, usuario o producto verifica el
   cupo antes de insertar y responde **402** cuando se alcanzó el tope.
+
+**Comentario para defensa:** consultar y cambiar de plan son acciones
+distintas: la consulta es transversal para la operación y el cambio requiere
+permiso administrativo y validar el consumo contra los límites destino.
 
 ### CU28 — Devolución y cambio de talla / medida dentro de 24 h
 
@@ -209,6 +271,10 @@ UC_PWD --> Correo
 - **Excepciones:** ventana vencida → **409**; cantidad mayor a la disponible
   → **400**; sin stock de la talla nueva → **409** (no se registra nada).
 
+**Comentario para defensa:** el servidor vuelve a validar el plazo, la
+cantidad y el stock para evitar depender de datos viejos de la pantalla. La
+transacción evita dejar registrada solo la mitad de un cambio.
+
 ### CU29 — Consolidado multi-sucursal y análisis con IA
 
 - **Actor principal:** Administrador.
@@ -219,6 +285,10 @@ UC_PWD --> Correo
 - **Regla:** la IA solo interpreta métricas ya calculadas; nunca produce
   cifras propias, y las sucursales que no estaban en los datos se descartan.
 - **Excepciones:** plan sin IA → **402**; motor no configurado → **503**.
+
+**Comentario para defensa:** primero se calculan métricas confiables con SQL;
+la IA interpreta ese insumo y sus sugerencias se contrastan con las sucursales
+analizadas antes de mostrarlas.
 
 ### CU31 — Gestionar empresas suscritas (consola de plataforma)
 
@@ -240,6 +310,10 @@ UC_PWD --> Correo
   **409**; suspender la empresa operadora → **409**; un rol sin
   `plataforma.admin` → **403**.
 
+**Comentario para defensa:** esta consola cruza la frontera entre empresas,
+por eso exige un permiso exclusivo de plataforma y conserva protecciones para
+evitar suspender accidentalmente a la organización que opera el servicio.
+
 ### CU30 — PWA, operación sin conexión y sincronización
 
 - **Actor principal:** Cajero.
@@ -250,3 +324,7 @@ UC_PWD --> Correo
 - **Postcondición:** ninguna operación se pierde por falta de conectividad.
 - **Excepción:** una operación rechazada definitivamente por el servidor
   queda marcada con el error en la cola, sin reintentos en bucle.
+
+**Comentario para defensa:** IndexedDB conserva las operaciones hasta recibir
+confirmación del servidor. Los reintentos respetan el orden y separan errores
+transitorios de rechazos que necesitan corrección manual.

@@ -365,9 +365,14 @@ async def _resolver_cliente(ctx: Contexto, datos: DatosCliente, autorizacion: Au
         cliente = await crear_cliente_sin_cuenta(session, ctx.id_tenant, nuevo.nombre, nuevo.ci.strip(), f"cliente-{uuid4().hex[:16]}")
         return cliente.idCliente
     if datos.idCliente is not None:
-        if await session.get(Cliente, datos.idCliente) is None:
-            raise HTTPException(status_code=400, detail="Cliente inexistente")
-        return datos.idCliente
+        id_cliente = await session.scalar(
+            select(Cliente.idCliente)
+            .join(Usuario, Usuario.idUser == Cliente.idUser)
+            .where(Cliente.idCliente == datos.idCliente, Usuario.idTenant == ctx.id_tenant)
+        )
+        if id_cliente is None:
+            raise HTTPException(status_code=400, detail="Cliente inexistente en esta empresa")
+        return id_cliente
     return (await cliente_generico(session, ctx.id_tenant)).idCliente
 
 
@@ -385,7 +390,7 @@ async def _revisar_lineas(ctx: Contexto, codigo_sucursal: int, items) -> list[Li
         inv = await ctx.session.scalar(
             select(Inventario)
             .where(Inventario.idProducto == item.idProducto, Inventario.codigoSucursal == codigo_sucursal)
-            .with_for_update()
+             .with_for_update()
         )
         disponible = inv.cantidad_actual - inv.cantidad_reservada if inv else 0
         lineas.append(LineaRevisada(item.idProducto, nombre, item.cantidad, local, caja_srv.dinero(producto.venta), disponible))

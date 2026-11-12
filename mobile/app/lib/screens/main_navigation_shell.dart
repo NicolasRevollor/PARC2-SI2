@@ -42,10 +42,10 @@ class MainNavigationShell extends StatelessWidget {
       backgroundColor: AetherTheme.sandLight,
       appBar: AppBar(
         title: Text(
-          'A E T H E R',
+          'YOUSHOP',
           style: GoogleFonts.outfit(
             fontSize: 17,
-            letterSpacing: 4.5,
+            letterSpacing: 3.0,
             fontWeight: FontWeight.w400,
             color: AetherTheme.charcoalDark,
           ),
@@ -58,7 +58,8 @@ class MainNavigationShell extends StatelessWidget {
             alignment: Alignment.center,
             children: [
               IconButton(
-                icon: const Icon(Icons.shopping_bag_outlined, color: AetherTheme.charcoalDark, size: 22),
+                icon: const Icon(Icons.shopping_bag_outlined,
+                    color: AetherTheme.charcoalDark, size: 22),
                 onPressed: () {
                   showModalBottomSheet(
                     context: context,
@@ -78,7 +79,8 @@ class MainNavigationShell extends StatelessWidget {
                       color: AetherTheme.charcoalDark,
                       shape: BoxShape.circle,
                     ),
-                    constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                    constraints:
+                        const BoxConstraints(minWidth: 16, minHeight: 16),
                     child: Text(
                       '${appState.totalCartCount}',
                       style: GoogleFonts.outfit(
@@ -106,7 +108,8 @@ class MainNavigationShell extends StatelessWidget {
               child: Text(
                 'CU13 · Modo sin conexion: la informacion puede estar desactualizada'
                 '${appState.catalogoActualizado != null ? ' (${appState.catalogoActualizado})' : ''}',
-                style: GoogleFonts.outfit(fontSize: 11, color: AetherTheme.charcoalDark),
+                style: GoogleFonts.outfit(
+                    fontSize: 11, color: AetherTheme.charcoalDark),
               ),
             ),
           Expanded(
@@ -122,7 +125,7 @@ class MainNavigationShell extends StatelessWidget {
       // tab este el usuario, equivalente movil del widget flotante fijo
       // que ya existe en la web.
       floatingActionButton: FloatingActionButton(
-        backgroundColor: AetherTheme.charcoalDark,
+        backgroundColor: AetherTheme.bronze,
         foregroundColor: AetherTheme.sandLight,
         onPressed: () {
           showModalBottomSheet(
@@ -144,10 +147,12 @@ class MainNavigationShell extends StatelessWidget {
           onTap: (index) => appState.setTabIndex(index),
           type: BottomNavigationBarType.fixed,
           backgroundColor: AetherTheme.sandLight,
-          selectedItemColor: AetherTheme.charcoalDark,
+          selectedItemColor: AetherTheme.bronze,
           unselectedItemColor: const Color(0xFF7B776E),
-          selectedLabelStyle: GoogleFonts.outfit(fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 0.8),
-          unselectedLabelStyle: GoogleFonts.outfit(fontSize: 10, fontWeight: FontWeight.w500),
+          selectedLabelStyle: GoogleFonts.outfit(
+              fontSize: 10, fontWeight: FontWeight.w700, letterSpacing: 0.8),
+          unselectedLabelStyle:
+              GoogleFonts.outfit(fontSize: 10, fontWeight: FontWeight.w500),
           elevation: 0,
           items: const [
             BottomNavigationBarItem(

@@ -23,9 +23,14 @@ def comprador():
 @pytest.fixture(scope="module")
 def prendas():
     """Una prenda y otra talla del mismo modelo con el mismo precio (el cambio no tiene diferencia)."""
+    # Debe ser un cambio de TALLA real: mismo modelo y color, distinta talla y mismo precio.
+    # (Si solo se pide "mismo modelo", el par puede diferir en color y el backend lo
+    # clasifica como "cambio por otro producto", no como cambio de talla.)
     fila = sql(
         'select p."idProducto" a, o."idProducto" b, p.venta from producto p join producto o on o."idModelo" = p."idModelo" '
-        'and o."idProducto" <> p."idProducto" and o.venta = p.venta where p."idTenant" = 1 and p."idModelo" is not null '
+        'and o."idProducto" <> p."idProducto" and o.venta = p.venta '
+        'and coalesce(o.color, \'\') = coalesce(p.color, \'\') and coalesce(o.talla, \'\') <> coalesce(p.talla, \'\') '
+        'where p."idTenant" = 1 and p."idModelo" is not null '
         'and coalesce(p.tipo, \'\') <> \'\' order by p."idProducto" limit 1'
     )[0]
     return {"original": fila["a"], "nueva": fila["b"], "precio": float(fila["venta"])}

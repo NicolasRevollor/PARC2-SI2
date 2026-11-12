@@ -676,7 +676,8 @@ export class OfflineSyncService {
         const { resultados } = await firstValueFrom(
           this.http.post<{ resultados: ResultadoServidor[] }>(`${API_URL}/api/sync/lote`, {
             operaciones: lote.map(op => ({
-              uuidOperacion: op.uuidOperacion, tipo: op.tipo, idTenant: op.idTenant, codigoSucursal: op.codigoSucursal,
+              uuidOperacion: op.uuidOperacion, tipo: op.tipo, idTenant: op.idTenant, idUsuario: op.idUsuario,
+              codigoSucursal: op.codigoSucursal,
               fechaOperacion: op.fechaOperacion, dependeDe: op.dependeDe, datos: op.datos,
             })),
           }),

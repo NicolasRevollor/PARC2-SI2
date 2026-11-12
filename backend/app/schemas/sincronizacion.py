@@ -1,10 +1,11 @@
 """Esquemas de la operacion sin conexion, la sincronizacion y la caja (CU12 a CU20)."""
 
 from datetime import datetime
+from decimal import Decimal
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 TipoOperacion = Literal["venta", "reserva", "cancelar_reserva", "cambio", "custodia", "caja_apertura", "caja_cierre"]
 
@@ -70,10 +71,29 @@ class DatosVenta(DatosCliente):
     """[CU14] paso 7."""
 
     items: list[ItemOfflineIn] = Field(min_length=1)
-    total: float
+    total: float = Field(ge=0)
     formaPago: str = "Efectivo"
-    montoRecibido: float
+    montoRecibido: float = Field(ge=0)
     uuidCaja: UUID | None = None
+
+    @model_validator(mode="after")
+    def validar_cobro(self):
+        ids = [item.idProducto for item in self.items]
+        if len(ids) != len(set(ids)):
+            raise ValueError("Una prenda debe aparecer una sola vez en la venta")
+
+        centavo = Decimal("0.01")
+        total_lineas = sum(
+            (Decimal(str(item.precioUnitario)).quantize(centavo) * item.cantidad for item in self.items),
+            Decimal("0.00"),
+        ).quantize(centavo)
+        total_declarado = Decimal(str(self.total)).quantize(centavo)
+        recibido = Decimal(str(self.montoRecibido)).quantize(centavo)
+        if total_declarado != total_lineas:
+            raise ValueError("El total no coincide con el importe de las prendas")
+        if recibido < total_declarado:
+            raise ValueError("El monto recibido no cubre el total de la venta")
+        return self
 
 
 class DatosReserva(DatosCliente):
@@ -83,6 +103,13 @@ class DatosReserva(DatosCliente):
     fechaLimite: datetime
     deposito: float = Field(default=0, ge=0)
     uuidCaja: UUID | None = None
+
+    @model_validator(mode="after")
+    def validar_items_unicos(self):
+        ids = [item.idProducto for item in self.items]
+        if len(ids) != len(set(ids)):
+            raise ValueError("Una prenda debe aparecer una sola vez en la reserva")
+        return self
 
 
 class DatosCancelarReserva(BaseModel):
