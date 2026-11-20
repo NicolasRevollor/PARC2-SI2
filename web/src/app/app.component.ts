@@ -7,7 +7,7 @@ import { HeaderComponent } from './shared/components/header.component';
 import { SidebarComponent, AppView, PlatformView, VISTAS_PLATAFORMA } from './shared/components/sidebar.component';
 import { ToastContainerComponent } from './shared/components/toast-container.component';
 import { SplashScreenComponent } from './shared/components/splash-screen.component';
-import { LandingComponent } from './features/landing/landing.component';
+import { LandingComponent } from './features/landing/landing-v2.component';
 import { DashboardComponent } from './features/dashboard/dashboard.component';
 import { ArchiveComponent } from './features/archive/archive.component';
 import { InventoryComponent } from './features/inventory/inventory.component';

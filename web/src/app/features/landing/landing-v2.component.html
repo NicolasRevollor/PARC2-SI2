@@ -1,0 +1,502 @@
+<div
+  class="storefront"
+  [style.--scroll-progress]="scrollProgress() + '%'"
+  (scroll)="onLandingScroll($event)"
+>
+  <div class="scroll-progress" aria-hidden="true"><span></span></div>
+
+  <div class="announcement" aria-label="Información destacada">
+    <div class="announcement-track">
+      <div class="announcement-group">
+        <span>Poleras oversize</span><i></i>
+        <span>Jeans rectos</span><i></i>
+        <span>19 tiendas en Bolivia</span><i></i>
+        <span>Probador 3D</span><i></i>
+        <span>Stock conectado</span><i></i>
+      </div>
+      <div class="announcement-group" aria-hidden="true">
+        <span>Poleras oversize</span><i></i>
+        <span>Jeans rectos</span><i></i>
+        <span>19 tiendas en Bolivia</span><i></i>
+        <span>Probador 3D</span><i></i>
+        <span>Stock conectado</span><i></i>
+      </div>
+    </div>
+  </div>
+
+  <header class="site-header" [class.is-compact]="navCompact()">
+    <div class="nav-shell">
+      <button class="brand" type="button" (click)="scrollToSection('inicio')" aria-label="Ir al inicio">
+        <span class="brand-mark">Y</span>
+        <span class="brand-copy">
+          <strong>YouShop</strong>
+          <small>Everyday collective</small>
+        </span>
+      </button>
+
+      <nav class="desktop-nav" aria-label="Navegación principal">
+        <button type="button" (click)="scrollToSection('coleccion')">Colección</button>
+        <button type="button" (click)="scrollToSection('arma-tu-look')">Arma tu look</button>
+        <button type="button" (click)="scrollToSection('probador-virtual')">Probador 3D</button>
+        <button type="button" (click)="scrollToSection('tiendas')">Tiendas</button>
+      </nav>
+
+      <div class="nav-actions">
+        <button class="login-link" type="button" (click)="enterLogin.emit()">
+          <span class="material-symbols-outlined" aria-hidden="true">person</span>
+          <span>Ingresar</span>
+        </button>
+        <button class="button button-dark nav-book" type="button" (click)="openVipModal()">
+          Reservar prueba
+        </button>
+        <button
+          class="menu-toggle"
+          type="button"
+          (click)="toggleMenu()"
+          [attr.aria-expanded]="menuOpen()"
+          aria-controls="mobile-menu"
+          aria-label="Abrir menú"
+        >
+          <span></span><span></span>
+        </button>
+      </div>
+    </div>
+
+    @if (menuOpen()) {
+      <nav class="mobile-menu" id="mobile-menu" aria-label="Navegación móvil">
+        <button type="button" (click)="scrollToSection('coleccion')">Colección</button>
+        <button type="button" (click)="scrollToSection('arma-tu-look')">Arma tu look</button>
+        <button type="button" (click)="scrollToSection('probador-virtual')">Probador 3D</button>
+        <button type="button" (click)="scrollToSection('tiendas')">Tiendas</button>
+        <button type="button" (click)="enterLogin.emit()">Ingresar a mi cuenta</button>
+        <button class="mobile-menu-cta" type="button" (click)="openVipModal()">Reservar prueba</button>
+      </nav>
+    }
+  </header>
+
+  <main>
+    <section class="hero section-anchor" id="inicio">
+      <div class="hero-card">
+        <img
+          class="hero-image"
+          src="/landing/hero-casual-campaign.png"
+          alt="Dos jóvenes con poleras oversize y jeans de la colección YouShop"
+          fetchpriority="high"
+          decoding="async"
+        />
+        <div class="hero-wash" aria-hidden="true"></div>
+        <div class="hero-copy">
+          <div class="eyebrow hero-eyebrow"><span></span> Colección esencial · 2026</div>
+          <h1>Tu uniforme<br />para <em>todos</em><br />los días.</h1>
+          <p>
+            Poleras oversize de algodón pesado y jeans rectos que combinan sin pensarlo demasiado.
+          </p>
+          <div class="hero-actions">
+            <button class="button button-blue" type="button" (click)="scrollToSection('arma-tu-look')">
+              Arma tu look
+            </button>
+            <button class="button button-ghost" type="button" (click)="scrollToSection('coleccion')">
+              Ver colección
+            </button>
+          </div>
+        </div>
+
+        <button
+          class="hero-product-pill"
+          type="button"
+          (click)="openLightbox('/landing/hero-casual-campaign.png', 'Everyday Uniform', 'Oversize guinda + jean negro · Oversize blanca + jean blanco')"
+          aria-label="Ampliar campaña Everyday Uniform"
+        >
+          <span class="pill-dot"></span>
+          <span><small>El fit de la semana</small><strong>Everyday Uniform</strong></span>
+          <span class="material-symbols-outlined" aria-hidden="true">zoom_in</span>
+        </button>
+
+        <div class="hero-sticker" aria-hidden="true">
+          <span>DROP</span>
+          <strong>01</strong>
+        </div>
+      </div>
+
+      <div class="hero-facts" aria-label="Características de la colección">
+        <div><strong>240</strong><span>g/m² algodón pesado</span></div>
+        <div><strong>06</strong><span>prendas esenciales</span></div>
+        <div><strong>360°</strong><span>probador interactivo</span></div>
+        <div><strong>19</strong><span>tiendas conectadas</span></div>
+      </div>
+    </section>
+
+    <section class="collection section-anchor" id="coleccion">
+      <div class="section-head">
+        <div>
+          <span class="section-kicker">01 · Shop the drop</span>
+          <h2>Lo básico,<br /><em>bien hecho.</em></h2>
+        </div>
+        <div class="section-side">
+          <p>
+            Dos siluetas, seis formas de llevarlas. Pasa el cursor por cada prenda para verla por detrás.
+          </p>
+          <div class="filter-tabs" role="group" aria-label="Filtrar colección">
+            <button type="button" [class.active]="productFilter() === 'todos'" (click)="setProductFilter('todos')">Todo</button>
+            <button type="button" [class.active]="productFilter() === 'poleras'" (click)="setProductFilter('poleras')">Poleras</button>
+            <button type="button" [class.active]="productFilter() === 'jeans'" (click)="setProductFilter('jeans')">Jeans</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="product-grid">
+        @for (product of filteredProducts(); track product.id) {
+          <article class="product-card">
+            <button
+              class="product-photo"
+              type="button"
+              (click)="openLightbox(product.image, product.name, product.description)"
+              [attr.aria-label]="'Ver ' + product.name"
+            >
+              @if (product.badge) {
+                <span class="product-badge">{{ product.badge }}</span>
+              }
+              <img class="product-front" [src]="product.image" [alt]="product.name" loading="lazy" decoding="async" />
+              <img class="product-back" [src]="product.backImage" [alt]="product.name + ' vista posterior'" loading="lazy" decoding="async" />
+              <span class="quick-view">Vista rápida</span>
+            </button>
+            <div class="product-info">
+              <div>
+                <h3>{{ product.name }}</h3>
+                <p>{{ product.description }}</p>
+              </div>
+              <span class="swatch" [style.background]="product.swatch" [attr.aria-label]="product.color"></span>
+            </div>
+          </article>
+        }
+      </div>
+    </section>
+
+    <section class="look-builder section-anchor" id="arma-tu-look">
+      <div class="look-builder-copy">
+        <span class="section-kicker light">02 · Mix, match, repeat</span>
+        <h2>Dos piezas.<br /><em>Cero drama.</em></h2>
+        <p>
+          Elige el color de tu polera y combínalo con jean negro o blanco. Todo está pensado para funcionar junto.
+        </p>
+
+        <fieldset class="choice-group">
+          <legend>Color de polera</legend>
+          <div class="color-choices">
+            <button type="button" class="color-choice white" [class.active]="selectedLookColor() === 'blanca'" (click)="selectLookColor('blanca')" aria-label="Polera blanca"><span></span></button>
+            <button type="button" class="color-choice black" [class.active]="selectedLookColor() === 'negra'" (click)="selectLookColor('negra')" aria-label="Polera negra"><span></span></button>
+            <button type="button" class="color-choice burgundy" [class.active]="selectedLookColor() === 'guinda'" (click)="selectLookColor('guinda')" aria-label="Polera guinda"><span></span></button>
+            <button type="button" class="color-choice gray" [class.active]="selectedLookColor() === 'gris'" (click)="selectLookColor('gris')" aria-label="Polera gris"><span></span></button>
+          </div>
+        </fieldset>
+
+        <fieldset class="choice-group">
+          <legend>Color de jean</legend>
+          <div class="segmented-choice">
+            <button type="button" [class.active]="selectedLookJean() === 'negro'" (click)="selectLookJean('negro')">Negro</button>
+            <button type="button" [class.active]="selectedLookJean() === 'blanco'" (click)="selectLookJean('blanco')">Blanco</button>
+          </div>
+        </fieldset>
+
+        <button class="button button-lime" type="button" (click)="scrollToSection('probador-virtual')">
+          Probar este look en 3D
+        </button>
+      </div>
+
+      <div class="look-stage" aria-live="polite">
+        <div class="look-orbit orbit-one" aria-hidden="true"></div>
+        <div class="look-orbit orbit-two" aria-hidden="true"></div>
+        <span class="look-caption top">Tu combinación</span>
+        <img class="look-shirt" [src]="lookShirtImage()" alt="Polera seleccionada" />
+        <img class="look-jean" [src]="lookJeanImage()" alt="Jean seleccionado" />
+        <div class="look-spec">
+          <span>Polera {{ selectedLookColor() }}</span>
+          <i></i>
+          <span>Jean {{ selectedLookJean() }}</span>
+        </div>
+        <span class="look-stamp">100%<br />combinable</span>
+      </div>
+    </section>
+
+    <section class="editorial">
+      <div class="editorial-head">
+        <span class="section-kicker">03 · Everyday stories</span>
+        <h2>Un fit para cada mood.</h2>
+        <p>Del total black al contraste claro. Toca una imagen para verla completa.</p>
+      </div>
+      <div class="editorial-grid">
+        <button class="editorial-tile tile-large" type="button" (click)="openLightbox('/landing/looks-oversize-claro.jpg', 'Claro + oscuro', 'Dos combinaciones esenciales de la colección')">
+          <img src="/landing/looks-oversize-claro.jpg" alt="Looks guinda y negro sobre fondo claro" loading="lazy" decoding="async" />
+          <span><small>Drop 01</small><strong>Los opuestos se llevan bien</strong></span>
+        </button>
+        <button class="editorial-tile tile-tall" type="button" (click)="openLightbox('/landing/look-negra-negro.jpg', 'Total black', 'Oversize negra con jean negro')">
+          <img src="/landing/look-negra-negro.jpg" alt="Polera negra con jean negro" loading="lazy" decoding="async" />
+          <span><small>Look 01</small><strong>Total black</strong></span>
+        </button>
+        <button class="editorial-tile tile-small" type="button" (click)="openLightbox('/landing/detalle-cuello.jpg', 'El detalle importa', 'Cuello acanalado y algodón pesado de 240 g/m²')">
+          <img src="/landing/detalle-cuello.jpg" alt="Detalle del cuello de una polera oversize" loading="lazy" decoding="async" />
+          <span><small>Material</small><strong>240 g/m²</strong></span>
+        </button>
+      </div>
+    </section>
+
+    <section class="fitting-section section-anchor" id="probador-virtual">
+      <div class="fitting-intro">
+        <div>
+          <span class="section-kicker light">04 · Probador 3D</span>
+          <h2>Hazlo tuyo<br /><em>antes de probarlo.</em></h2>
+        </div>
+        <p>
+          Gira la prenda 360°, cambia el color, la talla y el look. Acércate a las costuras y descubre cada detalle.
+        </p>
+      </div>
+
+      <div class="fitting-layout">
+        <div class="fitting-frame">
+          <app-virtual-fitting></app-virtual-fitting>
+        </div>
+
+        <aside class="fitting-controls" aria-label="Configurar look en 3D">
+          <div class="control-step">
+            <span class="control-number">01</span>
+            <div>
+              <h3>Elige el look</h3>
+              <p>{{ selectedSilhouette().description }}</p>
+            </div>
+          </div>
+          <div class="option-stack">
+            @for (silhouette of silhouettes; track silhouette.id) {
+              <button
+                type="button"
+                class="option-card"
+                [class.active]="selectedSilhouette().id === silhouette.id"
+                (click)="selectSilhouette(silhouette)"
+              >
+                <span>{{ silhouette.name }}</span>
+                <small>{{ silhouette.linea }}</small>
+              </button>
+            }
+          </div>
+
+          <div class="control-step compact">
+            <span class="control-number">02</span><h3>Color</h3>
+          </div>
+          <div class="fitting-colors">
+            @for (color of colors; track color.id) {
+              <button
+                type="button"
+                [class.active]="selectedColor().id === color.id"
+                (click)="selectColor(color)"
+                [attr.aria-label]="color.name"
+              ><span [style.background]="color.hex"></span></button>
+            }
+          </div>
+
+          <div class="control-step compact">
+            <span class="control-number">03</span><h3>Talla</h3>
+          </div>
+          <div class="size-options">
+            @for (size of sizes; track size.id) {
+              <button type="button" [class.active]="selectedSize().id === size.id" (click)="selectSize(size)">
+                {{ size.code }}
+              </button>
+            }
+          </div>
+
+          <div class="fabric-note">
+            <span class="material-symbols-outlined" aria-hidden="true">texture</span>
+            <div><small>Ficha del material</small><strong>{{ selectedSilhouette().tela }}</strong></div>
+          </div>
+
+          <button class="button button-coral full" type="button" (click)="openArModal()">
+            Probar con la cámara
+          </button>
+        </aside>
+      </div>
+    </section>
+
+    <section class="stores section-anchor" id="tiendas">
+      <div class="section-head stores-head">
+        <div>
+          <span class="section-kicker">05 · Cerca de ti</span>
+          <h2>Tu próximo fit<br /><em>está cerca.</em></h2>
+        </div>
+        <div class="section-side">
+          <p>La misma colección y el stock conectado en toda la red. Reserva una prueba en tu punto más cercano.</p>
+          <button class="button button-dark" type="button" (click)="openVipModal()">Reservar prueba</button>
+        </div>
+      </div>
+
+      <div class="store-grid">
+        @for (house of boutiques(); track house.id; let index = $index) {
+          <button class="store-card" [attr.data-tone]="house.tone" type="button" (click)="openBoutiqueModal(house)">
+            <span class="store-index">0{{ index + 1 }}</span>
+            <span class="store-city">{{ house.city }}</span>
+            <strong>{{ house.name }}</strong>
+            <span class="store-neighborhood">{{ house.neighborhood }}</span>
+            <span class="store-meta"><i></i> Stock sincronizado · {{ house.skus }} SKUs</span>
+          </button>
+        }
+      </div>
+    </section>
+
+    <section class="business" id="planes">
+      <div class="business-intro">
+        <span class="section-kicker light">Para tiendas</span>
+        <h2>Tu tienda, dentro de<br />una red que se mueve.</h2>
+        <p>Catálogo, inventario, ventas, caja y probador 3D en un solo lugar.</p>
+        <button class="button button-lime" type="button" (click)="openApplicationModal()">Quiero sumar mi tienda</button>
+      </div>
+
+      <div class="plan-rail">
+        @for (plan of plans; track plan.name) {
+          <article class="plan-card" [class.featured]="plan.featured">
+            @if (plan.featured) { <span class="plan-label">Más elegido</span> }
+            <div>
+              <small>Plan</small>
+              <h3>{{ plan.name }}</h3>
+              <p>{{ plan.description }}</p>
+              <div class="plan-price"><strong>{{ plan.price }}</strong><span>Bs / mes</span></div>
+              <ul>
+                @for (feature of plan.features; track feature) {
+                  <li><span class="material-symbols-outlined" aria-hidden="true">check</span>{{ feature }}</li>
+                }
+              </ul>
+            </div>
+            <button type="button" (click)="openApplicationModal()">Elegir {{ plan.name }}</button>
+          </article>
+        }
+      </div>
+    </section>
+
+    <section class="final-cta">
+      <div class="cta-orb orb-blue" aria-hidden="true"></div>
+      <div class="cta-orb orb-lime" aria-hidden="true"></div>
+      <span class="section-kicker light">Elige menos. Úsalo más.</span>
+      <h2>Tu nuevo uniforme<br />empieza aquí.</h2>
+      <div>
+        <button class="button button-light" type="button" (click)="scrollToSection('coleccion')">Explorar colección</button>
+        <button class="button button-outline-light" type="button" (click)="openVipModal()">Reservar en tienda</button>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="footer-brand">
+      <span class="brand-mark">Y</span>
+      <div><strong>YouShop</strong><small>Everyday collective</small></div>
+    </div>
+    <p>Poleras oversize y jeans rectos para todos los días.</p>
+    <div class="footer-links">
+      <button type="button" (click)="scrollToSection('coleccion')">Colección</button>
+      <button type="button" (click)="scrollToSection('tiendas')">Tiendas</button>
+      <button type="button" (click)="scrollToSection('planes')">Para tiendas</button>
+      <button type="button" (click)="enterLogin.emit()">Ingresar</button>
+    </div>
+    <div class="footer-bottom">
+      <span>© 2026 YouShop · Bolivia</span>
+      <span>Hecho para vestir la vida real.</span>
+    </div>
+  </footer>
+
+  @if (isVipModalOpen()) {
+    <div class="modal-backdrop" role="presentation" (click)="closeAllOverlays()">
+      <section class="modal-card" role="dialog" aria-modal="true" aria-labelledby="booking-title" (click)="$event.stopPropagation()">
+        <div class="modal-head">
+          <div><span>Reserva en tienda</span><h2 id="booking-title">Prueba tu fit.</h2></div>
+          <button class="modal-close" type="button" (click)="closeAllOverlays()" aria-label="Cerrar reserva"><span class="material-symbols-outlined">close</span></button>
+        </div>
+        <p class="modal-lead">Elige tu tienda, fecha y hora. Te tendremos la colección lista para probar.</p>
+        <form class="form-grid" [formGroup]="vipBookingForm" (ngSubmit)="submitVipBooking()">
+          <label class="field full"><span>Nombre</span><input type="text" formControlName="clientName" placeholder="Tu nombre" autocomplete="name" />@if (vipBookingForm.controls.clientName.touched && vipBookingForm.controls.clientName.invalid) { <small>Escribe tu nombre.</small> }</label>
+          <label class="field"><span>Correo</span><input type="email" formControlName="email" placeholder="tu@correo.com" autocomplete="email" />@if (vipBookingForm.controls.email.touched && vipBookingForm.controls.email.invalid) { <small>Usa un correo válido.</small> }</label>
+          <label class="field"><span>Teléfono</span><input type="tel" formControlName="phone" placeholder="Opcional" autocomplete="tel" /></label>
+          <label class="field full"><span>Tienda</span><select formControlName="atelier">@for (store of tiendasReserva; track store) { <option [value]="store">{{ store }}</option> }</select></label>
+          <label class="field"><span>Fecha</span><input type="date" formControlName="date" [min]="minBookingDate" /></label>
+          <label class="field"><span>Hora</span><input type="time" formControlName="time" /></label>
+          <label class="field full"><span>¿Qué quieres probar?</span><textarea rows="3" formControlName="notes" placeholder="Color, talla o look que tienes en mente"></textarea></label>
+          <div class="modal-actions full">
+            <button class="button button-ghost-dark" type="button" (click)="closeAllOverlays()">Cancelar</button>
+            <button class="button button-blue" type="submit" [disabled]="enviando()">{{ enviando() ? 'Reservando…' : 'Confirmar reserva' }}</button>
+          </div>
+        </form>
+      </section>
+    </div>
+  }
+
+  @if (isApplicationModalOpen()) {
+    <div class="modal-backdrop" role="presentation" (click)="closeAllOverlays()">
+      <section class="modal-card" role="dialog" aria-modal="true" aria-labelledby="application-title" (click)="$event.stopPropagation()">
+        <div class="modal-head">
+          <div><span>Red YouShop</span><h2 id="application-title">Suma tu tienda.</h2></div>
+          <button class="modal-close" type="button" (click)="closeAllOverlays()" aria-label="Cerrar solicitud"><span class="material-symbols-outlined">close</span></button>
+        </div>
+        <p class="modal-lead">Cuéntanos lo esencial y nuestro equipo te contactará para elegir el plan adecuado.</p>
+        <form class="form-grid" [formGroup]="applicationForm" (ngSubmit)="submitApplication()">
+          <label class="field"><span>Nombre de la tienda</span><input type="text" formControlName="brandName" placeholder="Nombre comercial" />@if (applicationForm.controls.brandName.touched && applicationForm.controls.brandName.invalid) { <small>Este dato es obligatorio.</small> }</label>
+          <label class="field"><span>Responsable</span><input type="text" formControlName="designerName" placeholder="Nombre y apellido" autocomplete="name" />@if (applicationForm.controls.designerName.touched && applicationForm.controls.designerName.invalid) { <small>Este dato es obligatorio.</small> }</label>
+          <label class="field"><span>Ciudad</span><input type="text" formControlName="city" placeholder="La Paz, Santa Cruz…" />@if (applicationForm.controls.city.touched && applicationForm.controls.city.invalid) { <small>Este dato es obligatorio.</small> }</label>
+          <label class="field"><span>Sitio o Instagram</span><input type="url" formControlName="portfolioUrl" placeholder="https://" /></label>
+          <label class="field full"><span>Colección</span><input type="text" formControlName="collectionType" /></label>
+          <label class="field full"><span>Comentarios</span><textarea rows="3" formControlName="message" placeholder="Sucursales, equipo y plan que te interesa"></textarea></label>
+          <div class="modal-actions full">
+            <button class="button button-ghost-dark" type="button" (click)="closeAllOverlays()">Cancelar</button>
+            <button class="button button-blue" type="submit" [disabled]="enviando()">{{ enviando() ? 'Enviando…' : 'Enviar solicitud' }}</button>
+          </div>
+        </form>
+      </section>
+    </div>
+  }
+
+  @if (selectedBoutiqueModal(); as house) {
+    <div class="modal-backdrop" role="presentation" (click)="closeAllOverlays()">
+      <section class="modal-card store-modal" role="dialog" aria-modal="true" aria-labelledby="store-title" (click)="$event.stopPropagation()">
+        <div class="modal-head">
+          <div><span>{{ house.city }} · Desde {{ house.established }}</span><h2 id="store-title">{{ house.name }}</h2></div>
+          <button class="modal-close" type="button" (click)="closeAllOverlays()" aria-label="Cerrar detalle"><span class="material-symbols-outlined">close</span></button>
+        </div>
+        <p class="modal-lead">{{ house.description }}</p>
+        <div class="store-modal-detail"><small>Sucursales</small><strong>{{ house.sucursales }}</strong></div>
+        <div class="store-tags"><small>Lo más buscado</small><div>@for (item of house.destacados; track item) { <span>{{ item }}</span> }</div></div>
+        <div class="store-modal-bottom"><span><i></i>{{ house.skus }} SKUs sincronizados</span><button class="button button-blue" type="button" (click)="openVipModal(house.tiendaReserva)">Reservar aquí</button></div>
+      </section>
+    </div>
+  }
+
+  @if (isArModalOpen()) {
+    <div class="modal-backdrop" role="presentation" (click)="closeAllOverlays()">
+      <section class="modal-card camera-modal" role="dialog" aria-modal="true" aria-labelledby="camera-title" (click)="$event.stopPropagation()">
+        <div class="modal-head">
+          <div><span>App YouShop · Cámara</span><h2 id="camera-title">Pruébalo sobre ti.</h2></div>
+          <button class="modal-close" type="button" (click)="closeAllOverlays()" aria-label="Cerrar cámara"><span class="material-symbols-outlined">close</span></button>
+        </div>
+        <div class="camera-preview">
+          <div class="camera-grid"></div>
+          <span class="camera-focus"></span>
+          <span class="material-symbols-outlined camera-icon">view_in_ar</span>
+          <strong>Disponible en la app móvil</strong>
+          <p>La cámara detecta tu pose y muestra la polera {{ selectedColor().name }} en talla {{ selectedSize().code }}.</p>
+        </div>
+        <button class="button button-blue full" type="button" (click)="closeAllOverlays()">Entendido</button>
+      </section>
+    </div>
+  }
+
+  @if (lightboxImage(); as image) {
+    <div class="lightbox" role="dialog" aria-modal="true" aria-label="Vista ampliada" (click)="closeAllOverlays()">
+      <button class="lightbox-close" type="button" (click)="closeAllOverlays()" aria-label="Cerrar imagen"><span class="material-symbols-outlined">close</span></button>
+      <figure (click)="$event.stopPropagation()">
+        <img [src]="image.url" [alt]="image.title" />
+        <figcaption><strong>{{ image.title }}</strong><span>{{ image.subtitle }}</span></figcaption>
+      </figure>
+    </div>
+  }
+
+  @if (toastMessage(); as message) {
+    <div class="toast" role="status" aria-live="polite">
+      <span class="material-symbols-outlined" aria-hidden="true">check_circle</span>
+      <p>{{ message }}</p>
+      <button type="button" (click)="toastMessage.set(null)" aria-label="Cerrar notificación"><span class="material-symbols-outlined">close</span></button>
+    </div>
+  }
+</div>
