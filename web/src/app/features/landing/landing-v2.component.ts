@@ -1,21 +1,13 @@
 import {
-  AfterViewInit,
   ChangeDetectionStrategy,
   Component,
   EventEmitter,
   HostListener,
   Output,
-  ViewChild,
   computed,
   signal,
 } from '@angular/core';
 import { FormControl, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
-import {
-  ColorOption,
-  SilhouetteOption,
-  SizeOption,
-  VirtualFitting,
-} from './virtual-fitting.component';
 
 type ProductCategory = 'todos' | 'poleras' | 'jeans';
 
@@ -76,13 +68,12 @@ function futureDate(days: number): string {
   selector: 'app-landing',
   standalone: true,
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ReactiveFormsModule, VirtualFitting],
+  imports: [ReactiveFormsModule],
   templateUrl: './landing-v2.component.html',
   styleUrl: './landing-v2.component.css',
 })
-export class LandingComponent implements AfterViewInit {
+export class LandingComponent {
   @Output() enterLogin = new EventEmitter<void>();
-  @ViewChild(VirtualFitting) virtualFittingComponent?: VirtualFitting;
 
   readonly menuOpen = signal(false);
   readonly navCompact = signal(false);
@@ -93,7 +84,6 @@ export class LandingComponent implements AfterViewInit {
   readonly selectedBoutiqueModal = signal<BoutiqueHouse | null>(null);
   readonly isVipModalOpen = signal(false);
   readonly isApplicationModalOpen = signal(false);
-  readonly isArModalOpen = signal(false);
   readonly lightboxImage = signal<LightboxImage | null>(null);
   readonly toastMessage = signal<string | null>(null);
   readonly enviando = signal(false);
@@ -267,63 +257,6 @@ export class LandingComponent implements AfterViewInit {
     },
   ];
 
-  readonly silhouettes: SilhouetteOption[] = [
-    {
-      id: 'polera',
-      name: 'Polera Oversize',
-      linea: 'Línea Oversize',
-      description: 'Hombro caído, cuerpo amplio y largo a la cadera',
-      tela: 'Algodón peinado 100% · Jersey 240 g/m² · Cuello acanalado 1x1',
-      gramaje: '240 g/m²',
-      hombro: '+8 cm caído',
-      largo: '74 cm (talla M)',
-      combinaCon: 'Jean negro o blanco',
-      jean: null,
-    },
-    {
-      id: 'polera-jean-negro',
-      name: 'Polera + Jean Negro',
-      linea: 'Look completo',
-      description: 'Con jean recto negro de tiro medio',
-      tela: 'Polera: algodón 240 g/m² · Jean: denim 13 oz',
-      gramaje: '240 g/m² + 13 oz',
-      hombro: '+8 cm caído',
-      largo: 'Polera a la cadera',
-      combinaCon: 'Cualquier color',
-      jean: 'negro',
-    },
-    {
-      id: 'polera-jean-blanco',
-      name: 'Polera + Jean Blanco',
-      linea: 'Look completo',
-      description: 'Con jean recto blanco de tiro medio',
-      tela: 'Polera: algodón 240 g/m² · Jean: denim 13 oz blanco',
-      gramaje: '240 g/m² + 13 oz',
-      hombro: '+8 cm caído',
-      largo: 'Polera a la cadera',
-      combinaCon: 'Negro, guinda o gris',
-      jean: 'blanco',
-    },
-  ];
-
-  readonly colors: ColorOption[] = [
-    { id: 'blanco', name: 'Blanco', hex: '#f4f3ef', label: '#f4f3ef' },
-    { id: 'negro', name: 'Negro', hex: '#1d1d20', label: '#1d1d20' },
-    { id: 'guinda', name: 'Guinda', hex: '#7a233d', label: '#7a233d' },
-    { id: 'gris', name: 'Gris', hex: '#9a9ca2', label: '#9a9ca2' },
-  ];
-
-  readonly sizes: SizeOption[] = [
-    { id: 's', code: 'S', label: 'Chica', scaleX: 0.93, scaleY: 0.97, scaleZ: 0.93 },
-    { id: 'm', code: 'M', label: 'Mediana', scaleX: 1, scaleY: 1, scaleZ: 1 },
-    { id: 'l', code: 'L', label: 'Grande', scaleX: 1.07, scaleY: 1.03, scaleZ: 1.06 },
-    { id: 'xl', code: 'XL', label: 'Extra', scaleX: 1.14, scaleY: 1.06, scaleZ: 1.12 },
-  ];
-
-  readonly selectedSilhouette = signal(this.silhouettes[0]);
-  readonly selectedColor = signal(this.colors[2]);
-  readonly selectedSize = signal(this.sizes[1]);
-
   readonly vipBookingForm = new FormGroup({
     clientName: new FormControl('', [Validators.required]),
     email: new FormControl('', [Validators.required, Validators.email]),
@@ -342,14 +275,6 @@ export class LandingComponent implements AfterViewInit {
     collectionType: new FormControl('Poleras oversize y jeans', [Validators.required]),
     message: new FormControl(''),
   });
-
-  ngAfterViewInit(): void {
-    queueMicrotask(() => {
-      this.virtualFittingComponent?.setSilhouette(this.selectedSilhouette());
-      this.virtualFittingComponent?.setFabricColor(this.selectedColor());
-      this.virtualFittingComponent?.setSize(this.selectedSize());
-    });
-  }
 
   onLandingScroll(event: Event): void {
     const target = event.target as HTMLElement;
@@ -379,21 +304,6 @@ export class LandingComponent implements AfterViewInit {
     this.selectedLookJean.set(color);
   }
 
-  selectSilhouette(silhouette: SilhouetteOption): void {
-    this.selectedSilhouette.set(silhouette);
-    this.virtualFittingComponent?.setSilhouette(silhouette);
-  }
-
-  selectColor(color: ColorOption): void {
-    this.selectedColor.set(color);
-    this.virtualFittingComponent?.setFabricColor(color);
-  }
-
-  selectSize(size: SizeOption): void {
-    this.selectedSize.set(size);
-    this.virtualFittingComponent?.setSize(size);
-  }
-
   openVipModal(prefillAtelier?: string): void {
     if (prefillAtelier) this.vipBookingForm.patchValue({ atelier: prefillAtelier });
     this.closeAllOverlays();
@@ -410,11 +320,6 @@ export class LandingComponent implements AfterViewInit {
     this.selectedBoutiqueModal.set(house);
   }
 
-  openArModal(): void {
-    this.closeAllOverlays();
-    this.isArModalOpen.set(true);
-  }
-
   openLightbox(url: string, title: string, subtitle: string): void {
     this.closeAllOverlays();
     this.lightboxImage.set({ url, title, subtitle });
@@ -423,7 +328,6 @@ export class LandingComponent implements AfterViewInit {
   closeAllOverlays(): void {
     this.isVipModalOpen.set(false);
     this.isApplicationModalOpen.set(false);
-    this.isArModalOpen.set(false);
     this.selectedBoutiqueModal.set(null);
     this.lightboxImage.set(null);
   }

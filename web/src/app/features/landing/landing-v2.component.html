@@ -11,14 +11,14 @@
         <span>Poleras oversize</span><i></i>
         <span>Jeans rectos</span><i></i>
         <span>19 tiendas en Bolivia</span><i></i>
-        <span>Probador 3D</span><i></i>
+        <span>Prueba en tienda</span><i></i>
         <span>Stock conectado</span><i></i>
       </div>
       <div class="announcement-group" aria-hidden="true">
         <span>Poleras oversize</span><i></i>
         <span>Jeans rectos</span><i></i>
         <span>19 tiendas en Bolivia</span><i></i>
-        <span>Probador 3D</span><i></i>
+        <span>Prueba en tienda</span><i></i>
         <span>Stock conectado</span><i></i>
       </div>
     </div>
@@ -37,7 +37,7 @@
       <nav class="desktop-nav" aria-label="Navegación principal">
         <button type="button" (click)="scrollToSection('coleccion')">Colección</button>
         <button type="button" (click)="scrollToSection('arma-tu-look')">Arma tu look</button>
-        <button type="button" (click)="scrollToSection('probador-virtual')">Probador 3D</button>
+        <button type="button" (click)="scrollToSection('editorial')">Editorial</button>
         <button type="button" (click)="scrollToSection('tiendas')">Tiendas</button>
       </nav>
 
@@ -66,7 +66,7 @@
       <nav class="mobile-menu" id="mobile-menu" aria-label="Navegación móvil">
         <button type="button" (click)="scrollToSection('coleccion')">Colección</button>
         <button type="button" (click)="scrollToSection('arma-tu-look')">Arma tu look</button>
-        <button type="button" (click)="scrollToSection('probador-virtual')">Probador 3D</button>
+        <button type="button" (click)="scrollToSection('editorial')">Editorial</button>
         <button type="button" (click)="scrollToSection('tiendas')">Tiendas</button>
         <button type="button" (click)="enterLogin.emit()">Ingresar a mi cuenta</button>
         <button class="mobile-menu-cta" type="button" (click)="openVipModal()">Reservar prueba</button>
@@ -79,7 +79,7 @@
       <div class="hero-card">
         <img
           class="hero-image"
-          src="/landing/hero-casual-campaign.png"
+          src="/landing/hero-casual-campaign-wine.png"
           alt="Dos jóvenes con poleras oversize y jeans de la colección YouShop"
           fetchpriority="high"
           decoding="async"
@@ -104,7 +104,7 @@
         <button
           class="hero-product-pill"
           type="button"
-          (click)="openLightbox('/landing/hero-casual-campaign.png', 'Everyday Uniform', 'Oversize guinda + jean negro · Oversize blanca + jean blanco')"
+          (click)="openLightbox('/landing/hero-casual-campaign-wine.png', 'Everyday Uniform', 'Oversize guinda + jean negro · Oversize blanca + jean blanco')"
           aria-label="Ampliar campaña Everyday Uniform"
         >
           <span class="pill-dot"></span>
@@ -121,7 +121,7 @@
       <div class="hero-facts" aria-label="Características de la colección">
         <div><strong>240</strong><span>g/m² algodón pesado</span></div>
         <div><strong>06</strong><span>prendas esenciales</span></div>
-        <div><strong>360°</strong><span>probador interactivo</span></div>
+        <div><strong>04</strong><span>colores esenciales</span></div>
         <div><strong>19</strong><span>tiendas conectadas</span></div>
       </div>
     </section>
@@ -198,8 +198,8 @@
           </div>
         </fieldset>
 
-        <button class="button button-lime" type="button" (click)="scrollToSection('probador-virtual')">
-          Probar este look en 3D
+        <button class="button button-lime" type="button" (click)="openVipModal()">
+          Reservar este look
         </button>
       </div>
 
@@ -218,7 +218,7 @@
       </div>
     </section>
 
-    <section class="editorial">
+    <section class="editorial section-anchor" id="editorial">
       <div class="editorial-head">
         <span class="section-kicker">03 · Everyday stories</span>
         <h2>Un fit para cada mood.</h2>
@@ -237,81 +237,6 @@
           <img src="/landing/detalle-cuello.jpg" alt="Detalle del cuello de una polera oversize" loading="lazy" decoding="async" />
           <span><small>Material</small><strong>240 g/m²</strong></span>
         </button>
-      </div>
-    </section>
-
-    <section class="fitting-section section-anchor" id="probador-virtual">
-      <div class="fitting-intro">
-        <div>
-          <span class="section-kicker light">04 · Probador 3D</span>
-          <h2>Hazlo tuyo<br /><em>antes de probarlo.</em></h2>
-        </div>
-        <p>
-          Gira la prenda 360°, cambia el color, la talla y el look. Acércate a las costuras y descubre cada detalle.
-        </p>
-      </div>
-
-      <div class="fitting-layout">
-        <div class="fitting-frame">
-          <app-virtual-fitting></app-virtual-fitting>
-        </div>
-
-        <aside class="fitting-controls" aria-label="Configurar look en 3D">
-          <div class="control-step">
-            <span class="control-number">01</span>
-            <div>
-              <h3>Elige el look</h3>
-              <p>{{ selectedSilhouette().description }}</p>
-            </div>
-          </div>
-          <div class="option-stack">
-            @for (silhouette of silhouettes; track silhouette.id) {
-              <button
-                type="button"
-                class="option-card"
-                [class.active]="selectedSilhouette().id === silhouette.id"
-                (click)="selectSilhouette(silhouette)"
-              >
-                <span>{{ silhouette.name }}</span>
-                <small>{{ silhouette.linea }}</small>
-              </button>
-            }
-          </div>
-
-          <div class="control-step compact">
-            <span class="control-number">02</span><h3>Color</h3>
-          </div>
-          <div class="fitting-colors">
-            @for (color of colors; track color.id) {
-              <button
-                type="button"
-                [class.active]="selectedColor().id === color.id"
-                (click)="selectColor(color)"
-                [attr.aria-label]="color.name"
-              ><span [style.background]="color.hex"></span></button>
-            }
-          </div>
-
-          <div class="control-step compact">
-            <span class="control-number">03</span><h3>Talla</h3>
-          </div>
-          <div class="size-options">
-            @for (size of sizes; track size.id) {
-              <button type="button" [class.active]="selectedSize().id === size.id" (click)="selectSize(size)">
-                {{ size.code }}
-              </button>
-            }
-          </div>
-
-          <div class="fabric-note">
-            <span class="material-symbols-outlined" aria-hidden="true">texture</span>
-            <div><small>Ficha del material</small><strong>{{ selectedSilhouette().tela }}</strong></div>
-          </div>
-
-          <button class="button button-coral full" type="button" (click)="openArModal()">
-            Probar con la cámara
-          </button>
-        </aside>
       </div>
     </section>
 
@@ -344,7 +269,7 @@
       <div class="business-intro">
         <span class="section-kicker light">Para tiendas</span>
         <h2>Tu tienda, dentro de<br />una red que se mueve.</h2>
-        <p>Catálogo, inventario, ventas, caja y probador 3D en un solo lugar.</p>
+        <p>Catálogo, inventario, ventas y caja en un solo lugar.</p>
         <button class="button button-lime" type="button" (click)="openApplicationModal()">Quiero sumar mi tienda</button>
       </div>
 
@@ -459,25 +384,6 @@
         <div class="store-modal-detail"><small>Sucursales</small><strong>{{ house.sucursales }}</strong></div>
         <div class="store-tags"><small>Lo más buscado</small><div>@for (item of house.destacados; track item) { <span>{{ item }}</span> }</div></div>
         <div class="store-modal-bottom"><span><i></i>{{ house.skus }} SKUs sincronizados</span><button class="button button-blue" type="button" (click)="openVipModal(house.tiendaReserva)">Reservar aquí</button></div>
-      </section>
-    </div>
-  }
-
-  @if (isArModalOpen()) {
-    <div class="modal-backdrop" role="presentation" (click)="closeAllOverlays()">
-      <section class="modal-card camera-modal" role="dialog" aria-modal="true" aria-labelledby="camera-title" (click)="$event.stopPropagation()">
-        <div class="modal-head">
-          <div><span>App YouShop · Cámara</span><h2 id="camera-title">Pruébalo sobre ti.</h2></div>
-          <button class="modal-close" type="button" (click)="closeAllOverlays()" aria-label="Cerrar cámara"><span class="material-symbols-outlined">close</span></button>
-        </div>
-        <div class="camera-preview">
-          <div class="camera-grid"></div>
-          <span class="camera-focus"></span>
-          <span class="material-symbols-outlined camera-icon">view_in_ar</span>
-          <strong>Disponible en la app móvil</strong>
-          <p>La cámara detecta tu pose y muestra la polera {{ selectedColor().name }} en talla {{ selectedSize().code }}.</p>
-        </div>
-        <button class="button button-blue full" type="button" (click)="closeAllOverlays()">Entendido</button>
       </section>
     </div>
   }
